@@ -47,6 +47,9 @@ export type TriggerTiming =
 /** Event start behavior after an event appears. */
 export type EventStartMode = 'auto' | 'manual'
 
+/** Presentation behavior for events and nodes. */
+export type Visibility = 'foreground' | 'background'
+
 /** Local event state keyed by field name. */
 export type EventData = Record<string, JsonValue>
 
@@ -132,12 +135,16 @@ export interface Effect {
   id: string
   /** Display name. */
   name: string
+  /** Effect content description. */
+  description: string
   /** Effect classification. */
   kind: EffectKind
   /** Whether this effect has been unlocked and can appear as a reward or candidate. */
   unlocked: boolean
-  /** Whether this effect is currently active. */
-  enabled: boolean
+  /** Whether this effect is allowed to participate in the current system. */
+  available: boolean
+  /** Whether the player has currently acquired this effect. */
+  acquired: boolean
   /** Effect level. */
   level: number
   /** Effect stack count. */
@@ -146,13 +153,16 @@ export interface Effect {
   value: number
   /** Tag list used for filtering and condition checks. */
   tags: string[]
+  /** Appearance rules used when this effect is considered as a candidate, reward, or shop item. */
+  appear: EffectAppear
   /** Effect duration, or null when no duration data is needed. */
   duration?: Duration | null
-  /** Conditions required for this effect to apply. */
-  conditions?: Condition[]
   /** Timing-based effect triggers. */
   triggers?: Trigger[]
 }
+
+/** Effect appearance rules. */
+export type EffectAppear = EventAppear
 
 /** Effect duration data. */
 export interface Duration {
@@ -178,8 +188,8 @@ export interface EffectCombo {
   id: string
   /** Display name. */
   name: string
-  /** Whether this combination rule is active. */
-  enabled: boolean
+  /** Whether this combination rule is allowed to participate in the current system. */
+  available: boolean
   /** Conditions required for the combination to apply. */
   conditions: Condition[]
   /** Timing hook used to check this combination. */
@@ -196,8 +206,10 @@ export interface GameEvent {
   name: string
   /** Whether this event has been unlocked. */
   unlocked: boolean
-  /** Whether this event is currently allowed to appear. */
-  enabled: boolean
+  /** Whether this event is allowed to participate in the current system. */
+  available: boolean
+  /** Whether this event is shown in the foreground or runs in the background. */
+  visibility: Visibility
   /** Event start behavior after appearing. */
   startMode: EventStartMode
   /** Whether the event can happen repeatedly. */
@@ -243,6 +255,8 @@ export interface BaseNode {
   id: string
   /** Node kind. */
   type: EventNodeType
+  /** Whether this node is shown in the foreground or runs in the background. */
+  visibility: Visibility
   /** Display text for the node. */
   text?: string
   /** Conditions required before this node can be processed. */
@@ -488,8 +502,10 @@ export interface EffectFilter {
   tags?: string[]
   /** Required unlock state. */
   unlocked?: boolean
-  /** Required enabled state. */
-  enabled?: boolean
+  /** Required available state. */
+  available?: boolean
+  /** Required acquired state. */
+  acquired?: boolean
   /** Required effect kinds. */
   kinds?: EffectKind[]
   /** Additional field filters keyed by effect field path. */

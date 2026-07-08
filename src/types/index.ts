@@ -20,6 +20,7 @@ export type {
   Duration,
   DurationType,
   Effect,
+  EffectAppear,
   EffectCombo,
   EffectCondition,
   EffectFilter,
@@ -50,4 +51,5 @@ export type {
   TurnCondition,
   TurnSnapshot,
   WaitNode,
+  Visibility,
 } from './model'

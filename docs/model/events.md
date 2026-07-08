@@ -9,7 +9,8 @@
 | `id` | string | 事件 ID |
 | `name` | string | 展示名称 |
 | `unlocked` | boolean | 是否已解锁 |
-| `enabled` | boolean | 当前是否允许出现 |
+| `available` | boolean | 当前是否允许参与系统 |
+| `visibility` | string | `foreground` 或 `background` |
 | `startMode` | string | `auto` 或 `manual` |
 | `repeatable` | boolean | 是否可重复发生 |
 | `occurrences` | number | 已发生次数 |
@@ -30,6 +31,13 @@
 | --- | --- |
 | `auto` | 事件通过出现判定后自动开始 |
 | `manual` | 事件通过出现判定后进入可处理列表，由玩家选择开始 |
+
+## visibility
+
+| 值 | 说明 |
+| --- | --- |
+| `foreground` | 前台展示，需要进入玩家可见流程 |
+| `background` | 后台自动运行，不进入玩家可见流程 |
 
 ## appear 字段
 
@@ -57,6 +65,7 @@
 | --- | --- | --- |
 | `id` | string | 节点 ID |
 | `type` | string | 节点类型 |
+| `visibility` | string | `foreground` 或 `background` |
 | `text` | string | 展示文本 |
 | `conditions` | array | 节点条件 |
 | `actions` | array | 节点动作 |
