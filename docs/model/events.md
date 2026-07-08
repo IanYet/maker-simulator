@@ -86,7 +86,19 @@
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
+| `mode` | string | 选择模式 |
+| `minSelections` | number | 最少选择数量 |
+| `maxSelections` | number | 最多选择数量 |
 | `choices` | array | 选项列表 |
+| `next` | string/null | 多选或数量选择提交后进入的节点 |
+
+## choice.mode
+
+| 值 | 说明 |
+| --- | --- |
+| `single` | 单选，选择一个选项后立即执行该选项动作并进入该选项 `next` |
+| `multiple` | 多选，玩家提交后执行所有已选选项动作，再进入节点 `next` |
+| `quantity` | 数量选择，玩家为一个或多个选项填写数量，提交后按选项执行动作，再进入节点 `next` |
 
 ## Choice 字段
 
@@ -95,8 +107,20 @@
 | `id` | string | 选项 ID |
 | `text` | string | 选项文本 |
 | `conditions` | array | 可选条件 |
+| `quantity` | object/null | 数量选择配置，仅 `mode=quantity` 时需要 |
 | `actions` | array | 选择后立即执行的动作 |
-| `next` | string | 选择后进入的节点 |
+| `next` | string/null | 单选后进入的节点；多选或数量选择通常使用节点 `next` |
+
+## Choice.quantity 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `min` | any | 最小数量，支持值表达式 |
+| `max` | any | 最大数量，支持值表达式 |
+| `step` | any | 数量步长，支持值表达式 |
+| `defaultValue` | any | 默认数量，支持值表达式 |
+
+数量选择提交后，选项动作可以通过值表达式读取 `selection.quantity`。
 
 ## check 节点字段
 
@@ -125,7 +149,7 @@
 ## 节点跳转规则
 
 1. `text` 节点处理后进入 `next`。
-2. `choice` 节点由玩家选择选项，进入选项的 `next`。
+2. `choice` 节点根据 `mode` 处理单选、多选或数量选择；单选进入选项的 `next`，多选或数量选择进入节点的 `next`。
 3. `check` 节点先检查 `conditions`，再按 `chance` 判定，进入 `success` 或 `failure`。
 4. `action` 节点执行 `actions` 后进入 `next`。
 5. `wait` 节点跨回合停留，满足 `endConditions` 后进入 `next`，回合耗尽后进入 `timeoutNode`。

@@ -24,8 +24,16 @@
 6. 节点跳转时更新 `currentNode`。
 7. `visibility=foreground` 的节点进入玩家可见流程。
 8. `visibility=background` 的节点自动运行。
-9. 进入 `result` 节点且 `completeEvent=true` 时，写入事件结果并结束事件。
-10. 事件完成后更新 `occurrences` 和 `completed`。
+9. `choice` 节点根据 `mode` 处理单选、多选或数量选择。
+10. 进入 `result` 节点且 `completeEvent=true` 时，写入事件结果并结束事件。
+11. 事件完成后更新 `occurrences` 和 `completed`。
+
+## 条件与动作执行
+
+1. 条件判断前，先解析条件右侧的值表达式。
+2. 动作执行前，先解析动作 `value` 中的值表达式。
+3. `aggregate` 条件与 `aggregate_value` 值表达式先用 `selector` 选择集合，再计算聚合值。
+4. choice 选项动作执行时，可以读取本次选择的临时字段。
 
 ## 每回合保存
 
@@ -64,4 +72,6 @@
 7. 事件节点图执行。
 8. 条件判断。
 9. 动作执行。
-10. 每回合保存完整局内动态数据快照。
+10. 值表达式解析。
+11. 集合选择与聚合判断。
+12. 每回合保存完整局内动态数据快照。

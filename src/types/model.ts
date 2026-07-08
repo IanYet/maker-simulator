@@ -50,6 +50,9 @@ export type EventStartMode = 'auto' | 'manual'
 /** Presentation behavior for events and nodes. */
 export type Visibility = 'foreground' | 'background'
 
+/** Selection behavior for a choice node. */
+export type ChoiceMode = 'single' | 'multiple' | 'quantity'
+
 /** Local event state keyed by field name. */
 export type EventData = Record<string, JsonValue>
 
@@ -73,8 +76,25 @@ export type ActionScope = 'run' | 'save' | 'default'
 /** Action mutation mode. */
 export type ActionMode = 'set' | 'add' | 'multiply' | 'min' | 'max'
 
+/** Target collection queried by selectors. */
+export type SelectorTarget = 'effect' | 'event'
+
+/** Aggregate operation over a selected collection. */
+export type AggregateFunction = 'count' | 'sum' | 'min' | 'max' | 'average'
+
+/** Arithmetic operation used by calculate value expressions. */
+export type CalculateOperator = 'add' | 'subtract' | 'multiply' | 'divide' | 'min' | 'max'
+
 /** Condition type discriminator. */
-export type ConditionType = 'attribute' | 'effect' | 'event' | 'turn' | 'and' | 'or' | 'not'
+export type ConditionType =
+  | 'attribute'
+  | 'effect'
+  | 'event'
+  | 'turn'
+  | 'aggregate'
+  | 'and'
+  | 'or'
+  | 'not'
 
 /** Action type discriminator. */
 export type ActionType = 'modify_attribute' | 'modify_effect' | 'modify_event'
@@ -281,8 +301,16 @@ export interface TextNode extends BaseNode {
 export interface ChoiceNode extends BaseNode {
   /** Node kind discriminator. */
   type: 'choice'
+  /** Choice selection mode. */
+  mode: ChoiceMode
+  /** Minimum number of choices required before submission. */
+  minSelections?: number
+  /** Maximum number of choices allowed before submission. */
+  maxSelections?: number
   /** Choice list shown to the player. */
   choices: Choice[]
+  /** Node id entered after submitting multiple or quantity choices. */
+  next?: string | null
 }
 
 /** Probability check node. */
@@ -343,10 +371,24 @@ export interface Choice {
   text: string
   /** Conditions required for this choice to be available. */
   conditions?: Condition[]
+  /** Quantity configuration used when the containing node has quantity mode. */
+  quantity?: ChoiceQuantity | null
   /** Actions executed immediately after selecting this choice. */
   actions?: Action[]
   /** Node id entered after selecting this choice. */
-  next: string
+  next?: string | null
+}
+
+/** Quantity controls for a selectable choice. */
+export interface ChoiceQuantity {
+  /** Minimum selectable quantity. */
+  min: ValueExpression
+  /** Maximum selectable quantity. */
+  max: ValueExpression
+  /** Quantity step. */
+  step?: ValueExpression
+  /** Default quantity shown before player input. */
+  defaultValue?: ValueExpression
 }
 
 /** Any supported condition. */
@@ -355,9 +397,34 @@ export type Condition =
   | EffectCondition
   | EventCondition
   | TurnCondition
+  | AggregateCondition
   | AndCondition
   | OrCondition
   | NotCondition
+
+/** Collection selector used by aggregate conditions and aggregate value expressions. */
+export interface Selector {
+  /** Target collection to query. */
+  target: SelectorTarget
+  /** Optional id allow-list. */
+  ids?: string[]
+  /** Required effect tags; only applies when target is effect. */
+  tags?: string[]
+  /** Required effect kinds; only applies when target is effect. */
+  kinds?: EffectKind[]
+  /** Field-level selector rules. */
+  fields?: FieldMatcher[]
+}
+
+/** Field comparison rule inside a selector. */
+export interface FieldMatcher {
+  /** Field path to read from the selected object. */
+  field: string
+  /** Comparison operator. */
+  operator: ComparisonOperator
+  /** Value to compare against. */
+  value: ValueExpression
+}
 
 /** Character attribute condition. */
 export interface AttributeCondition {
@@ -368,7 +435,7 @@ export interface AttributeCondition {
   /** Comparison operator. */
   operator: ComparisonOperator
   /** Value to compare against. */
-  value: JsonValue
+  value: ValueExpression
 }
 
 /** Effect field condition. */
@@ -382,7 +449,7 @@ export interface EffectCondition {
   /** Comparison operator. */
   operator: ComparisonOperator
   /** Value to compare against. */
-  value: JsonValue
+  value: ValueExpression
 }
 
 /** Event field condition. */
@@ -396,7 +463,7 @@ export interface EventCondition {
   /** Comparison operator. */
   operator: ComparisonOperator
   /** Value to compare against. */
-  value: JsonValue
+  value: ValueExpression
 }
 
 /** Current turn condition. */
@@ -406,7 +473,23 @@ export interface TurnCondition {
   /** Comparison operator. */
   operator: ComparisonOperator
   /** Turn value to compare against. */
-  value: number
+  value: ValueExpression
+}
+
+/** Aggregate condition over a selected effect or event collection. */
+export interface AggregateCondition {
+  /** Condition kind discriminator. */
+  type: 'aggregate'
+  /** Selector that chooses effects or events. */
+  selector: Selector
+  /** Aggregate operation to evaluate. */
+  aggregate: AggregateFunction
+  /** Field path used by non-count aggregates. */
+  field?: string
+  /** Comparison operator. */
+  operator: ComparisonOperator
+  /** Value to compare the aggregate result against. */
+  value: ValueExpression
 }
 
 /** Logical AND condition. */
@@ -453,7 +536,7 @@ export interface ModifyAttributeAction extends BaseAction {
   /** Modification mode. */
   mode: ActionMode
   /** Value used by the modification mode. */
-  value: JsonValue
+  value: ValueExpression
 }
 
 /** Effect field modification action. */
@@ -467,7 +550,7 @@ export interface ModifyEffectAction extends BaseAction {
   /** Modification mode. */
   mode: ActionMode
   /** Value used by the modification mode. */
-  value: JsonValue
+  value: ValueExpression
 }
 
 /** Event field modification action. */
@@ -481,7 +564,59 @@ export interface ModifyEventAction extends BaseAction {
   /** Modification mode. */
   mode: ActionMode
   /** Value used by the modification mode. */
-  value: JsonValue
+  value: ValueExpression
+}
+
+/** Static JSON value or runtime expression used by conditions and actions. */
+export type ValueExpression =
+  | JsonValue
+  | FieldValueExpression
+  | CalculateValueExpression
+  | RandomValueExpression
+  | AggregateValueExpression
+
+/** Value expression that reads a field from model data or temporary selection data. */
+export interface FieldValueExpression {
+  /** Expression kind discriminator. */
+  type: 'field'
+  /** Data scope to read; defaults to run data. */
+  scope?: ActionScope
+  /** Field path to read. */
+  path: string
+}
+
+/** Value expression that calculates a value from child values. */
+export interface CalculateValueExpression {
+  /** Expression kind discriminator. */
+  type: 'calculate'
+  /** Arithmetic operation to apply. */
+  operator: CalculateOperator
+  /** Input values. */
+  values: ValueExpression[]
+}
+
+/** Value expression that produces a random number. */
+export interface RandomValueExpression {
+  /** Expression kind discriminator. */
+  type: 'random'
+  /** Minimum random value. */
+  min: number
+  /** Maximum random value. */
+  max: number
+  /** Whether the result should be an integer. */
+  integer?: boolean
+}
+
+/** Value expression that returns an aggregate over selected effects or events. */
+export interface AggregateValueExpression {
+  /** Expression kind discriminator. */
+  type: 'aggregate_value'
+  /** Selector that chooses effects or events. */
+  selector: Selector
+  /** Aggregate operation to evaluate. */
+  aggregate: AggregateFunction
+  /** Field path used by non-count aggregates. */
+  field?: string
 }
 
 /** Per-turn run snapshot container. */
