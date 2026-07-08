@@ -77,7 +77,7 @@ export type ActionMode = 'set' | 'add' | 'multiply' | 'min' | 'max'
 export type ConditionType = 'attribute' | 'effect' | 'event' | 'turn' | 'and' | 'or' | 'not'
 
 /** Action type discriminator. */
-export type ActionType = 'modify_attribute' | 'modify_effect' | 'modify_event' | 'choose_effect'
+export type ActionType = 'modify_attribute' | 'modify_effect' | 'modify_event'
 
 /** Complete model data shape shared by default data, save data, and run data. */
 export interface GameModelData {
@@ -434,7 +434,7 @@ export interface NotCondition {
 }
 
 /** Any supported action. */
-export type Action = ModifyAttributeAction | ModifyEffectAction | ModifyEventAction | ChooseEffectAction
+export type Action = ModifyAttributeAction | ModifyEffectAction | ModifyEventAction
 
 /** Common action fields. */
 export interface BaseAction {
@@ -482,34 +482,6 @@ export interface ModifyEventAction extends BaseAction {
   mode: ActionMode
   /** Value used by the modification mode. */
   value: JsonValue
-}
-
-/** Random effect candidate selection action. */
-export interface ChooseEffectAction extends BaseAction {
-  /** Action kind discriminator. */
-  type: 'choose_effect'
-  /** Number of candidates to generate. */
-  count: number
-  /** Number of candidates to pick. */
-  pick: number
-  /** Effect filter used to generate candidates. */
-  filter: EffectFilter
-}
-
-/** Filter used when selecting effect candidates. */
-export interface EffectFilter {
-  /** Required effect tags. */
-  tags?: string[]
-  /** Required unlock state. */
-  unlocked?: boolean
-  /** Required available state. */
-  available?: boolean
-  /** Required acquired state. */
-  acquired?: boolean
-  /** Required effect kinds. */
-  kinds?: EffectKind[]
-  /** Additional field filters keyed by effect field path. */
-  fields?: Record<string, JsonValue>
 }
 
 /** Per-turn run snapshot container. */

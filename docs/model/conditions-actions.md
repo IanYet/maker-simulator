@@ -88,7 +88,6 @@
 | `modify_attribute` | 修改角色属性 |
 | `modify_effect` | 修改效果字段 |
 | `modify_event` | 修改事件字段 |
-| `choose_effect` | 从已解锁、可用、满足出现条件的效果中随机生成候选并选择 |
 
 ## modify_attribute 字段
 
@@ -121,27 +120,6 @@
 | `field` | string | 字段路径，可修改 `data` 下的事件局部状态 |
 | `mode` | string | 修改模式 |
 | `value` | any | 修改值 |
-
-## choose_effect 字段
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `scope` | string | 数据作用域 |
-| `type` | string | 固定为 `choose_effect` |
-| `count` | number | 候选数量 |
-| `pick` | number | 选择数量 |
-| `filter` | object | 效果筛选条件 |
-
-## choose_effect.filter 字段
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `tags` | array | 必须包含的效果标签 |
-| `unlocked` | boolean | 必须满足的解锁状态 |
-| `available` | boolean | 必须满足的可用状态 |
-| `acquired` | boolean | 必须满足的获取状态 |
-| `kinds` | array | 必须属于的效果类型 |
-| `fields` | object | 其他按字段路径匹配的条件 |
 
 ## 修改模式
 
