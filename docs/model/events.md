@@ -20,6 +20,7 @@
 | `remainingTurns` | number | 事件剩余回合 |
 | `endConditions` | array | 事件自动结束条件 |
 | `timeoutNode` | string/null | 事件超时后跳转节点 |
+| `data` | object | 事件局部状态 |
 | `appear` | object | 出现条件与概率 |
 | `nodes` | array | 节点列表 |
 
@@ -36,6 +37,19 @@
 | --- | --- | --- |
 | `conditions` | array | 出现条件 |
 | `chance` | number | 出现概率，范围 0 到 1 |
+
+## data 字段
+
+`data` 保存事件实例自己的局部状态。库存、折扣、临时变量、事件内部计数等状态放在这里。
+
+| 内容 | 保存位置 |
+| --- | --- |
+| 商店商品库存 | `event.data.goods.*.remaining` |
+| 商店商品价格 | `event.data.goods.*.price` |
+| 商店折扣 | `event.data.discount` |
+| 事件内部计数 | `event.data.*` |
+
+商店不需要新增节点类型。商店可以用 `choice` 节点表达，每个商品是一个选项，购买行为由选项的 `actions` 表达。金币等通用货币读取角色属性，商品库存读取事件 `data` 字段。
 
 ## Node 通用字段
 
@@ -107,4 +121,3 @@
 4. `action` 节点执行 `actions` 后进入 `next`。
 5. `wait` 节点跨回合停留，满足 `endConditions` 后进入 `next`，回合耗尽后进入 `timeoutNode`。
 6. `result` 节点写入结果；`completeEvent=true` 时结束事件。
-

@@ -26,6 +26,7 @@ export type {
   EffectKind,
   EventAppear,
   EventCondition,
+  EventData,
   EventNode,
   EventNodeType,
   EventStartMode,
@@ -50,4 +51,3 @@ export type {
   TurnSnapshot,
   WaitNode,
 } from './model'
-

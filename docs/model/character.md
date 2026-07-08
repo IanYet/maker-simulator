@@ -27,3 +27,13 @@
 | 已完成事件 | 对应事件字段 |
 | 已解锁内容 | 对应效果或事件字段 |
 
+## 通用资源
+
+生命、能量、金币、行动点等通用资源属于角色属性。
+
+| 资源 | 保存位置 |
+| --- | --- |
+| 生命 | `character.attributes.health` |
+| 能量 | `character.attributes.energy` |
+| 金币 | `character.attributes.coin` |
+| 行动点 | `character.attributes.action_point` |

@@ -47,6 +47,9 @@ export type TriggerTiming =
 /** Event start behavior after an event appears. */
 export type EventStartMode = 'auto' | 'manual'
 
+/** Local event state keyed by field name. */
+export type EventData = Record<string, JsonValue>
+
 /** Event node kind in the directed event graph. */
 export type EventNodeType = 'text' | 'choice' | 'check' | 'action' | 'wait' | 'result'
 
@@ -215,6 +218,8 @@ export interface GameEvent {
   endConditions: Condition[]
   /** Node id entered when the event times out. */
   timeoutNode: string | null
+  /** Local event state such as shop inventory, discounts, and temporary event variables. */
+  data: EventData
   /** Event appearance rules. */
   appear: EventAppear
   /** Directed graph node list. */
@@ -508,4 +513,3 @@ export interface TurnSnapshot {
   /** Full run data at the end of the turn. */
   data: GameModelData
 }
-

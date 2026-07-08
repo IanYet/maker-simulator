@@ -52,7 +52,7 @@
 | --- | --- | --- |
 | `type` | string | 固定为 `event` |
 | `eventId` | string | 事件 ID |
-| `field` | string | 事件字段路径 |
+| `field` | string | 事件字段路径，可读取 `data` 下的事件局部状态 |
 | `operator` | string | 比较操作符 |
 | `value` | any | 比较值 |
 
@@ -118,7 +118,7 @@
 | `scope` | string | 数据作用域 |
 | `type` | string | 固定为 `modify_event` |
 | `eventId` | string | 事件 ID |
-| `field` | string | 字段路径 |
+| `field` | string | 字段路径，可修改 `data` 下的事件局部状态 |
 | `mode` | string | 修改模式 |
 | `value` | any | 修改值 |
 
@@ -141,4 +141,3 @@
 | `multiply` | 乘以指定值 |
 | `min` | 不高于指定值 |
 | `max` | 不低于指定值 |
-
