@@ -132,6 +132,7 @@
 | `modify_attribute` | 修改角色属性 |
 | `modify_effect` | 修改效果字段 |
 | `modify_event` | 修改事件字段 |
+| `draw_pool` | 抽取候选并对每个候选执行后续动作 |
 
 ## modify_attribute 字段
 
@@ -165,6 +166,20 @@
 | `mode` | string | 修改模式 |
 | `value` | any | 修改值，支持值表达式 |
 
+在 `draw_pool.onDraw` 中，效果池只能通过 `modify_effect.effectId=$drewId` 修改当前效果，事件池只能通过 `modify_event.eventId=$drewId` 修改当前事件。
+
+## draw_pool 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `type` | string | 固定为 `draw_pool` |
+| `poolId` | string | 候选池 ID |
+| `count` | any | 本次抽取数量，支持值表达式；未声明时使用候选池默认值 |
+| `onDraw` | array | 对每个抽中候选依次执行一次的动作 |
+| `onEmpty` | array | 可选；没有抽中候选时执行一次的动作 |
+
+`onDraw` 按抽取结果顺序执行，通过 `$drewId` 读取当前候选 ID。没有抽中候选时不执行 `onDraw`，改为执行一次 `onEmpty`。`onEmpty` 中不存在 `$drewId`。候选池不保存这些动作。
+
 ## 值表达式
 
 动作的 `value` 与条件右侧的 `value` 可以是普通 JSON 值，也可以是值表达式。值表达式在执行时根据当前数据求值。
@@ -186,7 +201,7 @@
 | `scope` | string | 读取的数据作用域；未声明时默认读取局内动态数据 |
 | `path` | string | 字段路径 |
 
-在 choice 选项的动作中，`path` 可以读取本次选择的临时字段，如 `selection.choiceId`、`selection.quantity`。
+在 choice 选项的动作中，`path` 可以读取本次选择的临时字段，如 `$selection.choiceId`、`$selection.quantity`。计算候选池权重时，`path` 可以通过 `$candidate.*` 读取当前候选字段。
 
 ## calculate 值表达式字段
 

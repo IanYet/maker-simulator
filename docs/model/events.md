@@ -9,7 +9,7 @@
 | `id` | string | 事件 ID |
 | `name` | string | 展示名称 |
 | `unlocked` | boolean | 是否已解锁 |
-| `available` | boolean | 当前是否允许参与系统 |
+| `appeared` | boolean | 是否已经出现并进入当前事件流程 |
 | `visibility` | string | `foreground` 或 `background` |
 | `startMode` | string | `auto` 或 `manual` |
 | `repeatable` | boolean | 是否可重复发生 |
@@ -45,6 +45,8 @@
 | --- | --- | --- |
 | `conditions` | array | 出现条件 |
 | `chance` | number | 出现概率，范围 0 到 1 |
+
+`appeared=false` 的事件可以进入事件候选池。事件被抽中后设置为 `true`，处理结束后恢复为 `false`；不可重复事件同时保留 `completed=true`，不再进入候选池。
 
 ## data 字段
 
@@ -120,7 +122,7 @@
 | `step` | any | 数量步长，支持值表达式 |
 | `defaultValue` | any | 默认数量，支持值表达式 |
 
-数量选择提交后，选项动作可以通过值表达式读取 `selection.quantity`。
+数量选择提交后，选项动作可以通过值表达式读取 `$selection.quantity`。
 
 ## check 节点字段
 

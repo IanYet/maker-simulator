@@ -4,10 +4,10 @@
 
 | 顺序 | step | 说明 |
 | --- | --- | --- |
-| 1 | `turn_start` | 回合开始，结算已获取且可用效果的回合开始触发 |
+| 1 | `turn_start` | 回合开始，结算已获取效果的回合开始触发 |
 | 2 | `combo_check` | 检查当前时机满足条件的效果组合 |
-| 3 | `event_appear` | 遍历事件，筛选已解锁、可用、满足出现条件的事件，再进行概率判定 |
-| 4 | `event_start` | `startMode=auto` 的事件自动开始，`startMode=manual` 的事件等待玩家选择 |
+| 3 | `event_appear` | 结算事件出现时机的效果与 `draw_pool` 动作 |
+| 4 | `event_start` | `appeared=true` 且 `startMode=auto` 的事件自动开始；手动事件等待玩家选择 |
 | 5 | `player_event` | 玩家处理事件节点 |
 | 6 | `event_node` | 结算当前事件节点的文本、选择、判定、动作、等待或结果 |
 | 7 | `turn_end` | 结算持续时间、过期效果、等待节点、事件超时 |
@@ -16,17 +16,18 @@
 
 ## 事件处理流程
 
-1. 事件通过出现判定后，根据 `startMode` 自动开始或进入待处理列表。
-2. `visibility=foreground` 的事件进入玩家可见流程。
-3. `visibility=background` 的事件自动运行，不进入玩家可见流程。
-4. 事件开始时，将 `currentNode` 设置为 `entryNode`。
-5. 系统根据当前节点 `type` 执行对应逻辑。
-6. 节点跳转时更新 `currentNode`。
-7. `visibility=foreground` 的节点进入玩家可见流程。
-8. `visibility=background` 的节点自动运行。
-9. `choice` 节点根据 `mode` 处理单选、多选或数量选择。
-10. 进入 `result` 节点且 `completeEvent=true` 时，写入事件结果并结束事件。
-11. 事件完成后更新 `occurrences` 和 `completed`。
+1. 事件候选池抽中事件并将其 `appeared` 设置为 `true`。
+2. 已出现事件根据 `startMode` 自动开始或进入待处理列表。
+3. `visibility=foreground` 的事件进入玩家可见流程。
+4. `visibility=background` 的事件自动运行，不进入玩家可见流程。
+5. 事件开始时，将 `currentNode` 设置为 `entryNode`。
+6. 系统根据当前节点 `type` 执行对应逻辑。
+7. 节点跳转时更新 `currentNode`。
+8. `visibility=foreground` 的节点进入玩家可见流程。
+9. `visibility=background` 的节点自动运行。
+10. `choice` 节点根据 `mode` 处理单选、多选或数量选择。
+11. 进入 `result` 节点且 `completeEvent=true` 时，写入事件结果并结束事件。
+12. 事件处理结束后更新 `occurrences` 和 `completed`，并将 `appeared` 恢复为 `false`。
 
 ## 条件与动作执行
 
@@ -34,6 +35,9 @@
 2. 动作执行前，先解析动作 `value` 中的值表达式。
 3. `aggregate` 条件与 `aggregate_value` 值表达式先用 `selector` 选择集合，再计算聚合值。
 4. choice 选项动作执行时，可以读取本次选择的临时字段。
+5. `draw_pool` 先执行候选池抽取，再为每个结果建立 `$drewId` 上下文并依次执行 `onDraw`。
+6. 没有抽中候选时执行一次 `onEmpty`，且不建立 `$drewId` 上下文。
+7. 候选池的权重表达式在 `$candidate.*` 上下文中求值。
 
 ## 每回合保存
 
@@ -74,4 +78,5 @@
 9. 动作执行。
 10. 值表达式解析。
 11. 集合选择与聚合判断。
-12. 每回合保存完整局内动态数据快照。
+12. 候选池抽取和 `draw_pool` 动作。
+13. 每回合保存完整局内动态数据快照。

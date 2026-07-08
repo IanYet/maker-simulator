@@ -97,7 +97,7 @@ export type ConditionType =
   | 'not'
 
 /** Action type discriminator. */
-export type ActionType = 'modify_attribute' | 'modify_effect' | 'modify_event'
+export type ActionType = 'modify_attribute' | 'modify_effect' | 'modify_event' | 'draw_pool'
 
 /** Complete model data shape shared by default data, save data, and run data. */
 export interface GameModelData {
@@ -109,6 +109,8 @@ export interface GameModelData {
   effects: Effect[]
   /** Independent effect-combination rules. */
   effectCombos: EffectCombo[]
+  /** Reusable effect or event candidate pools. */
+  pools: Pool[]
   /** Event definitions and their current state. */
   events: GameEvent[]
 }
@@ -161,8 +163,8 @@ export interface Effect {
   kind: EffectKind
   /** Whether this effect has been unlocked and can appear as a reward or candidate. */
   unlocked: boolean
-  /** Whether this effect is allowed to participate in the current system. */
-  available: boolean
+  /** Whether this effect has currently appeared. */
+  appeared: boolean
   /** Whether the player has currently acquired this effect. */
   acquired: boolean
   /** Effect level. */
@@ -208,14 +210,28 @@ export interface EffectCombo {
   id: string
   /** Display name. */
   name: string
-  /** Whether this combination rule is allowed to participate in the current system. */
-  available: boolean
+  /** Whether this effect combination has currently appeared. */
+  appeared: boolean
   /** Conditions required for the combination to apply. */
   conditions: Condition[]
   /** Timing hook used to check this combination. */
   timing: TriggerTiming
   /** Actions executed when combination conditions are met. */
   actions: Action[]
+}
+
+/** Pure candidate filtering and random draw rule for effects or events. */
+export interface Pool {
+  /** Pool identifier. */
+  id: string
+  /** Selector that defines the candidate collection. */
+  selector: Selector
+  /** Default number of candidates to draw. */
+  count: ValueExpression
+  /** Whether candidates may appear only once in the same draw. */
+  unique: boolean
+  /** Candidate weight evaluated in the candidate context; defaults to 1. */
+  weight?: ValueExpression
 }
 
 /** Narrative event represented as a directed graph of nodes. */
@@ -226,8 +242,8 @@ export interface GameEvent {
   name: string
   /** Whether this event has been unlocked. */
   unlocked: boolean
-  /** Whether this event is allowed to participate in the current system. */
-  available: boolean
+  /** Whether this event has appeared and entered the current event flow. */
+  appeared: boolean
   /** Whether this event is shown in the foreground or runs in the background. */
   visibility: Visibility
   /** Event start behavior after appearing. */
@@ -517,7 +533,11 @@ export interface NotCondition {
 }
 
 /** Any supported action. */
-export type Action = ModifyAttributeAction | ModifyEffectAction | ModifyEventAction
+export type Action =
+  | ModifyAttributeAction
+  | ModifyEffectAction
+  | ModifyEventAction
+  | DrawPoolAction
 
 /** Common action fields. */
 export interface BaseAction {
@@ -567,6 +587,20 @@ export interface ModifyEventAction extends BaseAction {
   value: ValueExpression
 }
 
+/** Action that draws a pool and handles drawn or empty results. */
+export interface DrawPoolAction {
+  /** Action kind discriminator. */
+  type: 'draw_pool'
+  /** Candidate pool identifier. */
+  poolId: string
+  /** Draw count override; defaults to the pool count. */
+  count?: ValueExpression
+  /** Actions executed once per candidate with `$drewId` bound to its id. */
+  onDraw: Action[]
+  /** Actions executed once when the draw returns no candidates. */
+  onEmpty?: Action[]
+}
+
 /** Static JSON value or runtime expression used by conditions and actions. */
 export type ValueExpression =
   | JsonValue
@@ -575,7 +609,7 @@ export type ValueExpression =
   | RandomValueExpression
   | AggregateValueExpression
 
-/** Value expression that reads a field from model data or temporary selection data. */
+/** Value expression that reads model data or a temporary choice or pool candidate context. */
 export interface FieldValueExpression {
   /** Expression kind discriminator. */
   type: 'field'
