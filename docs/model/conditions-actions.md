@@ -133,6 +133,7 @@
 | `modify_effect` | 修改效果字段 |
 | `modify_event` | 修改事件字段 |
 | `draw_pool` | 抽取候选并对每个候选执行后续动作 |
+| `create_choice` | 根据效果生成并追加一个具体选项 |
 
 ## modify_attribute 字段
 
@@ -180,6 +181,29 @@
 
 `onDraw` 按抽取结果顺序执行，通过 `$drewId` 读取当前候选 ID。没有抽中候选时不执行 `onDraw`，改为执行一次 `onEmpty`。`onEmpty` 中不存在 `$drewId`。候选池不保存这些动作。
 
+## create_choice 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `type` | string | 固定为 `create_choice` |
+| `eventId` | string | 目标事件 ID；未声明时使用当前事件 |
+| `nodeId` | string | 接收新选项的 choice 节点 ID |
+| `effectId` | string | 用于生成选项的效果 ID；在 `onDraw` 中可以使用 `$drewId` |
+| `choice` | object | 选项模板 |
+
+## ChoiceTemplate 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 选项 ID；未声明时使用效果 ID |
+| `text` | string | 选项文本；未声明时使用效果名称 |
+| `conditions` | array | 可选条件 |
+| `quantity` | object/null | 数量选择配置 |
+| `actions` | array | 选择后执行的动作 |
+| `next` | string/null | 选择后进入的节点 |
+
+`create_choice` 只修改局内动态数据。它会递归替换模板所有字符串中的 `$drewId`，再把生成的普通 Choice 追加到目标节点。生成结果不得保留 `$drewId`。如果需要重新生成整组选项，应在执行 `draw_pool` 前通过 `modify_event` 清空目标节点的 `choices`。
+
 ## 值表达式
 
 动作的 `value` 与条件右侧的 `value` 可以是普通 JSON 值，也可以是值表达式。值表达式在执行时根据当前数据求值。
@@ -201,7 +225,7 @@
 | `scope` | string | 读取的数据作用域；未声明时默认读取局内动态数据 |
 | `path` | string | 字段路径 |
 
-在 choice 选项的动作中，`path` 可以读取本次选择的临时字段，如 `$selection.choiceId`、`$selection.quantity`。计算候选池权重时，`path` 可以通过 `$candidate.*` 读取当前候选字段。
+在 choice 选项的动作中，`path` 可以读取本次选择的临时字段，如 `$selection.choiceId`、`$selection.quantity`。计算候选池权重时，`path` 可以通过 `$candidate.*` 读取当前候选字段。`create_choice` 物化模板时只替换 `$drewId`，不会提前解析其他临时字段。
 
 ## calculate 值表达式字段
 

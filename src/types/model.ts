@@ -97,7 +97,12 @@ export type ConditionType =
   | 'not'
 
 /** Action type discriminator. */
-export type ActionType = 'modify_attribute' | 'modify_effect' | 'modify_event' | 'draw_pool'
+export type ActionType =
+  | 'modify_attribute'
+  | 'modify_effect'
+  | 'modify_event'
+  | 'draw_pool'
+  | 'create_choice'
 
 /** Complete model data shape shared by default data, save data, and run data. */
 export interface GameModelData {
@@ -395,6 +400,22 @@ export interface Choice {
   next?: string | null
 }
 
+/** Template materialized into a concrete choice from an effect. */
+export interface ChoiceTemplate {
+  /** Choice identifier; defaults to the source effect id. */
+  id?: string
+  /** Choice display text; defaults to the source effect name. */
+  text?: string
+  /** Conditions required for the generated choice to be available. */
+  conditions?: Condition[]
+  /** Quantity configuration for the generated choice. */
+  quantity?: ChoiceQuantity | null
+  /** Actions executed after selecting the generated choice. */
+  actions?: Action[]
+  /** Node id entered after selecting the generated choice. */
+  next?: string | null
+}
+
 /** Quantity controls for a selectable choice. */
 export interface ChoiceQuantity {
   /** Minimum selectable quantity. */
@@ -538,6 +559,7 @@ export type Action =
   | ModifyEffectAction
   | ModifyEventAction
   | DrawPoolAction
+  | CreateChoiceAction
 
 /** Common action fields. */
 export interface BaseAction {
@@ -599,6 +621,20 @@ export interface DrawPoolAction {
   onDraw: Action[]
   /** Actions executed once when the draw returns no candidates. */
   onEmpty?: Action[]
+}
+
+/** Action that materializes an effect as a concrete event choice. */
+export interface CreateChoiceAction {
+  /** Action kind discriminator. */
+  type: 'create_choice'
+  /** Target event id; defaults to the current event. */
+  eventId?: string
+  /** Choice node that receives the generated choice. */
+  nodeId: string
+  /** Source effect id; `$drewId` is supported in a pool draw context. */
+  effectId: string
+  /** Template used to build the generated choice. */
+  choice: ChoiceTemplate
 }
 
 /** Static JSON value or runtime expression used by conditions and actions. */

@@ -1,0 +1,413 @@
+{
+  "meta": {
+    "id": "shop-example",
+    "version": "1.0.0",
+    "turn": 0,
+    "seed": "shop-example-seed",
+    "kind": "default"
+  },
+  "character": {
+    "id": "player",
+    "attributes": {
+      "health": {
+        "value": 10,
+        "min": 0,
+        "max": 10
+      },
+      "coin": {
+        "value": 35,
+        "min": 0,
+        "max": 999
+      }
+    }
+  },
+  "effects": [
+    {
+      "id": "event_scheduler",
+      "name": "事件调度器",
+      "description": "在事件出现阶段从事件池中抽取本回合事件。",
+      "kind": "passive",
+      "unlocked": true,
+      "appeared": true,
+      "acquired": true,
+      "level": 1,
+      "stacks": 1,
+      "value": 0,
+      "tags": [
+        "system"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 0
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": [
+        {
+          "timing": "event_appear",
+          "conditions": [],
+          "actions": [
+            {
+              "type": "draw_pool",
+              "poolId": "turn_events",
+              "onDraw": [
+                {
+                  "type": "modify_event",
+                  "eventId": "$drewId",
+                  "field": "appeared",
+                  "mode": "set",
+                  "value": true
+                }
+              ],
+              "onEmpty": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "iron_sword",
+      "name": "铁剑",
+      "description": "一把可靠的近战武器。",
+      "kind": "equipment",
+      "unlocked": true,
+      "appeared": false,
+      "acquired": false,
+      "level": 0,
+      "stacks": 0,
+      "value": 1,
+      "tags": [
+        "shop_good",
+        "weapon"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": []
+    },
+    {
+      "id": "leather_armor",
+      "name": "皮甲",
+      "description": "提供基础保护的轻便护甲。",
+      "kind": "equipment",
+      "unlocked": true,
+      "appeared": false,
+      "acquired": false,
+      "level": 0,
+      "stacks": 0,
+      "value": 1,
+      "tags": [
+        "shop_good",
+        "armor"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": []
+    },
+    {
+      "id": "healing_herbs",
+      "name": "疗伤草药",
+      "description": "经过处理后可以用于恢复伤势。",
+      "kind": "equipment",
+      "unlocked": true,
+      "appeared": false,
+      "acquired": false,
+      "level": 0,
+      "stacks": 0,
+      "value": 1,
+      "tags": [
+        "shop_good",
+        "consumable"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": []
+    },
+    {
+      "id": "lucky_charm",
+      "name": "幸运护符",
+      "description": "据说能在关键时刻带来好运。",
+      "kind": "equipment",
+      "unlocked": true,
+      "appeared": false,
+      "acquired": false,
+      "level": 0,
+      "stacks": 0,
+      "value": 1,
+      "tags": [
+        "shop_good",
+        "charm"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": []
+    },
+    {
+      "id": "guild_token",
+      "name": "公会徽记",
+      "description": "只能通过公会任务获得，不会出现在商店候选池中。",
+      "kind": "tag",
+      "unlocked": true,
+      "appeared": false,
+      "acquired": false,
+      "level": 0,
+      "stacks": 0,
+      "value": 1,
+      "tags": [
+        "reward_only"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": []
+    }
+  ],
+  "effectCombos": [],
+  "pools": [
+    {
+      "id": "turn_events",
+      "selector": {
+        "target": "event",
+        "ids": [
+          "traveling_shop"
+        ],
+        "fields": [
+          {
+            "field": "completed",
+            "operator": "==",
+            "value": false
+          }
+        ]
+      },
+      "count": 1,
+      "unique": true,
+      "weight": 1
+    },
+    {
+      "id": "shop_goods",
+      "selector": {
+        "target": "effect",
+        "tags": [
+          "shop_good"
+        ],
+        "fields": [
+          {
+            "field": "acquired",
+            "operator": "==",
+            "value": false
+          }
+        ]
+      },
+      "count": 3,
+      "unique": true,
+      "weight": {
+        "type": "field",
+        "path": "$candidate.value"
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "traveling_shop",
+      "name": "旅行商店",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "foreground",
+      "startMode": "manual",
+      "repeatable": false,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "prepare_shop",
+      "currentNode": null,
+      "remainingTurns": 1,
+      "endConditions": [],
+      "timeoutNode": "shop_closed",
+      "data": {
+        "empty": false,
+        "goods": {
+          "iron_sword": {
+            "effectId": "iron_sword",
+            "price": 18,
+            "stock": 1,
+            "maxStock": 1
+          },
+          "leather_armor": {
+            "effectId": "leather_armor",
+            "price": 15,
+            "stock": 1,
+            "maxStock": 1
+          },
+          "healing_herbs": {
+            "effectId": "healing_herbs",
+            "price": 7,
+            "stock": 2,
+            "maxStock": 2
+          },
+          "lucky_charm": {
+            "effectId": "lucky_charm",
+            "price": 12,
+            "stock": 1,
+            "maxStock": 1
+          }
+        }
+      },
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "nodes": [
+        {
+          "id": "prepare_shop",
+          "type": "action",
+          "visibility": "background",
+          "actions": [
+            {
+              "type": "draw_pool",
+              "poolId": "shop_goods",
+              "count": 3,
+              "onDraw": [
+                {
+                  "type": "modify_effect",
+                  "effectId": "$drewId",
+                  "field": "appeared",
+                  "mode": "set",
+                  "value": true
+                },
+                {
+                  "type": "create_choice",
+                  "nodeId": "shop_choices",
+                  "effectId": "$drewId",
+                  "choice": {
+                    "conditions": [
+                      {
+                        "type": "effect",
+                        "effectId": "$drewId",
+                        "field": "acquired",
+                        "operator": "==",
+                        "value": false
+                      },
+                      {
+                        "type": "event",
+                        "eventId": "traveling_shop",
+                        "field": "data.goods.$drewId.stock",
+                        "operator": ">",
+                        "value": 0
+                      },
+                      {
+                        "type": "attribute",
+                        "attribute": "coin",
+                        "operator": ">=",
+                        "value": {
+                          "type": "field",
+                          "path": "events.traveling_shop.data.goods.$drewId.price"
+                        }
+                      }
+                    ],
+                    "actions": [
+                      {
+                        "type": "modify_attribute",
+                        "attribute": "coin",
+                        "mode": "add",
+                        "value": {
+                          "type": "calculate",
+                          "operator": "multiply",
+                          "values": [
+                            -1,
+                            {
+                              "type": "field",
+                              "path": "events.traveling_shop.data.goods.$drewId.price"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "modify_event",
+                        "eventId": "traveling_shop",
+                        "field": "data.goods.$drewId.stock",
+                        "mode": "add",
+                        "value": -1
+                      },
+                      {
+                        "type": "modify_effect",
+                        "effectId": "$drewId",
+                        "field": "acquired",
+                        "mode": "set",
+                        "value": true
+                      }
+                    ],
+                    "next": "shop_choices"
+                  }
+                }
+              ],
+              "onEmpty": [
+                {
+                  "type": "modify_event",
+                  "eventId": "traveling_shop",
+                  "field": "data.empty",
+                  "mode": "set",
+                  "value": true
+                }
+              ]
+            }
+          ],
+          "next": "shop_choices"
+        },
+        {
+          "id": "shop_choices",
+          "type": "choice",
+          "visibility": "foreground",
+          "text": "商人摊开货物，等待你的选择。",
+          "mode": "single",
+          "choices": [
+            {
+              "id": "leave_shop",
+              "text": "离开商店",
+              "actions": [],
+              "next": "shop_closed"
+            }
+          ]
+        },
+        {
+          "id": "shop_closed",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "你离开了旅行商店。",
+          "result": "left",
+          "actions": [],
+          "completeEvent": true
+        }
+      ]
+    }
+  ]
+}
