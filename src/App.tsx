@@ -24,7 +24,7 @@ import {
 import type { ValidationWarning } from './game/validation'
 import type { GameModelData } from './types'
 
-const contentUrl = '/example/demo1/cultivation_demo.json'
+const contentUrl = new URL('../docs/example/demo2/demo2.json', import.meta.url).href
 
 type AppView =
   | { type: 'loading' }

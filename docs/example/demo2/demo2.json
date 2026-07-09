@@ -261,7 +261,17 @@
           "id": "check_arrival_day",
           "type": "check",
           "visibility": "foreground",
-          "text": "经过一整天的颠簸，列车终于接近目的地。但窗外的天色和广播里的消息都让我意识到，抵达的时间可能决定接下来的一切。",
+          "nexts": [
+            "arrive_home_by_train",
+            "trigger_trapped_on_train"
+          ]
+        },
+        {
+          "id": "arrive_home_by_train",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "经过一整天的颠簸，列车终于接近目的地。列车赶在真正的极寒席卷交通系统之前抵达。我拖着行李走下站台，刺眼的日光仍带着盛夏的余温。无论那个梦是否会成真，至少此刻我已经回到了家。",
+          "result": "arrived_home_by_train",
           "conditions": [
             {
               "type": "turn",
@@ -270,15 +280,6 @@
             }
           ],
           "chance": 1,
-          "success": "arrive_home_by_train",
-          "failure": "trigger_trapped_on_train"
-        },
-        {
-          "id": "arrive_home_by_train",
-          "type": "result",
-          "visibility": "foreground",
-          "text": "列车赶在真正的极寒席卷交通系统之前抵达。我拖着行李走下站台，刺眼的日光仍带着盛夏的余温。无论那个梦是否会成真，至少此刻我已经回到了家。",
-          "result": "arrived_home_by_train",
           "actions": [
             {
               "type": "modify_attribute",
@@ -295,6 +296,7 @@
           "visibility": "foreground",
           "text": "列车没能按时抵达。广播一遍遍重复前方线路异常、全车原地等待的通知，窗外的景色开始被灰白色吞没。车厢里的温度明显下降，乘客们的交谈声逐渐变成压抑的骚动。我意识到，自己被困在了这趟火车上。",
           "result": "trapped_on_train_triggered",
+          "chance": 1,
           "actions": [
             {
               "type": "modify_event",
@@ -387,7 +389,16 @@
           "id": "check_flight_status",
           "type": "check",
           "visibility": "foreground",
-          "text": "我来到机场查看飞往新疆的航班。",
+          "nexts": [
+            "airport_options",
+            "flight_closed"
+          ]
+        },
+        {
+          "id": "airport_options",
+          "type": "choice",
+          "visibility": "foreground",
+          "text": "我来到机场查看飞往新疆的航班。机场大厅里人来人往，广播不断播报着航班信息。",
           "conditions": [
             {
               "type": "turn",
@@ -396,14 +407,6 @@
             }
           ],
           "chance": 1,
-          "success": "airport_options",
-          "failure": "flight_closed"
-        },
-        {
-          "id": "airport_options",
-          "type": "choice",
-          "visibility": "foreground",
-          "text": "机场大厅里人来人往，广播不断播报着航班信息。",
           "mode": "single",
           "choices": [
             {
@@ -458,6 +461,7 @@
           "visibility": "background",
           "text": "Day 2 已经过去，飞往新疆的航班现已关闭，我无法再按原计划启程。",
           "result": "flight_missed",
+          "chance": 1,
           "actions": [],
           "completeEvent": true
         }

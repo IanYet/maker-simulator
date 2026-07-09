@@ -308,6 +308,8 @@ export interface BaseNode {
   conditions?: Condition[]
   /** Actions executed by this node. */
   actions?: Action[]
+  /** Chance used only when this node is evaluated as a candidate of a check node. Defaults to 1. */
+  chance?: number
   /** Next node id, or null when there is no automatic next node. */
   next?: string | null
 }
@@ -338,18 +340,12 @@ export interface ChoiceNode extends BaseNode {
   next?: string | null
 }
 
-/** Probability check node. */
+/** Routing node that selects one candidate node from nexts. */
 export interface CheckNode extends BaseNode {
   /** Node kind discriminator. */
   type: 'check'
-  /** Conditions required before chance is evaluated. */
-  conditions: Condition[]
-  /** Success probability from 0 to 1. */
-  chance: number
-  /** Node id entered on success. */
-  success: string
-  /** Node id entered on failure. */
-  failure: string
+  /** Candidate node ids evaluated in order. */
+  nexts: string[]
 }
 
 /** Action-only node. */

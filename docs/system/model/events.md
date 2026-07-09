@@ -75,6 +75,7 @@
 | `text` | string | 展示文本 |
 | `conditions` | array | 节点条件 |
 | `actions` | array | 节点动作 |
+| `chance` | number | 被 `check.nexts` 引用为候选时的判定概率；未声明默认为 1 |
 | `next` | string/null | 后续节点 ID |
 
 ## Node.type
@@ -83,7 +84,7 @@
 | --- | --- |
 | `text` | 展示叙事文本，然后进入 `next` |
 | `choice` | 展示多个选项，玩家选择后进入对应节点 |
-| `check` | 执行条件概率判定，根据成功或失败进入不同节点 |
+| `check` | 从 `nexts` 候选节点中按条件和概率选择后续节点 |
 | `action` | 执行动作，然后进入 `next` |
 | `wait` | 跨回合等待节点 |
 | `result` | 事件结果节点 |
@@ -130,11 +131,11 @@
 
 ## check 节点字段
 
+`check` 是纯路由节点，不展示文本，不声明 `conditions`、`actions`、`chance` 或 `next`。它只读取 `nexts` 中候选节点的 `conditions` 与 `chance` 来决定跳转目标。
+
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `chance` | number | 判定概率，范围 0 到 1 |
-| `success` | string | 成功后进入的节点 |
-| `failure` | string | 失败后进入的节点 |
+| `nexts` | array | 候选节点 ID 数组，按数组顺序判定 |
 
 ## wait 节点字段
 
@@ -156,7 +157,7 @@
 
 1. `text` 节点处理后进入 `next`。
 2. `choice` 节点根据 `mode` 处理单选、多选或数量选择；单选进入选项的 `next`，多选或数量选择进入节点的 `next`。
-3. `check` 节点先检查 `conditions`，再按 `chance` 判定，进入 `success` 或 `failure`。
+3. `check` 节点按 `nexts` 顺序检查候选节点：候选节点 `conditions` 通过且 `chance` 判定通过时，进入该候选节点；已选候选本次进入时不重复检查 `conditions`。没有候选通过时视为内容错误。
 4. `action` 节点执行 `actions` 后进入 `next`。
 5. `wait` 节点跨回合停留，满足 `endConditions` 后进入 `next`，回合耗尽后进入 `timeoutNode`。
 6. `result` 节点写入结果；`completeEvent=true` 时结束事件。

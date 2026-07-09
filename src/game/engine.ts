@@ -219,6 +219,7 @@ function beginEvent(context: RuleContext, event: GameEvent) {
 
 function enterNode(context: RuleContext, event: GameEvent, nodeId: string) {
   let targetId: string | null = nodeId
+  let routedTargetId: string | null = null
   let transitions = 0
 
   while (targetId !== null) {
@@ -233,12 +234,20 @@ function enterNode(context: RuleContext, event: GameEvent, nodeId: string) {
     runTiming(context, 'event_node')
     runCombos(context, 'event_node')
     const nodePath = `events.${event.id}.nodes.${node.id}`
-    const conditionsPass = evaluateConditions(context, node.conditions ?? [], `${nodePath}.conditions`)
+    const skipConditions = routedTargetId === node.id
+    if (skipConditions) routedTargetId = null
+
+    if (node.type === 'check') {
+      targetId = resolveCheckNext(context, event, node, nodePath)
+      routedTargetId = targetId
+      continue
+    }
+
+    const conditionsPass = skipConditions
+      || evaluateConditions(context, node.conditions ?? [], `${nodePath}.conditions`)
 
     if (!conditionsPass) {
-      if (node.type === 'check') {
-        targetId = node.failure
-      } else if (node.next) {
+      if (node.next) {
         targetId = node.next
       } else {
         throw new RuleError(nodePath, '节点条件不满足且没有后续节点')
@@ -252,9 +261,6 @@ function enterNode(context: RuleContext, event: GameEvent, nodeId: string) {
       case 'choice':
       case 'wait':
         return
-      case 'check':
-        targetId = testChance(context, node.chance, `${nodePath}.chance`) ? node.success : node.failure
-        break
       case 'action':
         if (node.text) return
         targetId = node.next
@@ -268,6 +274,29 @@ function enterNode(context: RuleContext, event: GameEvent, nodeId: string) {
         assertNever(node)
     }
   }
+}
+
+function resolveCheckNext(
+  context: RuleContext,
+  event: GameEvent,
+  node: Extract<EventNode, { type: 'check' }>,
+  path: string,
+): string {
+  for (const [index, nextId] of node.nexts.entries()) {
+    const candidate = event.nodes.find((item) => item.id === nextId)
+    if (!candidate) throw new RuleError(`${path}.nexts[${index}]`, '候选节点不存在')
+    const candidatePath = `events.${event.id}.nodes.${candidate.id}`
+    const conditionsPass = evaluateConditions(
+      context,
+      candidate.conditions ?? [],
+      `${candidatePath}.conditions`,
+    )
+    if (!conditionsPass) continue
+    if (!testChance(context, candidate.chance ?? 1, `${candidatePath}.chance`)) continue
+    return candidate.id
+  }
+
+  throw new RuleError(`${path}.nexts`, '没有候选节点通过条件与概率判定')
 }
 
 function advanceRun(session: GameSession) {

@@ -374,10 +374,10 @@ interface GameSession {
 
 ### 5.1 内容入口
 
-内置内容放在 `public/` 下，通过 URL 获取。例如：
+内置内容以 `docs/example/` 下的模型 JSON 作为源码，并由前端入口通过静态资源 URL 打包加载。例如：
 
 ```text
-/example/demo1/cultivation_demo.json
+docs/example/demo2/demo2.json
 ```
 
 加载流程：
@@ -394,7 +394,7 @@ interface GameSession {
 
 - 顶层字段缺失或字段基本类型错误。
 - 实体、节点或同节点选项 ID 重复。
-- `entryNode`、`currentNode`、`next`、`success`、`failure`、`timeoutNode` 引用了不存在的节点。
+- `entryNode`、`currentNode`、`next`、`nexts`、`timeoutNode` 引用了不存在的节点。
 - 条件、动作、节点或值表达式包含未知的判别值。
 - `chance` 不在 `[0, 1]`。
 - 属性值不是 JSON 基础值、非数值属性声明边界、`min > max` 或数值 `value` 不在边界内。
@@ -662,7 +662,9 @@ Pool 本身不修改实体的 `appeared` 或 `acquired`。每个结果建立 `$d
 3. 判断节点 `conditions`。
 4. 执行节点类型逻辑；其中节点 `actions` 只执行一次。
 
-节点条件不满足时，`check` 进入 `failure`；其他节点跳过动作并进入 `next`。没有可用 `next` 时报告内容错误。
+节点条件不满足时，普通节点跳过动作并进入 `next`。没有可用 `next` 时报告内容错误。
+
+`check` 节点是纯路由节点，不声明文本、条件、动作、`chance`、`next`、`success` 或 `failure`。进入 `check` 时按 `nexts` 数组顺序读取候选节点：候选的 `conditions` 通过且候选 `chance` 判定通过时，跳转到该候选。候选 `chance` 未声明时按 1 处理；没有候选通过时报告内容错误。被 `check` 选中的候选节点在本次进入时不重复检查 `conditions`，但会照常执行 `event_node` 时机、节点动作和节点类型逻辑。
 
 当前节点已写入模型后，页面刷新只恢复展示，不重新执行进入动作。
 
@@ -672,7 +674,7 @@ Pool 本身不修改实体的 `appeared` 或 `acquired`。每个结果建立 `$d
 | --- | --- |
 | `text` | 执行动作，展示文本并等待确认 |
 | `choice` | 执行动作并计算可用选项，等待玩家提交 |
-| `check` | 执行动作后执行一次 chance，进入 `success` 或 `failure` |
+| `check` | 按 `nexts` 候选节点的 `conditions` 和 `chance` 选择后续节点 |
 | `action` | 执行动作；有文本时展示并等待确认，否则进入 `next` |
 | `wait` | 执行一次动作后停留到回合结束处理，不允许由继续按钮越过 |
 | `result` | 先写入 `event.result`，再执行动作与 `event_result` 时机 |

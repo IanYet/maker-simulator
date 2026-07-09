@@ -486,13 +486,30 @@ export function validateGameModelData(raw: unknown): ValidationResult {
       return
     }
     if (!new Set(['foreground', 'background']).has(node.visibility)) fail(`${path}.visibility`, '未知展示层级')
-    if (node.conditions !== undefined) validateConditions(node.conditions, `${path}.conditions`)
-    if (node.actions !== undefined) validateActions(node.actions, `${path}.actions`)
     const refs: Array<[string, unknown]> = []
-    if ('next' in node && node.next != null) refs.push(['next', node.next])
     if (node.type === 'check') {
-      refs.push(['success', node.success], ['failure', node.failure])
-      if (!isFiniteNumber(node.chance) || node.chance < 0 || node.chance > 1) {
+      for (const key of ['text', 'conditions', 'actions', 'next', 'chance', 'success', 'failure'] as const) {
+        if (key in node) fail(`${path}.${key}`, 'check 节点不能声明该字段')
+      }
+      if (!Array.isArray(node.nexts)) {
+        fail(`${path}.nexts`, '必须是节点 ID 数组')
+      } else if (node.nexts.length === 0) {
+        fail(`${path}.nexts`, '至少需要一个候选节点')
+      } else {
+        const seen = new Set<string>()
+        node.nexts.forEach((nextId, index) => {
+          refs.push([`nexts[${index}]`, nextId])
+          if (typeof nextId === 'string') {
+            if (seen.has(nextId)) fail(`${path}.nexts[${index}]`, '候选节点重复')
+            seen.add(nextId)
+          }
+        })
+      }
+    } else {
+      if (node.conditions !== undefined) validateConditions(node.conditions, `${path}.conditions`)
+      if (node.actions !== undefined) validateActions(node.actions, `${path}.actions`)
+      if ('next' in node && node.next != null) refs.push(['next', node.next])
+      if (node.chance !== undefined && (!isFiniteNumber(node.chance) || node.chance < 0 || node.chance > 1)) {
         fail(`${path}.chance`, '必须是 0 到 1 之间的数值')
       }
     }
@@ -528,9 +545,8 @@ export function validateGameModelData(raw: unknown): ValidationResult {
       const node = event.nodes.find((item) => item.id === id)
       if (!node) return
       if (node.next) visit(node.next)
-      if (node.type === 'check') {
-        visit(node.success)
-        visit(node.failure)
+      if (node.type === 'check' && Array.isArray(node.nexts)) {
+        node.nexts.forEach((nextId) => visit(nextId))
       }
       if (node.type === 'wait') visit(node.timeoutNode)
       if (node.type === 'choice') node.choices.forEach((choice) => choice.next && visit(choice.next))
