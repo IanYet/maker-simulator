@@ -1,0 +1,4 @@
+interface:
+  display_name: "编写游戏故事"
+  short_description: "仅依据系统文档与类型契约逐步编写游戏故事 JSON 内容"
+  default_prompt: "Use $write-game-story to create or extend a game story JSON under docs/example."
