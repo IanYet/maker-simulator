@@ -80,6 +80,216 @@ src/
 
 不为每一种条件、动作或节点建立类。`rules.ts` 使用基于 `type` 的穷尽 `switch`；`engine.ts` 负责回合和事件编排。
 
+### 3.1 类图
+
+下图中的“类”同时表示实现模块和 TypeScript 接口，不要求把领域类型改写为面向对象实例。引擎继续使用纯函数和判别联合。
+
+```mermaid
+classDiagram
+  direction LR
+
+  class App {
+    +AppView view
+    +executeCommand(command)
+  }
+  class ReactComponents {
+    <<module>>
+    +SaveScreen
+    +GameScreen
+    +CharacterPanel
+    +EffectPanel
+    +EventPanel
+  }
+  class ContentLoader {
+    <<module>>
+    +load(url) GameModelData
+  }
+  class ModelValidator {
+    <<module>>
+    +validate(raw) ValidationResult
+  }
+  class GameEngine {
+    <<module>>
+    +createSave()
+    +startRun()
+    +startEvent(eventId)
+    +continueEvent(eventId)
+    +submitChoice(selections)
+    +nextTurn()
+    +abandonRun()
+  }
+  class RuleEngine {
+    <<module>>
+    +resolveValue(expression)
+    +evaluateCondition(condition)
+    +select(selector)
+    +executeAction(action)
+    +drawPool(pool)
+  }
+  class DeterministicRng {
+    <<module>>
+    +next(seed) RandomResult
+  }
+  class Persistence {
+    <<module>>
+    +loadSave(saveId)
+    +saveSession(session)
+    +saveSnapshot(snapshot)
+    +deleteRun(saveId)
+  }
+
+  class GameSession {
+    <<interface>>
+    +GameModelData defaultData
+    +GameModelData saveData
+    +RunSnapshotStore runStore
+  }
+  class RunSnapshotStore {
+    <<interface>>
+    +string saveId
+    +GameModelData currentRun
+    +TurnSnapshot[] turnSnapshots
+  }
+  class TurnSnapshot {
+    <<interface>>
+    +number turn
+    +GameModelData data
+  }
+  class GameModelData {
+    <<interface>>
+    +ModelMeta meta
+    +Character character
+    +Effect[] effects
+    +EffectCombo[] effectCombos
+    +Pool[] pools
+    +GameEvent[] events
+  }
+  class ModelMeta {
+    <<interface>>
+    +string id
+    +string version
+    +number turn
+    +string seed
+    +RuntimeStep step
+  }
+  class Character {
+    <<interface>>
+    +string id
+    +Record attributes
+  }
+  class Attribute {
+    <<interface>>
+    +number value
+    +number min
+    +number max
+  }
+  class Effect {
+    <<interface>>
+    +string id
+    +EffectKind kind
+    +boolean acquired
+    +Trigger[] triggers
+    +Duration duration
+  }
+  class Trigger {
+    <<interface>>
+    +TriggerTiming timing
+    +Condition[] conditions
+    +Action[] actions
+  }
+  class EffectCombo {
+    <<interface>>
+    +string id
+    +TriggerTiming timing
+    +Condition[] conditions
+    +Action[] actions
+  }
+  class Pool {
+    <<interface>>
+    +string id
+    +Selector selector
+    +ValueExpression count
+    +boolean unique
+  }
+  class GameEvent {
+    <<interface>>
+    +string id
+    +Visibility visibility
+    +EventStartMode startMode
+    +string currentNode
+    +EventNode[] nodes
+  }
+  class EventNode {
+    <<union>>
+    +EventNodeType type
+    +Visibility visibility
+    +Condition[] conditions
+    +Action[] actions
+  }
+  class Choice {
+    <<interface>>
+    +string id
+    +Condition[] conditions
+    +Action[] actions
+    +string next
+  }
+  class Condition {
+    <<union>>
+  }
+  class Action {
+    <<union>>
+  }
+  class ValueExpression {
+    <<union>>
+  }
+  class Selector {
+    <<interface>>
+  }
+
+  App o-- ReactComponents
+  App *-- GameSession
+  App --> ContentLoader
+  App --> GameEngine
+  App --> Persistence
+  ContentLoader --> ModelValidator
+  ContentLoader --> GameModelData
+  GameEngine --> RuleEngine
+  GameEngine --> DeterministicRng
+  GameEngine --> GameSession
+  RuleEngine --> Condition
+  RuleEngine --> Action
+  RuleEngine --> ValueExpression
+  RuleEngine --> Selector
+  Persistence --> GameSession
+  Persistence --> TurnSnapshot
+
+  GameSession *-- GameModelData
+  GameSession o-- RunSnapshotStore
+  RunSnapshotStore *-- GameModelData
+  RunSnapshotStore *-- TurnSnapshot
+  TurnSnapshot *-- GameModelData
+  GameModelData *-- ModelMeta
+  GameModelData *-- Character
+  GameModelData *-- Effect
+  GameModelData *-- EffectCombo
+  GameModelData *-- Pool
+  GameModelData *-- GameEvent
+  Character *-- Attribute
+  Effect *-- Trigger
+  Trigger *-- Condition
+  Trigger *-- Action
+  EffectCombo *-- Condition
+  EffectCombo *-- Action
+  Pool *-- Selector
+  Pool --> ValueExpression
+  GameEvent *-- EventNode
+  EventNode *-- Choice
+  EventNode --> Condition
+  EventNode --> Action
+  Choice --> Condition
+  Choice --> Action
+```
+
 ## 4. 数据所有权
 
 ### 4.1 三层模型
@@ -504,6 +714,59 @@ min <= quantity <= max
 | `turn_end` | 执行回合结束触发、持续时间、等待与超时 |
 | `snapshot` | 持久化完整局内快照 |
 | `next_turn` | 停止自动推进，等待玩家进入下一回合 |
+
+### 14.1 实例执行循环流程图
+
+`visibility` 只在“渲染当前状态”时决定卡片样式，不参与任一状态跳转。Effect `kind` 同样只决定效果列表的展示样式。
+
+```mermaid
+flowchart TD
+  A[启动应用] --> B[加载并校验 GameModelData]
+  B --> C{内容有效?}
+  C -- 否 --> C1[显示可定位的内容错误]
+  C -- 是 --> D[选择或创建玩家存档]
+  D --> E{存在当前局?}
+  E -- 是 --> F[从 IndexedDB 恢复 currentRun]
+  E -- 否 --> G[深拷贝 saveData 创建 runData]
+  G --> G1[初始化 kind、turn、step、seed]
+  F --> H
+  G1 --> H
+
+  subgraph TURN[单回合循环]
+    H[turn_start<br/>执行已获取效果触发] --> I[combo_check<br/>检查回合开始组合]
+    I --> J[event_appear<br/>执行出现时机和候选池抽取]
+    J --> K[event_start<br/>启动 startMode=auto 的事件]
+    K --> L[player_event<br/>选择活动事件或启动手动事件]
+    L --> M{当前节点需要输入?}
+
+    M -- 是 --> N[按 kind / visibility 渲染全部状态<br/>仅改变 UI 样式]
+    N --> O{玩家操作}
+    O -- 确认文本或结果 --> P[continueEvent]
+    O -- 提交选项 --> Q[submitChoice]
+    O -- 启动手动事件 --> R[startEvent]
+
+    M -- 否 --> S[自动执行 check、无文本 action 或节点跳转]
+    P --> T[单次命令克隆受影响作用域]
+    Q --> T
+    R --> T
+    S --> U[处理 event_node、动作、触发和跳转]
+    T --> U
+    U --> V{命令执行成功?}
+    V -- 否 --> V1[丢弃克隆并显示错误]
+    V -- 是 --> W[整体提交状态并更新当前局]
+    W --> X{仍有待处理交互?}
+    X -- 是 --> L
+    X -- 否 --> Y[turn_end<br/>结算触发、持续时间、等待和超时]
+    Y --> Z[snapshot<br/>事务保存 currentRun 和完整快照]
+    Z --> AA[next_turn<br/>等待玩家进入下一回合]
+    AA --> AB{玩家操作}
+    AB -- 下一回合 --> AC[turn += 1<br/>step = turn_start]
+    AC --> H
+    AB -- 放弃本局 --> AD[删除当前局与快照<br/>保留显式 save 写入]
+  end
+
+  V1 --> L
+```
 
 开始新局时：
 
