@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository contains a React 19 application built with TypeScript and Vite. Application entry points and UI code live in `src/`; shared game-domain types are under `src/types/`, and imported images are under `src/assets/`. Static files copied directly into the build belong in `public/`. The game model specification is maintained in `docs/model/`, with example content in `docs/example/`. Keep model type changes synchronized with the corresponding documentation and JSON examples.
+This repository contains a React 19 application built with TypeScript and Vite. Application entry points and UI code live in `src/`; shared game-domain types are under `src/types/`, and imported images are under `src/assets/`. Static files copied directly into the build belong in `public/`. The game model specification is maintained in `docs/system/`, with example content in `docs/example/`. Keep model type changes synchronized with the corresponding documentation and JSON examples.
 
 ## Build, Test, and Development Commands
 
