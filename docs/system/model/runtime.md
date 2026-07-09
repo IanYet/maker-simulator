@@ -18,13 +18,13 @@
 
 1. 事件候选池抽中事件并将其 `appeared` 设置为 `true`。
 2. 已出现事件根据 `startMode` 自动开始或进入待处理列表。
-3. `visibility=foreground` 的事件进入玩家可见流程。
-4. `visibility=background` 的事件自动运行，不进入玩家可见流程。
+3. 所有事件都进入玩家可见流程；`visibility` 只决定主要卡片或紧凑卡片等 UI 样式。
+4. 事件是否自动启动只由 `startMode` 决定。
 5. 事件开始时，将 `currentNode` 设置为 `entryNode`。
 6. 系统根据当前节点 `type` 执行对应逻辑。
 7. 节点跳转时更新 `currentNode`。
-8. `visibility=foreground` 的节点进入玩家可见流程。
-9. `visibility=background` 的节点自动运行。
+8. 所有节点都可见；`visibility` 只决定展示层级和样式。
+9. 是否需要玩家输入由节点 `type` 决定，不能根据 `visibility` 自动替玩家确认或选择。
 10. `choice` 节点根据 `mode` 处理单选、多选或数量选择。
 11. 进入 `result` 节点且 `completeEvent=true` 时，写入事件结果并结束事件。
 12. 事件处理结束后更新 `occurrences` 和 `completed`，并将 `appeared` 恢复为 `false`。
