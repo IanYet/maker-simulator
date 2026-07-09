@@ -69,7 +69,7 @@ export function GameScreen({
             onContinue={onContinueEvent}
             onSubmit={onSubmitChoice}
           />
-          <EffectPanel effects={run.effects} />
+          <EffectPanel effects={run.effects} effectKinds={run.effectKinds} />
           <section className="panel footer-actions">
             <div>
               <p className="eyebrow">当前阶段</p>

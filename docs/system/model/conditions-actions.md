@@ -142,8 +142,12 @@
 | `scope` | string | 数据作用域 |
 | `type` | string | 固定为 `modify_attribute` |
 | `attribute` | string | 属性 ID |
+| `field` | string | `value` 或 `enabled`；未声明时默认为 `value` |
 | `mode` | string | 修改模式 |
 | `value` | any | 修改值，支持值表达式 |
+
+修改 `enabled` 时只能使用 `set` 写入布尔值。修改属性值时，`set` 可以写入 JSON 基础值；其他模式仅支持
+有限数值。数值结果按属性已声明的 `min`、`max` 边界限制。
 
 ## modify_effect 字段
 

@@ -1,23 +1,13 @@
-import type { Effect, EffectKind } from '../types'
-
-const kindLabels: Record<EffectKind, string> = {
-  tag: '标签',
-  counter: '计数',
-  buff: '增益',
-  debuff: '减益',
-  equipment: '装备',
-  building: '建筑',
-  plant: '植物',
-  pet: '灵宠',
-  tech: '功法',
-  passive: '被动',
-}
+import type { Effect, EffectKindDefinition } from '../types'
 
 interface EffectPanelProps {
   effects: Effect[]
+  effectKinds: EffectKindDefinition[]
 }
 
-export function EffectPanel({ effects }: EffectPanelProps) {
+export function EffectPanel({ effects, effectKinds }: EffectPanelProps) {
+  const kindLabels = new Map(effectKinds.map((kind) => [kind.id, kind.displayName]))
+
   return (
     <section className="panel">
       <div className="section-heading">
@@ -34,7 +24,7 @@ export function EffectPanel({ effects }: EffectPanelProps) {
             key={effect.id}
           >
             <div className="effect-heading">
-              <span className="kind-label">{kindLabels[effect.kind]}</span>
+              <span className="kind-label">{kindLabels.get(effect.kind) ?? effect.kind}</span>
               <div className="status-dots" aria-label="效果状态">
                 {!effect.unlocked && <span title="未解锁">锁</span>}
                 {effect.appeared && <span title="已出现">现</span>}

@@ -77,6 +77,10 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function isJsonPrimitive(value: unknown): value is string | number | boolean | null {
+  return value === null || typeof value === 'string' || typeof value === 'boolean' || isFiniteNumber(value)
+}
+
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0
 }
@@ -102,7 +106,7 @@ export function validateGameModelData(raw: unknown): ValidationResult {
   for (const key of ['meta', 'character']) {
     if (!isRecord(raw[key])) fail(key, '必须是对象')
   }
-  for (const key of ['effects', 'effectCombos', 'pools', 'events']) {
+  for (const key of ['effectKinds', 'effects', 'effectCombos', 'pools', 'events']) {
     if (!Array.isArray(raw[key])) fail(key, '必须是数组')
   }
   if (errors.length > 0) return { success: false, errors, warnings }
@@ -110,10 +114,24 @@ export function validateGameModelData(raw: unknown): ValidationResult {
   const data = raw as unknown as GameModelData
   validateMeta(data)
   validateCharacter(data)
+  const attributeIds = isRecord(data.character.attributes)
+    ? new Set(Object.keys(data.character.attributes))
+    : new Set<string>()
+  const effectKindIds = uniqueIds(data.effectKinds, 'effectKinds')
   const effectIds = uniqueIds(data.effects, 'effects')
   const comboIds = uniqueIds(data.effectCombos, 'effectCombos')
   const poolIds = uniqueIds(data.pools, 'pools')
   const eventIds = uniqueIds(data.events, 'events')
+
+  data.effectKinds.forEach((kind, index) => {
+    const path = `effectKinds[${index}]`
+    if (!isRecord(kind)) {
+      fail(path, '必须是对象')
+      return
+    }
+    requiredString(kind.id, `${path}.id`)
+    requiredString(kind.displayName, `${path}.displayName`)
+  })
 
   data.effects.forEach((effect, index) => {
     const path = `effects[${index}]`
@@ -124,18 +142,10 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     requiredString(effect.id, `${path}.id`)
     requiredString(effect.name, `${path}.name`)
     requiredString(effect.description, `${path}.description`)
-    if (!new Set([
-      'tag',
-      'counter',
-      'buff',
-      'debuff',
-      'equipment',
-      'building',
-      'plant',
-      'pet',
-      'tech',
-      'passive',
-    ]).has(effect.kind)) fail(`${path}.kind`, '未知的效果类型')
+    requiredString(effect.kind, `${path}.kind`)
+    if (typeof effect.kind === 'string' && !effectKindIds.has(effect.kind)) {
+      fail(`${path}.kind`, '引用了未声明的效果类型')
+    }
     for (const key of ['unlocked', 'appeared', 'acquired'] as const) {
       if (typeof effect[key] !== 'boolean') fail(`${path}.${key}`, '必须是布尔值')
     }
@@ -232,9 +242,28 @@ export function validateGameModelData(raw: unknown): ValidationResult {
         fail(path, '必须是对象')
         return
       }
-      if (![attribute.value, attribute.min, attribute.max].every(isFiniteNumber)) {
-        fail(path, 'value、min 和 max 必须是有限数值')
-      } else if (attribute.min > attribute.max || attribute.value < attribute.min || attribute.value > attribute.max) {
+      requiredString(attribute.displayName, `${path}.displayName`)
+      if (typeof attribute.enabled !== 'boolean') fail(`${path}.enabled`, '必须是布尔值')
+      if (!isJsonPrimitive(attribute.value)) fail(`${path}.value`, '必须是 JSON 基础值')
+      if (attribute.min !== undefined && !isFiniteNumber(attribute.min)) {
+        fail(`${path}.min`, '必须是有限数值')
+      }
+      if (attribute.max !== undefined && !isFiniteNumber(attribute.max)) {
+        fail(`${path}.max`, '必须是有限数值')
+      }
+      if (
+        (attribute.min !== undefined || attribute.max !== undefined)
+        && typeof attribute.value !== 'number'
+      ) {
+        fail(path, '非数值属性不能声明 min 或 max')
+      } else if (
+        typeof attribute.value === 'number'
+        && (
+          (attribute.min !== undefined && attribute.max !== undefined && attribute.min > attribute.max)
+          || (attribute.min !== undefined && attribute.value < attribute.min)
+          || (attribute.max !== undefined && attribute.value > attribute.max)
+        )
+      ) {
         fail(path, '属性值或边界无效')
       }
     })
@@ -318,6 +347,15 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     const selector = value as unknown as Selector
     if (selector.ids !== undefined && !hasStrings(selector.ids)) fail(`${path}.ids`, '必须是字符串数组')
     if (selector.tags !== undefined && !hasStrings(selector.tags)) fail(`${path}.tags`, '必须是字符串数组')
+    if (selector.kinds !== undefined) {
+      if (!hasStrings(selector.kinds)) {
+        fail(`${path}.kinds`, '必须是字符串数组')
+      } else {
+        selector.kinds.forEach((kind, index) => {
+          if (!effectKindIds.has(kind)) fail(`${path}.kinds[${index}]`, '引用了未声明的效果类型')
+        })
+      }
+    }
     if (selector.target === 'event' && (selector.tags || selector.kinds)) {
       warn(path, '事件选择器声明了仅效果可用的 tags 或 kinds')
     }
@@ -388,6 +426,15 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     if (action.type === 'modify_attribute' || action.type === 'modify_effect' || action.type === 'modify_event') {
       if (!actionModes.has(action.mode)) fail(`${path}.mode`, '未知的修改模式')
       validateExpression(action.value, `${path}.value`)
+    }
+    if (action.type === 'modify_attribute') {
+      requiredString(action.attribute, `${path}.attribute`)
+      if (action.field !== undefined && !new Set(['value', 'enabled']).has(action.field)) {
+        fail(`${path}.field`, '只能是 value 或 enabled')
+      }
+      if (action.field === 'enabled' && action.mode !== 'set') {
+        fail(`${path}.mode`, 'enabled 只能使用 set 修改')
+      }
     }
     if (action.type === 'draw_pool') {
       requiredString(action.poolId, `${path}.poolId`)
@@ -498,6 +545,8 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     const walkCondition = (condition: Condition, path: string) => {
       if (condition.type === 'and' || condition.type === 'or' || condition.type === 'not') {
         condition.conditions.forEach((item, index) => walkCondition(item, `${path}.conditions[${index}]`))
+      } else if (condition.type === 'attribute' && !attributeIds.has(condition.attribute)) {
+        fail(`${path}.attribute`, '引用了不存在的属性')
       } else if (condition.type === 'effect' && !effectIds.has(condition.effectId)) {
         fail(`${path}.effectId`, '引用了不存在的效果')
       } else if (condition.type === 'event' && !eventIds.has(condition.eventId)) {
@@ -505,6 +554,9 @@ export function validateGameModelData(raw: unknown): ValidationResult {
       }
     }
     const walkAction = (action: Action, path: string) => {
+      if (action.type === 'modify_attribute' && !attributeIds.has(action.attribute)) {
+        fail(`${path}.attribute`, '引用了不存在的属性')
+      }
       if (action.type === 'modify_effect' && action.effectId !== '$drewId' && !effectIds.has(action.effectId)) {
         fail(`${path}.effectId`, '引用了不存在的效果')
       }

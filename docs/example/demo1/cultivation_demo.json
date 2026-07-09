@@ -1,7 +1,7 @@
 {
   "meta": {
     "id": "demo1-cultivation",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "turn": 0,
     "seed": "demo1-cultivation-seed",
     "kind": "default"
@@ -10,47 +10,87 @@
     "id": "wandering_cultivator",
     "attributes": {
       "health": {
+        "displayName": "生命",
+        "enabled": true,
         "value": 80,
         "min": 0,
         "max": 100
       },
       "spiritual_power": {
+        "displayName": "灵力",
+        "enabled": true,
         "value": 35,
         "min": 0,
         "max": 100
       },
       "body": {
+        "displayName": "体魄",
+        "enabled": true,
         "value": 20,
         "min": 0,
         "max": 100
       },
       "comprehension": {
+        "displayName": "悟性",
+        "enabled": true,
         "value": 25,
         "min": 0,
         "max": 100
       },
       "karma": {
+        "displayName": "因果",
+        "enabled": true,
         "value": 0,
         "min": -100,
         "max": 100
       },
       "reputation": {
+        "displayName": "声望",
+        "enabled": true,
         "value": 5,
         "min": 0,
         "max": 100
       },
       "spirit_stones": {
+        "displayName": "灵石",
+        "enabled": true,
         "value": 30,
         "min": 0,
         "max": 999
       },
       "action_point": {
+        "displayName": "行动点",
+        "enabled": true,
         "value": 3,
         "min": 0,
         "max": 10
+      },
+      "realm": {
+        "displayName": "境界",
+        "enabled": true,
+        "value": "炼气初期"
+      },
+      "demonic_power": {
+        "displayName": "魔气",
+        "enabled": false,
+        "value": 0,
+        "min": 0,
+        "max": 100
       }
     }
   },
+  "effectKinds": [
+    { "id": "tag", "displayName": "标签" },
+    { "id": "counter", "displayName": "计数" },
+    { "id": "buff", "displayName": "增益" },
+    { "id": "debuff", "displayName": "减益" },
+    { "id": "equipment", "displayName": "装备" },
+    { "id": "building", "displayName": "建筑" },
+    { "id": "plant", "displayName": "植物" },
+    { "id": "pet", "displayName": "灵宠" },
+    { "id": "tech", "displayName": "功法" },
+    { "id": "passive", "displayName": "被动" }
+  ],
   "effects": [
     {
       "id": "event_scheduler",

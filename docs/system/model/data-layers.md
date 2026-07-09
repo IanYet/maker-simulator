@@ -24,6 +24,7 @@
 | --- | --- | --- |
 | `meta` | object | 数据元信息 |
 | `character` | object | 当前角色 |
+| `effectKinds` | array | 当前内容支持的效果类型声明 |
 | `effects` | array | 效果实例与效果定义状态 |
 | `effectCombos` | array | 效果组合规则 |
 | `pools` | array | 效果或事件的候选筛选与抽取规则 |

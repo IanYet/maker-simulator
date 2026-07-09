@@ -33,6 +33,7 @@ export type {
   EffectCombo,
   EffectCondition,
   EffectKind,
+  EffectKindDefinition,
   EventAppear,
   EventCondition,
   EventData,

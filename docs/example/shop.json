@@ -1,7 +1,7 @@
 {
   "meta": {
     "id": "shop-example",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "turn": 0,
     "seed": "shop-example-seed",
     "kind": "default"
@@ -10,17 +10,26 @@
     "id": "player",
     "attributes": {
       "health": {
+        "displayName": "生命",
+        "enabled": true,
         "value": 10,
         "min": 0,
         "max": 10
       },
       "coin": {
+        "displayName": "金币",
+        "enabled": true,
         "value": 35,
         "min": 0,
         "max": 999
       }
     }
   },
+  "effectKinds": [
+    { "id": "tag", "displayName": "标签" },
+    { "id": "equipment", "displayName": "装备" },
+    { "id": "passive", "displayName": "被动" }
+  ],
   "effects": [
     {
       "id": "event_scheduler",

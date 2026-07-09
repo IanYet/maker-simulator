@@ -21,22 +21,19 @@
 | `duration` | object/null | 持续时间 |
 | `triggers` | array | 触发器 |
 
+## EffectKindDefinition 字段
+
+顶层 `effectKinds` 数组声明当前内容支持的全部效果类型。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 类型 ID |
+| `displayName` | string | 展示名称 |
+
 ## Effect.kind
 
-`kind` 用于内容分类、筛选和 UI 样式，不产生额外的隐藏规则。玩法验证界面应展示全部效果，通过图标、颜色、分组和状态弱化区分不同 kind 及获取状态。
-
-| 值 | 说明 |
-| --- | --- |
-| `tag` | 标签效果 |
-| `counter` | 计数器效果 |
-| `buff` | 正面临时效果 |
-| `debuff` | 负面临时效果 |
-| `equipment` | 装备 |
-| `building` | 建筑或区域建设 |
-| `plant` | 植物 |
-| `pet` | 宠物或随从 |
-| `tech` | 科技或研究 |
-| `passive` | 被动规则 |
+`kind` 必须引用 `effectKinds.id`，但不再由引擎固定枚举。它用于内容分类、筛选和 UI 样式，不产生额外的
+隐藏规则。玩法验证界面应展示全部效果，并使用对应声明的 `displayName` 展示类型。
 
 ## Duration 字段
 

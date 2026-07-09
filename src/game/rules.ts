@@ -42,7 +42,7 @@ export interface RuleContext {
 
 type SelectedEntity = Effect | GameEvent
 
-const collectionNames = new Set(['effects', 'effectCombos', 'pools', 'events'])
+const collectionNames = new Set(['effectKinds', 'effects', 'effectCombos', 'pools', 'events'])
 const expressionTypes = new Set(['field', 'calculate', 'random', 'aggregate_value'])
 
 function modelForScope(context: RuleContext, scope: ActionScope = 'run'): GameModelData {
@@ -441,8 +441,35 @@ export function executeAction(context: RuleContext, action: Action, path: string
       const attribute = model.character.attributes[action.attribute]
       if (!attribute) throw new RuleError(path, `属性 ${action.attribute} 不存在`)
       const value = resolveValue(context, action.value, `${path}.value`)
-      const result = finiteNumber(applyMode(attribute.value, value, action.mode, path), path)
-      attribute.value = Math.max(attribute.min, Math.min(attribute.max, result))
+      const field = action.field ?? 'value'
+      if (field === 'enabled') {
+        if (action.mode !== 'set' || typeof value !== 'boolean') {
+          throw new RuleError(path, 'enabled 只能使用 set 写入布尔值')
+        }
+        attribute.enabled = value
+        break
+      }
+      const result = applyMode(attribute.value, value, action.mode, path)
+      if (
+        typeof result !== 'string'
+        && typeof result !== 'number'
+        && typeof result !== 'boolean'
+        && result !== null
+      ) {
+        throw new RuleError(path, '属性值必须是 JSON 基础值')
+      }
+      if (typeof result === 'number') {
+        if (!Number.isFinite(result)) throw new RuleError(path, '属性值必须是有限数值')
+        attribute.value = Math.max(
+          attribute.min ?? -Infinity,
+          Math.min(attribute.max ?? Infinity, result),
+        )
+      } else {
+        if (attribute.min !== undefined || attribute.max !== undefined) {
+          throw new RuleError(path, '带数值边界的属性不能写入非数值')
+        }
+        attribute.value = result
+      }
       break
     }
     case 'modify_effect': {

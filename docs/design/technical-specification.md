@@ -159,6 +159,7 @@ classDiagram
     <<interface>>
     +ModelMeta meta
     +Character character
+    +EffectKindDefinition[] effectKinds
     +Effect[] effects
     +EffectCombo[] effectCombos
     +Pool[] pools
@@ -179,14 +180,21 @@ classDiagram
   }
   class Attribute {
     <<interface>>
-    +number value
+    +string displayName
+    +boolean enabled
+    +JsonPrimitive value
     +number min
     +number max
+  }
+  class EffectKindDefinition {
+    <<interface>>
+    +string id
+    +string displayName
   }
   class Effect {
     <<interface>>
     +string id
-    +EffectKind kind
+    +string kind
     +boolean acquired
     +Trigger[] triggers
     +Duration duration
@@ -270,6 +278,7 @@ classDiagram
   TurnSnapshot *-- GameModelData
   GameModelData *-- ModelMeta
   GameModelData *-- Character
+  GameModelData *-- EffectKindDefinition
   GameModelData *-- Effect
   GameModelData *-- EffectCombo
   GameModelData *-- Pool
@@ -310,6 +319,7 @@ classDiagram
 
 `GameModelData` 中的数组是持久化和快照的唯一数据源：
 
+- `effectKinds`
 - `effects`
 - `effectCombos`
 - `pools`
@@ -328,13 +338,21 @@ ID 规则：
 
 | 实体 | 定义字段示例 | 运行状态字段示例 |
 | --- | --- | --- |
-| Character | `id`、属性边界 | 属性 `value` |
+| Character | `id`、属性展示名与可选边界 | 属性 `enabled`、`value` |
+| EffectKindDefinition | `id`、`displayName` | 无独立运行状态 |
 | Effect | `id`、`name`、`kind`、`tags`、触发器 | `unlocked`、`appeared`、`acquired`、`level`、`stacks`、`value`、`duration` |
 | EffectCombo | `id`、条件、时机、动作 | `appeared` |
 | Pool | ID、Selector、数量、唯一性、权重 | 无独立运行状态 |
 | GameEvent | 名称、启动方式、节点图、出现规则 | `appeared`、`occurrences`、`completed`、`result`、`currentNode`、`remainingTurns`、`data` |
 
-Effect 的 `kind` 允许 `tag`、`counter`、`buff`、`debuff`、`equipment`、`building`、`plant`、`pet`、`tech`、`passive`。这些值只用于内容分类、Selector 和 UI 展示，不在引擎内产生不同的隐藏规则。玩法验证界面展示模型中的全部 Effect；通过图标、颜色、分组和状态弱化区分 kind、锁定、未获取与已获取状态，不因 kind 隐藏实体。
+顶层 `effectKinds` 声明当前内容支持的全部 Effect 类型，每项包含稳定的 `id` 和 `displayName`。
+Effect 的 `kind` 必须引用其中一个 ID，不由引擎固定枚举。这些值只用于内容分类、Selector 和 UI 展示，
+不在引擎内产生不同的隐藏规则。玩法验证界面展示模型中的全部 Effect，并使用声明的展示名区分类型，
+不因 kind 隐藏实体。
+
+Character 的 `attributes` 在默认数据中声明内容可能使用的全部属性。每个 Attribute 包含 `displayName`、
+`enabled` 和 JSON 基础值 `value`；数值属性还可声明 `min` 和/或 `max`。`enabled` 仅控制 UI 是否展示，
+规则仍可读取和修改禁用属性，因此局内可通过切换它来呈现属性的动态出现。
 
 `Duration.type` 允许 `instant`、`turns`、`permanent`。除持续时间结算外，不根据效果类型增加隐式行为。
 
@@ -370,7 +388,7 @@ interface GameSession {
 4. 校验成功后才转换为 `GameModelData`。
 5. 校验失败时显示错误页，不创建存档或启动游戏。
 
-内容版本由 `meta.id + meta.version` 唯一标识。已有存档保存完整模型，不自动合并新版默认内容；内容升级需要显式迁移，不能按数组位置合并。
+内容版本由 `meta.id + meta.version` 唯一标识。已有存档保存完整模型，不自动合并新版默认内容；内容升级需要显式迁移，不能按数组位置合并。属性及 Effect 类型声明属于模型结构，新增这些必填字段时必须提升内容版本，旧存档在迁移前不可载入。
 
 ### 5.2 必须阻止加载的错误
 
@@ -379,7 +397,8 @@ interface GameSession {
 - `entryNode`、`currentNode`、`next`、`success`、`failure`、`timeoutNode` 引用了不存在的节点。
 - 条件、动作、节点或值表达式包含未知的判别值。
 - `chance` 不在 `[0, 1]`。
-- 属性 `min > max` 或 `value` 不在边界内。
+- 属性值不是 JSON 基础值、非数值属性声明边界、`min > max` 或数值 `value` 不在边界内。
+- Effect 的 `kind` 或 Selector 的 `kinds` 引用了未声明的 `effectKinds.id`。
 - `remainingTurns`、`occurrences`、`stacks` 等计数字段为负数或非整数。
 - 候选池、效果、事件等静态 ID 引用不存在。
 - `aggregate !== count` 但没有 `field`。
@@ -429,6 +448,7 @@ UI 只能发出以下公共命令：
 
 ```text
 character.attributes.health.value
+effectKinds.buff.displayName
 effects.iron_sword.acquired
 events.traveling_shop.data.goods.iron_sword.price
 ```
@@ -504,7 +524,7 @@ Selector 按模型数组原始顺序筛选：
 1. `target` 选择 `effects` 或 `events`。
 2. `ids` 是允许列表。
 3. `tags` 要求效果包含列出的全部标签。
-4. `kinds` 是允许的效果类型列表。
+4. `kinds` 是 `effectKinds` 中已声明的效果类型 ID 列表。
 5. `fields` 中的匹配规则全部满足。
 
 非 `count` 聚合要求读取到有限数值字段。遇到不符合要求的对象时报告内容错误，不静默跳过。
@@ -523,7 +543,9 @@ Selector 按模型数组原始顺序筛选：
 | `min` | `target = Math.min(target, value)` |
 | `max` | `target = Math.max(target, value)` |
 
-除 `set` 外，目标和求值结果必须为有限数值。`modify_attribute` 完成后把结果限制在 Attribute 的 `[min, max]`。`modify_effect` 和 `modify_event` 不做隐式边界限制。
+除 `set` 外，目标和求值结果必须为有限数值。`modify_attribute.field` 允许 `value` 和 `enabled`，省略时
+默认为 `value`。修改 `enabled` 只能使用 `set` 写入布尔值；修改 `value` 后按 Attribute 已声明的
+`min`、`max` 边界限制数值结果。`modify_effect` 和 `modify_event` 不做隐式边界限制。
 
 ### 10.2 `draw_pool`
 
@@ -842,9 +864,9 @@ type AppView =
 `GameScreen` 包含：
 
 - 顶部：内容名称、当前回合、当前阶段、存档状态。
-- 角色区：全部属性的当前值及边界。
+- 角色区：所有 `enabled=true` 属性的展示名、当前值及可选边界。
 - 事件区：当前交互节点、可用选项、手动事件列表，以及全部事件的状态概览。
-- 效果区：全部效果及其 kind、解锁、出现、获取、层数、等级和剩余时间。
+- 效果区：全部效果及其 kind 展示名、解锁、出现、获取、层数、等级和剩余时间。
 - 底部操作区：继续、提交选择、下一回合、放弃本局。
 
 UI 展示数据全部从 `GameModelData` 派生，不复制 `appeared`、`currentNode`、可用选项等领域状态。数量输入和多选草稿可以保存在组件局部状态，提交后清空。

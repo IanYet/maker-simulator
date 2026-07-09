@@ -19,18 +19,8 @@ export type RuntimeStep =
   | 'snapshot'
   | 'next_turn'
 
-/** Effect kind used to classify non-narrative state. */
-export type EffectKind =
-  | 'tag'
-  | 'counter'
-  | 'buff'
-  | 'debuff'
-  | 'equipment'
-  | 'building'
-  | 'plant'
-  | 'pet'
-  | 'tech'
-  | 'passive'
+/** Content-defined effect kind identifier. */
+export type EffectKind = string
 
 /** Effect duration kind. */
 export type DurationType = 'instant' | 'turns' | 'permanent'
@@ -110,6 +100,8 @@ export interface GameModelData {
   meta: ModelMeta
   /** Current character data. */
   character: Character
+  /** Content-defined effect kind declarations. */
+  effectKinds: EffectKindDefinition[]
   /** Effect definitions and their current state. */
   effects: Effect[]
   /** Independent effect-combination rules. */
@@ -146,14 +138,26 @@ export interface Character {
   attributes: Record<string, Attribute>
 }
 
-/** Numeric character attribute. */
+/** Content-defined character attribute and its current state. */
 export interface Attribute {
+  /** Display name. */
+  displayName: string
+  /** Whether the attribute is currently shown to the player. */
+  enabled: boolean
   /** Current attribute value. */
-  value: number
-  /** Minimum attribute value. */
-  min: number
-  /** Maximum attribute value. */
-  max: number
+  value: JsonPrimitive
+  /** Optional minimum for a numeric attribute. */
+  min?: number
+  /** Optional maximum for a numeric attribute. */
+  max?: number
+}
+
+/** Content-defined effect classification. */
+export interface EffectKindDefinition {
+  /** Stable kind identifier used by Effect.kind and Selector.kinds. */
+  id: EffectKind
+  /** Display name. */
+  displayName: string
 }
 
 /** Non-narrative state such as tags, counters, buildings, buffs, or tech. */
@@ -575,6 +579,8 @@ export interface ModifyAttributeAction extends BaseAction {
   type: 'modify_attribute'
   /** Attribute id to modify. */
   attribute: string
+  /** Attribute state field to modify; defaults to value. */
+  field?: 'value' | 'enabled'
   /** Modification mode. */
   mode: ActionMode
   /** Value used by the modification mode. */
