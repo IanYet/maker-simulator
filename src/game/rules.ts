@@ -15,9 +15,17 @@ import type {
 } from '../types'
 import { nextRandom } from './rng'
 
+/** 规则执行过程中携带模型路径的业务错误。 */
 export class RuleError extends Error {
+  /** 出错的模型路径或命令路径。 */
   readonly path: string
 
+  /**
+   * 创建规则错误。
+   *
+   * @param path - 出错的模型路径或命令路径。
+   * @param message - 面向用户或内容作者的错误信息。
+   */
   constructor(path: string, message: string) {
     super(`${path}：${message}`)
     this.name = 'RuleError'
@@ -25,36 +33,75 @@ export class RuleError extends Error {
   }
 }
 
+/** 玩家选择动作执行时可读取的临时上下文。 */
 export interface SelectionContext {
+  /** 当前被提交的选项 ID。 */
   choiceId: string
+  /** 数量选择模式下当前选项的提交数量。 */
   quantity?: number
 }
 
+/** 单次规则求值或动作执行使用的上下文。 */
 export interface RuleContext {
+  /** 只读默认内容数据。 */
   defaultData: GameModelData
+  /** 可跨局持久化的玩家存档数据。 */
   saveData: GameModelData
+  /** 当前局内数据。 */
   runData: GameModelData
+  /** 当前正在处理的事件 ID。 */
   currentEventId?: string
+  /** 候选池筛选或权重计算时的当前候选实体。 */
   candidate?: Effect | GameEvent
+  /** 候选池抽中实体后绑定的实体 ID。 */
   drewId?: string
+  /** 玩家选择动作执行时绑定的选择上下文。 */
   selection?: SelectionContext
 }
 
+/** Selector 能返回的模型实体。 */
 type SelectedEntity = Effect | GameEvent
 
+/** 在字段路径中支持按 ID 寻址的集合字段。 */
 const collectionNames = new Set(['effectKinds', 'effects', 'effectCombos', 'pools', 'events'])
+
+/** 运行时支持解析的值表达式类型。 */
 const expressionTypes = new Set(['field', 'calculate', 'random', 'aggregate_value'])
 
+/**
+ * 按作用域选择规则应读写的模型数据。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param scope - 目标数据作用域，未传入时默认使用 run。
+ * @returns 作用域对应的模型数据。
+ */
 function modelForScope(context: RuleContext, scope: ActionScope = 'run'): GameModelData {
   if (scope === 'default') return context.defaultData
   if (scope === 'save') return context.saveData
   return context.runData
 }
 
+/**
+ * 判断值是否为普通对象。
+ *
+ * @param value - 待判断的值。
+ * @returns 值为非 null 对象时返回 true。
+ */
 function objectValue(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+/**
+ * 从对象或数组中按点分路径读取字段。
+ *
+ * 集合字段支持使用实体 ID 寻址，例如 `events.some_event.appeared`。
+ *
+ * @param root - 读取起点。
+ * @param path - 点分字段路径。
+ * @param location - 报错时使用的模型路径。
+ * @returns 路径对应的值。
+ * @throws {RuleError} 当字段路径为空或无法解析时抛出。
+ */
 export function readPath(root: unknown, path: string, location = path): unknown {
   if (!path) throw new RuleError(location, '字段路径不能为空')
   const parts = path.split('.')
@@ -85,6 +132,15 @@ export function readPath(root: unknown, path: string, location = path): unknown 
   return current
 }
 
+/**
+ * 解析 `$candidate`、`$drewId` 和 `$selection` 等临时字段路径。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param path - 临时字段路径。
+ * @param location - 报错时使用的模型路径。
+ * @returns 临时值；路径不属于临时字段时返回 undefined。
+ * @throws {RuleError} 当临时上下文不可用时抛出。
+ */
 function resolveTemporaryPath(context: RuleContext, path: string, location: string): unknown {
   if (path === '$drewId') {
     if (context.drewId === undefined) throw new RuleError(location, '$drewId 当前不可用')
@@ -109,6 +165,14 @@ function resolveTemporaryPath(context: RuleContext, path: string, location: stri
   return undefined
 }
 
+/**
+ * 将未知值校验并收窄为有限数值。
+ *
+ * @param value - 待校验的值。
+ * @param path - 错误定位路径。
+ * @returns 有限数值。
+ * @throws {RuleError} 当值不是有限数值时抛出。
+ */
 function finiteNumber(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new RuleError(path, '需要有限数值')
@@ -116,6 +180,13 @@ function finiteNumber(value: unknown, path: string): number {
   return value
 }
 
+/**
+ * 对 JSON 类值执行深度相等比较。
+ *
+ * @param left - 左侧值。
+ * @param right - 右侧值。
+ * @returns 两个值结构和值都相同时返回 true。
+ */
 function deepEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true
   if (Array.isArray(left) && Array.isArray(right)) {
@@ -130,6 +201,16 @@ function deepEqual(left: unknown, right: unknown): boolean {
   return false
 }
 
+/**
+ * 按模型比较操作符比较两个值。
+ *
+ * @param left - 左侧值。
+ * @param operator - 比较操作符。
+ * @param right - 右侧值。
+ * @param path - 错误定位路径。
+ * @returns 比较成立时返回 true。
+ * @throws {RuleError} 当操作符对应的数据类型不合法时抛出。
+ */
 export function compareValues(
   left: unknown,
   operator: ComparisonOperator,
@@ -164,6 +245,14 @@ export function compareValues(
   return left <= right
 }
 
+/**
+ * 推进局内随机种子并返回本次随机值。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param path - 错误定位路径。
+ * @returns [0, 1) 区间内的随机值。
+ * @throws {RuleError} 当局内随机种子缺失时抛出。
+ */
 function randomValue(context: RuleContext, path: string): number {
   const seed = context.runData.meta.seed
   if (!seed) throw new RuleError(path, '局内随机种子不存在')
@@ -172,6 +261,15 @@ function randomValue(context: RuleContext, path: string): number {
   return result.value
 }
 
+/**
+ * 使用确定性随机数测试概率是否命中。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param chance - 0 到 1 之间的命中概率。
+ * @param path - 错误定位路径。
+ * @returns 概率命中时返回 true。
+ * @throws {RuleError} 当概率不在合法范围内时抛出。
+ */
 export function testChance(context: RuleContext, chance: number, path: string): boolean {
   if (!Number.isFinite(chance) || chance < 0 || chance > 1) {
     throw new RuleError(path, '概率必须在 0 到 1 之间')
@@ -181,6 +279,15 @@ export function testChance(context: RuleContext, chance: number, path: string): 
   return randomValue(context, path) < chance
 }
 
+/**
+ * 解析静态值或运行时值表达式。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param expression - 待解析的值表达式或静态 JSON 值。
+ * @param path - 错误定位路径。
+ * @returns 表达式解析后的运行时值。
+ * @throws {RuleError} 当表达式配置或求值非法时抛出。
+ */
 export function resolveValue(context: RuleContext, expression: ValueExpression, path: string): unknown {
   if (!objectValue(expression) || Array.isArray(expression)) return expression
   const type = expression.type
@@ -243,6 +350,15 @@ export function resolveValue(context: RuleContext, expression: ValueExpression, 
   }
 }
 
+/**
+ * 按 Selector 从当前局内数据中筛选效果或事件。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param selector - 选择器配置。
+ * @param path - 错误定位路径。
+ * @returns 符合选择器条件的实体列表。
+ * @throws {RuleError} 当事件选择器使用仅效果可用字段时抛出。
+ */
 export function selectEntities(context: RuleContext, selector: Selector, path: string): SelectedEntity[] {
   const source: SelectedEntity[] = selector.target === 'effect'
     ? context.runData.effects
@@ -265,6 +381,16 @@ export function selectEntities(context: RuleContext, selector: Selector, path: s
   })
 }
 
+/**
+ * 对选中的实体集合执行聚合计算。
+ *
+ * @param values - 已选中的实体列表。
+ * @param operation - 聚合操作。
+ * @param field - 非 count 聚合读取的字段路径。
+ * @param path - 错误定位路径。
+ * @returns 聚合结果；空集合执行非 sum 聚合时返回 null。
+ * @throws {RuleError} 当非 count 聚合缺少字段或字段不是数值时抛出。
+ */
 function aggregate(
   values: SelectedEntity[],
   operation: 'count' | 'sum' | 'min' | 'max' | 'average',
@@ -283,6 +409,15 @@ function aggregate(
   return numbers.reduce((total, value) => total + value, 0) / numbers.length
 }
 
+/**
+ * 计算单个条件是否成立。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param condition - 待计算的条件。
+ * @param path - 错误定位路径。
+ * @returns 条件成立时返回 true。
+ * @throws {RuleError} 当条件引用不存在实体或比较非法时抛出。
+ */
 export function evaluateCondition(context: RuleContext, condition: Condition, path: string): boolean {
   switch (condition.type) {
     case 'attribute': {
@@ -352,12 +487,30 @@ export function evaluateCondition(context: RuleContext, condition: Condition, pa
   }
 }
 
+/**
+ * 计算条件数组是否全部成立。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param conditions - 待计算的条件数组。
+ * @param path - 错误定位路径。
+ * @returns 所有条件都成立时返回 true。
+ */
 export function evaluateConditions(context: RuleContext, conditions: Condition[], path: string): boolean {
   return conditions.every((condition, index) =>
     evaluateCondition(context, condition, `${path}[${index}]`),
   )
 }
 
+/**
+ * 按动作写入模式合成字段新值。
+ *
+ * @param current - 当前字段值。
+ * @param value - 动作提供的写入值。
+ * @param mode - 修改模式。
+ * @param path - 错误定位路径。
+ * @returns 合成后的字段值。
+ * @throws {RuleError} 当非 set 模式遇到非数值时抛出。
+ */
 function applyMode(current: unknown, value: unknown, mode: ActionMode, path: string): unknown {
   if (mode === 'set') return structuredClone(value)
   const left = finiteNumber(current, path)
@@ -368,6 +521,17 @@ function applyMode(current: unknown, value: unknown, mode: ActionMode, path: str
   return Math.max(left, right)
 }
 
+/**
+ * 在目标对象内部按相对路径写入字段。
+ *
+ * @param target - 写入目标对象。
+ * @param field - 相对字段路径。
+ * @param value - 待写入值。
+ * @param mode - 修改模式。
+ * @param path - 错误定位路径。
+ * @param allowCreateInData - 是否允许在 data 字段下创建新字段。
+ * @throws {RuleError} 当路径不存在或创建字段不被允许时抛出。
+ */
 function setRelativePath(
   target: Record<string, unknown>,
   field: string,
@@ -390,12 +554,31 @@ function setRelativePath(
   parent[key] = applyMode(exists ? parent[key] : undefined, value, mode, path)
 }
 
+/**
+ * 解析动作目标 ID，支持候选池上下文中的 `$drewId`。
+ *
+ * @param id - 原始目标 ID。
+ * @param context - 当前规则执行上下文。
+ * @param path - 错误定位路径。
+ * @returns 实际目标 ID。
+ * @throws {RuleError} 当 `$drewId` 不可用时抛出。
+ */
 function resolveTargetId(id: string, context: RuleContext, path: string): string {
   if (id !== '$drewId') return id
   if (!context.drewId) throw new RuleError(path, '$drewId 当前不可用')
   return context.drewId
 }
 
+/**
+ * 按权重从候选集合中抽取实体。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param candidates - 已计算权重的候选实体。
+ * @param count - 需要抽取的数量。
+ * @param unique - 同一次抽取中是否去重。
+ * @param path - 错误定位路径。
+ * @returns 抽中的实体列表。
+ */
 function weightedDraw(
   context: RuleContext,
   candidates: Array<{ entity: SelectedEntity; weight: number }>,
@@ -423,6 +606,13 @@ function weightedDraw(
   return results
 }
 
+/**
+ * 递归替换模板中的 `$drewId` 占位符。
+ *
+ * @param value - 模板值。
+ * @param drewId - 抽中实体 ID。
+ * @returns 替换后的新值。
+ */
 function replaceDrewId(value: unknown, drewId: string): unknown {
   if (typeof value === 'string') return value.replaceAll('$drewId', drewId)
   if (Array.isArray(value)) return value.map((item) => replaceDrewId(item, drewId))
@@ -432,6 +622,14 @@ function replaceDrewId(value: unknown, drewId: string): unknown {
   return value
 }
 
+/**
+ * 执行单个动作。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param action - 待执行动作。
+ * @param path - 错误定位路径。
+ * @throws {RuleError} 当动作引用、写入模式或生成结果非法时抛出。
+ */
 export function executeAction(context: RuleContext, action: Action, path: string): void {
   switch (action.type) {
     case 'modify_attribute': {
@@ -563,10 +761,23 @@ export function executeAction(context: RuleContext, action: Action, path: string
   }
 }
 
+/**
+ * 顺序执行动作数组。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param actions - 待执行的动作列表。
+ * @param path - 错误定位路径。
+ */
 export function executeActions(context: RuleContext, actions: Action[], path: string): void {
   actions.forEach((action, index) => executeAction(context, action, `${path}[${index}]`))
 }
 
+/**
+ * 执行所有已获得效果在指定时机上的触发器。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param timing - 当前触发时机。
+ */
 export function runTiming(context: RuleContext, timing: TriggerTiming): void {
   const acquiredIds = new Set(context.runData.effects.filter((effect) => effect.acquired).map((effect) => effect.id))
   context.runData.effects.forEach((effect, effectIndex) => {
@@ -581,6 +792,12 @@ export function runTiming(context: RuleContext, timing: TriggerTiming): void {
   })
 }
 
+/**
+ * 检查并执行指定时机上的效果组合规则。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param timing - 当前触发时机。
+ */
 export function runCombos(context: RuleContext, timing: TriggerTiming): void {
   context.runData.effectCombos.forEach((combo, index) => {
     if (combo.timing !== timing || combo.appeared) return
@@ -592,10 +809,25 @@ export function runCombos(context: RuleContext, timing: TriggerTiming): void {
   })
 }
 
+/**
+ * 穷尽性检查辅助函数。
+ *
+ * @param value - TypeScript 推断出的未处理分支。
+ * @returns 永不返回。
+ * @throws {Error} 始终抛出未处理判别值错误。
+ */
 function assertNever(value: never): never {
   throw new Error(`未处理的判别值：${JSON.stringify(value)}`)
 }
 
+/**
+ * 将未知值转换为可写入模型的 JSON 值。
+ *
+ * @param value - 待转换的值。
+ * @param path - 错误定位路径。
+ * @returns 可 JSON 序列化的深拷贝值。
+ * @throws {RuleError} 当值无法结构化克隆为 JSON 数据时抛出。
+ */
 export function asJsonValue(value: unknown, path: string): JsonValue {
   try {
     return structuredClone(value) as JsonValue

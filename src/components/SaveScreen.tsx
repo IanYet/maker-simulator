@@ -1,17 +1,32 @@
 import type { ValidationWarning } from '../game/validation'
 import type { SaveRecord } from '../game/persistence'
 
+/** 存档列表界面组件参数。 */
 interface SaveScreenProps {
+  /** 当前加载内容的 ID。 */
   contentId: string
+  /** 当前加载内容的版本。 */
   contentVersion: string
+  /** 当前浏览器内的存档列表。 */
   saves: SaveRecord[]
+  /** 内容校验产生的非阻塞警告。 */
   warnings: ValidationWarning[]
+  /** 是否正在执行异步命令。 */
   busy: boolean
+  /** 创建存档回调。 */
   onCreate: (name: string) => void
+  /** 打开存档回调。 */
   onOpen: (record: SaveRecord) => void
+  /** 删除存档回调。 */
   onDelete: (record: SaveRecord) => void
 }
 
+/**
+ * 展示内容信息、创建入口和本机存档列表。
+ *
+ * @param props - 存档列表界面组件参数。
+ * @returns 存档列表界面。
+ */
 export function SaveScreen({
   contentId,
   contentVersion,
@@ -22,6 +37,11 @@ export function SaveScreen({
   onOpen,
   onDelete,
 }: SaveScreenProps) {
+  /**
+   * 从表单数据生成存档名称并触发创建。
+   *
+   * @param formData - React 表单 action 传入的表单数据。
+   */
   const createSave = (formData: FormData) => {
     const name = String(formData.get('name') ?? '').trim()
     onCreate(name || `修行存档 ${saves.length + 1}`)

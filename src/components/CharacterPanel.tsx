@@ -1,9 +1,18 @@
 import type { Character } from '../types'
 
+/** 角色属性面板组件参数。 */
 interface CharacterPanelProps {
+  /** 当前局内角色数据。 */
   character: Character
 }
 
+/**
+ * 展示当前启用的角色属性。
+ *
+ * @param props - 角色属性面板组件参数。
+ * @param props.character - 当前局内角色数据。
+ * @returns 角色属性面板。
+ */
 export function CharacterPanel({ character }: CharacterPanelProps) {
   return (
     <section className="panel">

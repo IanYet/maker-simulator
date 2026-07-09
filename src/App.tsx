@@ -24,28 +24,51 @@ import {
 import type { ValidationWarning } from './game/validation'
 import type { GameModelData } from './types'
 
+/** 默认加载的示例内容地址。 */
 const contentUrl = new URL('../docs/example/demo2/demo2.json', import.meta.url).href
 
+/** 应用顶层视图状态。 */
 type AppView =
+  /** 正在加载内容。 */
   | { type: 'loading' }
+  /** 内容加载或校验失败。 */
   | { type: 'error'; message: string }
+  /** 展示本机存档列表。 */
   | {
       type: 'saves'
+      /** 默认内容数据。 */
       defaultData: GameModelData
+      /** 内容校验警告。 */
       warnings: ValidationWarning[]
+      /** 本机存档列表。 */
       saves: SaveRecord[]
     }
+  /** 展示进行中游戏界面。 */
   | {
       type: 'game'
+      /** 当前游戏会话。 */
       session: GameSession
+      /** 当前存档名称。 */
       saveName: string
+      /** 内容校验警告。 */
       warnings: ValidationWarning[]
     }
 
+/**
+ * 将未知异常转换为可展示的错误文本。
+ *
+ * @param error - 捕获到的未知异常。
+ * @returns 面向用户展示的错误信息。
+ */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '发生未知错误'
 }
 
+/**
+ * 应用根组件，负责加载内容、切换存档页和游戏页，并串联持久化。
+ *
+ * @returns 应用根界面。
+ */
 function App() {
   const [view, setView] = useState<AppView>({ type: 'loading' })
   const [busy, setBusy] = useState(false)
@@ -53,6 +76,10 @@ function App() {
 
   useEffect(() => {
     let active = true
+
+    /**
+     * 加载内容 JSON，并读取当前内容对应的本机存档。
+     */
     const initialize = async () => {
       try {
         const content = await loadContent(contentUrl)
@@ -68,6 +95,11 @@ function App() {
     }
   }, [])
 
+  /**
+   * 基于默认内容创建新的玩家存档并进入游戏页。
+   *
+   * @param name - 玩家输入或自动生成的存档名称。
+   */
   const createSave = async (name: string) => {
     if (view.type !== 'saves') return
     setBusy(true)
@@ -88,6 +120,11 @@ function App() {
     }
   }
 
+  /**
+   * 打开已有玩家存档，并尽量恢复进行中的局。
+   *
+   * @param record - 要打开的存档记录。
+   */
   const openSave = async (record: SaveRecord) => {
     if (view.type !== 'saves') return
     setBusy(true)
@@ -103,6 +140,11 @@ function App() {
     }
   }
 
+  /**
+   * 删除指定玩家存档。
+   *
+   * @param record - 要删除的存档记录。
+   */
   const removeSave = async (record: SaveRecord) => {
     if (view.type !== 'saves' || !window.confirm(`确认删除存档“${record.name}”？`)) return
     setBusy(true)
@@ -117,6 +159,11 @@ function App() {
     }
   }
 
+  /**
+   * 执行一个游戏引擎命令，并在成功后持久化完整会话。
+   *
+   * @param command - 接收当前会话并返回新会话的引擎命令。
+   */
   const execute = async (command: (session: GameSession) => GameSession) => {
     if (view.type !== 'game') return
     setBusy(true)
@@ -132,6 +179,9 @@ function App() {
     }
   }
 
+  /**
+   * 从游戏页返回存档列表，并刷新 IndexedDB 中的存档记录。
+   */
   const backToSaves = async () => {
     if (view.type !== 'game') return
     setBusy(true)

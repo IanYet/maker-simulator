@@ -9,14 +9,26 @@ import {
   type GameSession,
 } from '../game/engine'
 
+/** 事件面板组件参数。 */
 interface EventPanelProps {
+  /** 当前游戏会话。 */
   session: GameSession
+  /** 是否正在执行命令。 */
   busy: boolean
+  /** 手动启动事件回调。 */
   onStart: (eventId: string) => void
+  /** 继续当前事件节点回调。 */
   onContinue: (eventId: string) => void
+  /** 提交选择节点回调。 */
   onSubmit: (eventId: string, nodeId: string, selections: ChoiceSelection[]) => void
 }
 
+/**
+ * 展示当前待处理事件、待启动事件和全部事件概览。
+ *
+ * @param props - 事件面板组件参数。
+ * @returns 事件面板；没有进行中局时返回 null。
+ */
 export function EventPanel({ session, busy, onStart, onContinue, onSubmit }: EventPanelProps) {
   const run = session.runStore?.currentRun
   if (!run) return null
@@ -87,14 +99,26 @@ export function EventPanel({ session, busy, onStart, onContinue, onSubmit }: Eve
   )
 }
 
+/** 当前激活事件组件参数。 */
 interface ActiveEventProps {
+  /** 当前需要玩家处理的事件。 */
   event: GameEvent
+  /** 当前游戏会话。 */
   session: GameSession
+  /** 是否正在执行命令。 */
   busy: boolean
+  /** 继续当前事件节点回调。 */
   onContinue: (eventId: string) => void
+  /** 提交选择节点回调。 */
   onSubmit: (eventId: string, nodeId: string, selections: ChoiceSelection[]) => void
 }
 
+/**
+ * 渲染当前处于交互节点的事件。
+ *
+ * @param props - 当前激活事件组件参数。
+ * @returns 激活事件卡片；当前节点缺失时返回 null。
+ */
 function ActiveEvent({ event, session, busy, onContinue, onSubmit }: ActiveEventProps) {
   const node = event.nodes.find((item) => item.id === event.currentNode)
   if (!node) return null
@@ -130,14 +154,26 @@ function ActiveEvent({ event, session, busy, onContinue, onSubmit }: ActiveEvent
   )
 }
 
+/** 选择表单组件参数。 */
 interface ChoiceFormProps {
+  /** 当前选择节点。 */
   node: ChoiceNode
+  /** 选择节点所属事件。 */
   event: GameEvent
+  /** 当前游戏会话。 */
   session: GameSession
+  /** 是否正在执行命令。 */
   busy: boolean
+  /** 提交选择节点回调。 */
   onSubmit: (eventId: string, nodeId: string, selections: ChoiceSelection[]) => void
 }
 
+/**
+ * 渲染单选、多选或数量选择表单。
+ *
+ * @param props - 选择表单组件参数。
+ * @returns 选择表单。
+ */
 function ChoiceForm({ node, event, session, busy, onSubmit }: ChoiceFormProps) {
   const choices = useMemo(() => getAvailableChoices(session, event.id), [session, event.id])
   const bounds = useMemo(() => new Map(choices.flatMap((choice) => {
@@ -149,6 +185,11 @@ function ChoiceForm({ node, event, session, busy, onSubmit }: ChoiceFormProps) {
     Object.fromEntries(Array.from(bounds, ([id, value]) => [id, value.defaultValue])),
   )
 
+  /**
+   * 切换选项选中状态。
+   *
+   * @param choiceId - 被点击的选项 ID。
+   */
   const toggle = (choiceId: string) => {
     if (node.mode === 'single') {
       setSelected([choiceId])
@@ -161,6 +202,9 @@ function ChoiceForm({ node, event, session, busy, onSubmit }: ChoiceFormProps) {
     )
   }
 
+  /**
+   * 将当前表单状态转换为引擎需要的提交结构。
+   */
   const submit = () => {
     const selections = selected.map((choiceId) => ({
       choiceId,

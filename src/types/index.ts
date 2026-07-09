@@ -1,3 +1,4 @@
+/** 统一 re-export 游戏领域模型类型，供 UI 和引擎模块使用。 */
 export type {
   Action,
   ActionMode,

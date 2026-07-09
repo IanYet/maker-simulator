@@ -1,13 +1,13 @@
-/** JSON primitive value supported by model data. */
+/** 模型数据支持的 JSON 基础值。 */
 export type JsonPrimitive = string | number | boolean | null
 
-/** JSON value supported by generic condition and action payload fields. */
+/** 条件、动作等通用负载字段支持的 JSON 值。 */
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
-/** Top-level model data kind. */
+/** 顶层模型数据的来源类型。 */
 export type ModelDataKind = 'default' | 'save' | 'run'
 
-/** Current runtime step used by run data. */
+/** 局内数据当前所处的运行阶段。 */
 export type RuntimeStep =
   | 'turn_start'
   | 'combo_check'
@@ -19,13 +19,13 @@ export type RuntimeStep =
   | 'snapshot'
   | 'next_turn'
 
-/** Content-defined effect kind identifier. */
+/** 内容配置中声明的效果类型标识。 */
 export type EffectKind = string
 
-/** Effect duration kind. */
+/** 效果持续时间的类型。 */
 export type DurationType = 'instant' | 'turns' | 'permanent'
 
-/** Timing hook used by effects and effect combos. */
+/** 效果与效果组合可监听的触发时机。 */
 export type TriggerTiming =
   | 'turn_start'
   | 'event_appear'
@@ -34,22 +34,22 @@ export type TriggerTiming =
   | 'event_result'
   | 'turn_end'
 
-/** Event start behavior after an event appears. */
+/** 事件出现后的启动方式。 */
 export type EventStartMode = 'auto' | 'manual'
 
-/** Presentation behavior for events and nodes. */
+/** 事件和节点的展示层级。 */
 export type Visibility = 'foreground' | 'background'
 
-/** Selection behavior for a choice node. */
+/** 选择节点的选择模式。 */
 export type ChoiceMode = 'single' | 'multiple' | 'quantity'
 
-/** Local event state keyed by field name. */
+/** 事件内部按字段名保存的局部状态。 */
 export type EventData = Record<string, JsonValue>
 
-/** Event node kind in the directed event graph. */
+/** 有向事件图中的节点类型。 */
 export type EventNodeType = 'text' | 'choice' | 'check' | 'action' | 'wait' | 'result'
 
-/** Comparison operator supported by conditions. */
+/** 条件表达式支持的比较操作符。 */
 export type ComparisonOperator =
   | '=='
   | '!='
@@ -60,22 +60,22 @@ export type ComparisonOperator =
   | 'contains'
   | 'not_contains'
 
-/** Scope that an action writes to. */
+/** 动作写入数据时使用的作用域。 */
 export type ActionScope = 'run' | 'save' | 'default'
 
-/** Action mutation mode. */
+/** 动作修改字段时使用的写入模式。 */
 export type ActionMode = 'set' | 'add' | 'multiply' | 'min' | 'max'
 
-/** Target collection queried by selectors. */
+/** Selector 可查询的目标集合。 */
 export type SelectorTarget = 'effect' | 'event'
 
-/** Aggregate operation over a selected collection. */
+/** 对 Selector 结果集合执行的聚合操作。 */
 export type AggregateFunction = 'count' | 'sum' | 'min' | 'max' | 'average'
 
-/** Arithmetic operation used by calculate value expressions. */
+/** calculate 值表达式支持的算术操作。 */
 export type CalculateOperator = 'add' | 'subtract' | 'multiply' | 'divide' | 'min' | 'max'
 
-/** Condition type discriminator. */
+/** 条件判别联合的类型字段取值。 */
 export type ConditionType =
   | 'attribute'
   | 'effect'
@@ -86,7 +86,7 @@ export type ConditionType =
   | 'or'
   | 'not'
 
-/** Action type discriminator. */
+/** 动作判别联合的类型字段取值。 */
 export type ActionType =
   | 'modify_attribute'
   | 'modify_effect'
@@ -94,341 +94,346 @@ export type ActionType =
   | 'draw_pool'
   | 'create_choice'
 
-/** Complete model data shape shared by default data, save data, and run data. */
+/** 默认数据、玩家存档和局内数据共用的完整模型结构。 */
 export interface GameModelData {
-  /** Data metadata. */
+  /** 数据元信息。 */
   meta: ModelMeta
-  /** Current character data. */
+  /** 当前角色数据。 */
   character: Character
-  /** Content-defined effect kind declarations. */
+  /** 内容配置中声明的效果类型列表。 */
   effectKinds: EffectKindDefinition[]
-  /** Effect definitions and their current state. */
+  /** 效果定义及其当前状态。 */
   effects: Effect[]
-  /** Independent effect-combination rules. */
+  /** 独立的效果组合规则。 */
   effectCombos: EffectCombo[]
-  /** Reusable effect or event candidate pools. */
+  /** 可复用的效果或事件候选池。 */
   pools: Pool[]
-  /** Event definitions and their current state. */
+  /** 事件定义及其当前状态。 */
   events: GameEvent[]
 }
 
-/** Metadata for default data, save data, or run data. */
+/** 默认数据、玩家存档或局内数据的元信息。 */
 export interface ModelMeta {
-  /** Data identifier. */
+  /** 数据标识。 */
   id: string
-  /** Content version. */
+  /** 内容版本。 */
   version: string
-  /** Current turn; default data and save data usually use 0. */
+  /** 当前回合数；默认数据和玩家存档通常为 0。 */
   turn: number
-  /** Current random seed. */
+  /** 当前随机种子。 */
   seed: string | null
-  /** Current runtime step; only run data needs this field. */
+  /** 当前运行阶段；仅局内数据需要该字段。 */
   step?: RuntimeStep
-  /** Number of started runs; only save data needs this field. */
+  /** 已开始局数；仅玩家存档需要该字段。 */
   runs?: number
-  /** Optional top-level data kind. */
+  /** 可选的顶层数据来源类型。 */
   kind?: ModelDataKind
 }
 
-/** Player-controlled character. */
+/** 玩家控制的角色。 */
 export interface Character {
-  /** Character identifier. */
+  /** 角色标识。 */
   id: string
-  /** Attribute table keyed by attribute id. */
+  /** 以属性 ID 为键的属性表。 */
   attributes: Record<string, Attribute>
 }
 
-/** Content-defined character attribute and its current state. */
+/** 内容配置中声明的角色属性及其当前状态。 */
 export interface Attribute {
-  /** Display name. */
+  /** 展示名称。 */
   displayName: string
-  /** Whether the attribute is currently shown to the player. */
+  /** 当前是否向玩家展示该属性。 */
   enabled: boolean
-  /** Current attribute value. */
+  /** 当前属性值。 */
   value: JsonPrimitive
-  /** Optional minimum for a numeric attribute. */
+  /** 数值属性的可选最小值。 */
   min?: number
-  /** Optional maximum for a numeric attribute. */
+  /** 数值属性的可选最大值。 */
   max?: number
 }
 
-/** Content-defined effect classification. */
+/** 内容配置中声明的效果分类。 */
 export interface EffectKindDefinition {
-  /** Stable kind identifier used by Effect.kind and Selector.kinds. */
+  /** 供 Effect.kind 与 Selector.kinds 使用的稳定分类标识。 */
   id: EffectKind
-  /** Display name. */
+  /** 展示名称。 */
   displayName: string
 }
 
-/** Non-narrative state such as tags, counters, buildings, buffs, or tech. */
+/** 标签、计数器、建筑、增益或科技等非叙事状态。 */
 export interface Effect {
-  /** Effect identifier. */
+  /** 效果标识。 */
   id: string
-  /** Display name. */
+  /** 展示名称。 */
   name: string
-  /** Effect content description. */
+  /** 效果内容描述。 */
   description: string
-  /** Effect classification. */
+  /** 效果分类。 */
   kind: EffectKind
-  /** Whether this effect has been unlocked and can appear as a reward or candidate. */
+  /** 该效果是否已解锁，可作为奖励或候选项出现。 */
   unlocked: boolean
-  /** Whether this effect has currently appeared. */
+  /** 该效果当前是否已出现。 */
   appeared: boolean
-  /** Whether the player has currently acquired this effect. */
+  /** 玩家当前是否已获得该效果。 */
   acquired: boolean
-  /** Effect level. */
+  /** 效果等级。 */
   level: number
-  /** Effect stack count. */
+  /** 效果层数。 */
   stacks: number
-  /** Generic numeric value for counters, progress, or strength. */
+  /** 用于计数、进度或强度的通用数值。 */
   value: number
-  /** Tag list used for filtering and condition checks. */
+  /** 用于筛选和条件判断的标签列表。 */
   tags: string[]
-  /** Appearance rules used when this effect is considered as a candidate, reward, or shop item. */
+  /** 该效果作为候选、奖励或商品时使用的出现规则。 */
   appear: EffectAppear
-  /** Effect duration, or null when no duration data is needed. */
+  /** 效果持续时间；无需持续时间数据时为 null。 */
   duration?: Duration | null
-  /** Timing-based effect triggers. */
+  /** 基于时机触发的效果规则。 */
   triggers?: Trigger[]
 }
 
-/** Effect appearance rules. */
+/** 效果出现规则。 */
 export type EffectAppear = EventAppear
 
-/** Effect duration data. */
+/** 效果持续时间数据。 */
 export interface Duration {
-  /** Duration kind. */
+  /** 持续时间类型。 */
   type: DurationType
-  /** Remaining turns, or null for non-turn-based durations. */
+  /** 剩余回合数；非回合型持续时间为 null。 */
   remaining: number | null
 }
 
-/** Timing-based rule attached to an effect. */
+/** 挂载在效果上的时机触发规则。 */
 export interface Trigger {
-  /** Trigger timing hook. */
+  /** 触发时机。 */
   timing: TriggerTiming
-  /** Conditions required before trigger actions execute. */
+  /** 执行动作前必须满足的条件。 */
   conditions: Condition[]
-  /** Actions executed when the trigger fires. */
+  /** 触发时执行的动作。 */
   actions: Action[]
 }
 
-/** Independent rule that reacts to combinations of effects. */
+/** 响应多个效果组合状态的独立规则。 */
 export interface EffectCombo {
-  /** Effect-combination rule identifier. */
+  /** 效果组合规则标识。 */
   id: string
-  /** Display name. */
+  /** 展示名称。 */
   name: string
-  /** Whether this effect combination has currently appeared. */
+  /** 该效果组合当前是否已经出现。 */
   appeared: boolean
-  /** Conditions required for the combination to apply. */
+  /** 组合规则生效前必须满足的条件。 */
   conditions: Condition[]
-  /** Timing hook used to check this combination. */
+  /** 检查该组合规则的触发时机。 */
   timing: TriggerTiming
-  /** Actions executed when combination conditions are met. */
+  /** 组合条件满足时执行的动作。 */
   actions: Action[]
 }
 
-/** Pure candidate filtering and random draw rule for effects or events. */
+/** 面向效果或事件的纯候选筛选与随机抽取规则。 */
 export interface Pool {
-  /** Pool identifier. */
+  /** 候选池标识。 */
   id: string
-  /** Selector that defines the candidate collection. */
+  /** 定义候选集合的 Selector。 */
   selector: Selector
-  /** Default number of candidates to draw. */
+  /** 默认抽取数量。 */
   count: ValueExpression
-  /** Whether candidates may appear only once in the same draw. */
+  /** 候选项在同一次抽取中是否最多出现一次。 */
   unique: boolean
-  /** Candidate weight evaluated in the candidate context; defaults to 1. */
+  /** 在候选上下文中计算的权重，未声明时默认为 1。 */
   weight?: ValueExpression
 }
 
-/** Narrative event represented as a directed graph of nodes. */
+/** 由有向节点图表示的叙事事件。 */
 export interface GameEvent {
-  /** Event identifier. */
+  /** 事件标识。 */
   id: string
-  /** Display name. */
+  /** 展示名称。 */
   name: string
-  /** Whether this event has been unlocked. */
+  /** 该事件是否已解锁。 */
   unlocked: boolean
-  /** Whether this event has appeared and entered the current event flow. */
+  /** 该事件是否已经出现并进入当前事件流程。 */
   appeared: boolean
-  /** Whether this event is shown in the foreground or runs in the background. */
+  /** 该事件显示在前台还是在后台运行。 */
   visibility: Visibility
-  /** Event start behavior after appearing. */
+  /** 事件出现后的启动方式。 */
   startMode: EventStartMode
-  /** Whether the event can happen repeatedly. */
+  /** 事件是否可以重复发生。 */
   repeatable: boolean
-  /** Number of times this event has occurred. */
+  /** 该事件已经发生的次数。 */
   occurrences: number
-  /** Whether this event is completed. */
+  /** 该事件是否已经完成。 */
   completed: boolean
-  /** Latest or final event result. */
+  /** 最近一次或最终事件结果。 */
   result: string | null
-  /** Node id used when the event starts. */
+  /** 事件启动时进入的节点 ID。 */
   entryNode: string
-  /** Current node id, or null when the event is not active. */
+  /** 当前节点 ID；事件未激活时为 null。 */
   currentNode: string | null
-  /** Remaining turns before the event times out. */
+  /** 事件超时前剩余的回合数。 */
   remainingTurns: number
-  /** Conditions that automatically end this event. */
+  /** 自动结束该事件的条件。 */
   endConditions: Condition[]
-  /** Node id entered when the event times out. */
+  /** 事件超时时进入的节点 ID。 */
   timeoutNode: string | null
-  /** Local event state such as shop inventory, discounts, and temporary event variables. */
+  /** 商店库存、折扣和临时变量等事件局部状态。 */
   data: EventData
-  /** Event appearance rules. */
+  /** 事件出现规则。 */
   appear: EventAppear
-  /** Directed graph node list. */
+  /** 有向事件图节点列表。 */
   nodes: EventNode[]
 }
 
-/** Event appearance rules. */
+/** 事件出现规则。 */
 export interface EventAppear {
-  /** Conditions required before chance is evaluated. */
+  /** 计算出现概率前必须满足的条件。 */
   conditions: Condition[]
-  /** Appearance probability from 0 to 1. */
+  /** 0 到 1 之间的出现概率。 */
   chance: number
 }
 
-/** Directed event graph node. */
+/** 有向事件图节点。 */
 export type EventNode = TextNode | ChoiceNode | CheckNode | ActionNode | WaitNode | ResultNode
 
-/** Common fields shared by all event nodes. */
+/** 所有事件节点共享的基础字段。 */
 export interface BaseNode {
-  /** Node identifier. */
+  /** 节点标识。 */
   id: string
-  /** Node kind. */
+  /** 节点类型。 */
   type: EventNodeType
-  /** Whether this node is shown in the foreground or runs in the background. */
+  /** 节点显示在前台还是在后台运行。 */
   visibility: Visibility
-  /** Display text for the node. */
+  /** 节点展示文本。 */
   text?: string
-  /** Conditions required before this node can be processed. */
+  /** 处理该节点前必须满足的条件。 */
   conditions?: Condition[]
-  /** Actions executed by this node. */
+  /** 该节点执行的动作。 */
   actions?: Action[]
-  /** Chance used only when this node is evaluated as a candidate of a check node. Defaults to 1. */
+  /** 被 `check.nexts` 作为候选节点评估时使用的概率，未声明时默认为 1。 */
   chance?: number
-  /** Next node id, or null when there is no automatic next node. */
+  /** 下一个节点 ID；没有自动后续节点时为 null。 */
   next?: string | null
 }
 
-/** Narrative text node. */
+/** 叙事文本节点。 */
 export interface TextNode extends BaseNode {
-  /** Node kind discriminator. */
+  /** 节点类型判别字段。 */
   type: 'text'
-  /** Narrative text shown by this node. */
+  /** 该节点展示的叙事文本。 */
   text: string
-  /** Next node id after the text is processed. */
+  /** 文本处理后进入的下一个节点 ID。 */
   next: string
 }
 
-/** Player choice node. */
+/** 玩家选择节点。 */
 export interface ChoiceNode extends BaseNode {
-  /** Node kind discriminator. */
+  /** 节点类型判别字段。 */
   type: 'choice'
-  /** Choice selection mode. */
+  /** 选项选择模式。 */
   mode: ChoiceMode
-  /** Minimum number of choices required before submission. */
+  /** 提交前要求选择的最少选项数。 */
   minSelections?: number
-  /** Maximum number of choices allowed before submission. */
+  /** 提交前允许选择的最多选项数。 */
   maxSelections?: number
-  /** Choice list shown to the player. */
+  /** 展示给玩家的选项列表。 */
   choices: Choice[]
-  /** Node id entered after submitting multiple or quantity choices. */
+  /** 多选或数量选择提交后进入的节点 ID。 */
   next?: string | null
 }
 
-/** Routing node that selects one candidate node from nexts. */
+/**
+ * 事件路由节点。
+ *
+ * `check` 节点自身不承载叙事文本、条件或动作，只根据 `nexts` 中候选节点的
+ * `conditions` 与 `chance` 选择实际进入的后续节点。
+ */
 export interface CheckNode extends BaseNode {
-  /** Node kind discriminator. */
+  /** 节点类型判别字段。 */
   type: 'check'
-  /** Candidate node ids evaluated in order. */
+  /** 按顺序评估的候选节点 ID 列表。 */
   nexts: string[]
 }
 
-/** Action-only node. */
+/** 仅执行动作的节点。 */
 export interface ActionNode extends BaseNode {
-  /** Node kind discriminator. */
+  /** 节点类型判别字段。 */
   type: 'action'
-  /** Actions executed by this node. */
+  /** 该节点执行的动作。 */
   actions: Action[]
-  /** Next node id after actions execute. */
+  /** 动作执行后进入的下一个节点 ID。 */
   next: string
 }
 
-/** Cross-turn wait node. */
+/** 跨回合等待节点。 */
 export interface WaitNode extends BaseNode {
-  /** Node kind discriminator. */
+  /** 节点类型判别字段。 */
   type: 'wait'
-  /** Remaining wait turns. */
+  /** 剩余等待回合数。 */
   remainingTurns: number
-  /** Conditions that end waiting early. */
+  /** 提前结束等待的条件。 */
   endConditions: Condition[]
-  /** Node id entered when waiting times out. */
+  /** 等待超时时进入的节点 ID。 */
   timeoutNode: string
-  /** Node id entered when waiting completes normally. */
+  /** 等待正常完成时进入的节点 ID。 */
   next: string
 }
 
-/** Event result node. */
+/** 事件结果节点。 */
 export interface ResultNode extends BaseNode {
-  /** Node kind discriminator. */
+  /** 节点类型判别字段。 */
   type: 'result'
-  /** Result value written to the event. */
+  /** 写入事件的结果值。 */
   result: string
-  /** Actions executed by this result. */
+  /** 该结果节点执行的动作。 */
   actions: Action[]
-  /** Whether this result completes the event. */
+  /** 该结果是否会完成事件。 */
   completeEvent: boolean
 }
 
-/** Player-selectable option inside a choice node. */
+/** 选择节点中可供玩家选择的选项。 */
 export interface Choice {
-  /** Choice identifier. */
+  /** 选项标识。 */
   id: string
-  /** Choice display text. */
+  /** 选项展示文本。 */
   text: string
-  /** Conditions required for this choice to be available. */
+  /** 该选项可用前必须满足的条件。 */
   conditions?: Condition[]
-  /** Quantity configuration used when the containing node has quantity mode. */
+  /** 所属节点为数量模式时使用的数量配置。 */
   quantity?: ChoiceQuantity | null
-  /** Actions executed immediately after selecting this choice. */
+  /** 选择该选项后立即执行的动作。 */
   actions?: Action[]
-  /** Node id entered after selecting this choice. */
+  /** 选择该选项后进入的节点 ID。 */
   next?: string | null
 }
 
-/** Template materialized into a concrete choice from an effect. */
+/** 从效果物化为具体选项时使用的模板。 */
 export interface ChoiceTemplate {
-  /** Choice identifier; defaults to the source effect id. */
+  /** 选项标识；未声明时使用来源效果 ID。 */
   id?: string
-  /** Choice display text; defaults to the source effect name. */
+  /** 选项展示文本；未声明时使用来源效果名称。 */
   text?: string
-  /** Conditions required for the generated choice to be available. */
+  /** 生成选项可用前必须满足的条件。 */
   conditions?: Condition[]
-  /** Quantity configuration for the generated choice. */
+  /** 生成选项的数量配置。 */
   quantity?: ChoiceQuantity | null
-  /** Actions executed after selecting the generated choice. */
+  /** 选择生成选项后执行的动作。 */
   actions?: Action[]
-  /** Node id entered after selecting the generated choice. */
+  /** 选择生成选项后进入的节点 ID。 */
   next?: string | null
 }
 
-/** Quantity controls for a selectable choice. */
+/** 可选择选项的数量控制配置。 */
 export interface ChoiceQuantity {
-  /** Minimum selectable quantity. */
+  /** 可选择的最小数量。 */
   min: ValueExpression
-  /** Maximum selectable quantity. */
+  /** 可选择的最大数量。 */
   max: ValueExpression
-  /** Quantity step. */
+  /** 数量步长。 */
   step?: ValueExpression
-  /** Default quantity shown before player input. */
+  /** 玩家输入前展示的默认数量。 */
   defaultValue?: ValueExpression
 }
 
-/** Any supported condition. */
+/** 模型支持的任意条件。 */
 export type Condition =
   | AttributeCondition
   | EffectCondition
@@ -439,121 +444,121 @@ export type Condition =
   | OrCondition
   | NotCondition
 
-/** Collection selector used by aggregate conditions and aggregate value expressions. */
+/** 聚合条件和聚合值表达式使用的集合选择器。 */
 export interface Selector {
-  /** Target collection to query. */
+  /** 要查询的目标集合。 */
   target: SelectorTarget
-  /** Optional id allow-list. */
+  /** 可选的 ID 白名单。 */
   ids?: string[]
-  /** Required effect tags; only applies when target is effect. */
+  /** 必须包含的效果标签；仅 target 为 effect 时可用。 */
   tags?: string[]
-  /** Required effect kinds; only applies when target is effect. */
+  /** 必须匹配的效果分类；仅 target 为 effect 时可用。 */
   kinds?: EffectKind[]
-  /** Field-level selector rules. */
+  /** 字段级选择规则。 */
   fields?: FieldMatcher[]
 }
 
-/** Field comparison rule inside a selector. */
+/** Selector 内部的字段比较规则。 */
 export interface FieldMatcher {
-  /** Field path to read from the selected object. */
+  /** 从候选对象读取的字段路径。 */
   field: string
-  /** Comparison operator. */
+  /** 比较操作符。 */
   operator: ComparisonOperator
-  /** Value to compare against. */
+  /** 用于比较的右侧值。 */
   value: ValueExpression
 }
 
-/** Character attribute condition. */
+/** 角色属性条件。 */
 export interface AttributeCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'attribute'
-  /** Attribute id to read. */
+  /** 要读取的属性 ID。 */
   attribute: string
-  /** Comparison operator. */
+  /** 比较操作符。 */
   operator: ComparisonOperator
-  /** Value to compare against. */
+  /** 用于比较的右侧值。 */
   value: ValueExpression
 }
 
-/** Effect field condition. */
+/** 效果字段条件。 */
 export interface EffectCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'effect'
-  /** Effect id to read. */
+  /** 要读取的效果 ID。 */
   effectId: string
-  /** Effect field path to read. */
+  /** 要读取的效果字段路径。 */
   field: string
-  /** Comparison operator. */
+  /** 比较操作符。 */
   operator: ComparisonOperator
-  /** Value to compare against. */
+  /** 用于比较的右侧值。 */
   value: ValueExpression
 }
 
-/** Event field condition. */
+/** 事件字段条件。 */
 export interface EventCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'event'
-  /** Event id to read. */
+  /** 要读取的事件 ID。 */
   eventId: string
-  /** Event field path to read. */
+  /** 要读取的事件字段路径。 */
   field: string
-  /** Comparison operator. */
+  /** 比较操作符。 */
   operator: ComparisonOperator
-  /** Value to compare against. */
+  /** 用于比较的右侧值。 */
   value: ValueExpression
 }
 
-/** Current turn condition. */
+/** 当前回合条件。 */
 export interface TurnCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'turn'
-  /** Comparison operator. */
+  /** 比较操作符。 */
   operator: ComparisonOperator
-  /** Turn value to compare against. */
+  /** 用于比较的回合值。 */
   value: ValueExpression
 }
 
-/** Aggregate condition over a selected effect or event collection. */
+/** 对选中效果或事件集合执行聚合后的条件。 */
 export interface AggregateCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'aggregate'
-  /** Selector that chooses effects or events. */
+  /** 选择效果或事件的 Selector。 */
   selector: Selector
-  /** Aggregate operation to evaluate. */
+  /** 要计算的聚合操作。 */
   aggregate: AggregateFunction
-  /** Field path used by non-count aggregates. */
+  /** 非 count 聚合使用的字段路径。 */
   field?: string
-  /** Comparison operator. */
+  /** 比较操作符。 */
   operator: ComparisonOperator
-  /** Value to compare the aggregate result against. */
+  /** 用于比较聚合结果的右侧值。 */
   value: ValueExpression
 }
 
-/** Logical AND condition. */
+/** 逻辑与条件。 */
 export interface AndCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'and'
-  /** Child conditions; all must pass. */
+  /** 子条件列表；全部通过时才成立。 */
   conditions: Condition[]
 }
 
-/** Logical OR condition. */
+/** 逻辑或条件。 */
 export interface OrCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'or'
-  /** Child conditions; at least one must pass. */
+  /** 子条件列表；至少一个通过时成立。 */
   conditions: Condition[]
 }
 
-/** Logical NOT condition. */
+/** 逻辑非条件。 */
 export interface NotCondition {
-  /** Condition kind discriminator. */
+  /** 条件类型判别字段。 */
   type: 'not'
-  /** Child conditions to invert. */
+  /** 要取反的子条件列表。 */
   conditions: Condition[]
 }
 
-/** Any supported action. */
+/** 模型支持的任意动作。 */
 export type Action =
   | ModifyAttributeAction
   | ModifyEffectAction
@@ -561,85 +566,85 @@ export type Action =
   | DrawPoolAction
   | CreateChoiceAction
 
-/** Common action fields. */
+/** 所有动作共享的基础字段。 */
 export interface BaseAction {
-  /** Data scope modified by this action. */
+  /** 该动作修改的数据作用域。 */
   scope?: ActionScope
-  /** Action kind. */
+  /** 动作类型。 */
   type: ActionType
 }
 
-/** Character attribute modification action. */
+/** 角色属性修改动作。 */
 export interface ModifyAttributeAction extends BaseAction {
-  /** Action kind discriminator. */
+  /** 动作类型判别字段。 */
   type: 'modify_attribute'
-  /** Attribute id to modify. */
+  /** 要修改的属性 ID。 */
   attribute: string
-  /** Attribute state field to modify; defaults to value. */
+  /** 要修改的属性状态字段；未声明时默认为 value。 */
   field?: 'value' | 'enabled'
-  /** Modification mode. */
+  /** 修改模式。 */
   mode: ActionMode
-  /** Value used by the modification mode. */
+  /** 修改模式使用的值。 */
   value: ValueExpression
 }
 
-/** Effect field modification action. */
+/** 效果字段修改动作。 */
 export interface ModifyEffectAction extends BaseAction {
-  /** Action kind discriminator. */
+  /** 动作类型判别字段。 */
   type: 'modify_effect'
-  /** Effect id to modify. */
+  /** 要修改的效果 ID。 */
   effectId: string
-  /** Effect field path to modify. */
+  /** 要修改的效果字段路径。 */
   field: string
-  /** Modification mode. */
+  /** 修改模式。 */
   mode: ActionMode
-  /** Value used by the modification mode. */
+  /** 修改模式使用的值。 */
   value: ValueExpression
 }
 
-/** Event field modification action. */
+/** 事件字段修改动作。 */
 export interface ModifyEventAction extends BaseAction {
-  /** Action kind discriminator. */
+  /** 动作类型判别字段。 */
   type: 'modify_event'
-  /** Event id to modify. */
+  /** 要修改的事件 ID。 */
   eventId: string
-  /** Event field path to modify. */
+  /** 要修改的事件字段路径。 */
   field: string
-  /** Modification mode. */
+  /** 修改模式。 */
   mode: ActionMode
-  /** Value used by the modification mode. */
+  /** 修改模式使用的值。 */
   value: ValueExpression
 }
 
-/** Action that draws a pool and handles drawn or empty results. */
+/** 抽取候选池并处理抽中或空结果的动作。 */
 export interface DrawPoolAction {
-  /** Action kind discriminator. */
+  /** 动作类型判别字段。 */
   type: 'draw_pool'
-  /** Candidate pool identifier. */
+  /** 候选池标识。 */
   poolId: string
-  /** Draw count override; defaults to the pool count. */
+  /** 抽取数量覆盖值；未声明时使用候选池默认数量。 */
   count?: ValueExpression
-  /** Actions executed once per candidate with `$drewId` bound to its id. */
+  /** 每个抽中候选执行一次的动作，此时 `$drewId` 绑定为候选 ID。 */
   onDraw: Action[]
-  /** Actions executed once when the draw returns no candidates. */
+  /** 未抽中任何候选时执行一次的动作。 */
   onEmpty?: Action[]
 }
 
-/** Action that materializes an effect as a concrete event choice. */
+/** 将效果物化为具体事件选项的动作。 */
 export interface CreateChoiceAction {
-  /** Action kind discriminator. */
+  /** 动作类型判别字段。 */
   type: 'create_choice'
-  /** Target event id; defaults to the current event. */
+  /** 目标事件 ID；未声明时使用当前事件。 */
   eventId?: string
-  /** Choice node that receives the generated choice. */
+  /** 接收生成选项的选择节点 ID。 */
   nodeId: string
-  /** Source effect id; `$drewId` is supported in a pool draw context. */
+  /** 来源效果 ID；在候选池抽取上下文中支持 `$drewId`。 */
   effectId: string
-  /** Template used to build the generated choice. */
+  /** 构建生成选项时使用的模板。 */
   choice: ChoiceTemplate
 }
 
-/** Static JSON value or runtime expression used by conditions and actions. */
+/** 条件和动作使用的静态 JSON 值或运行时表达式。 */
 export type ValueExpression =
   | JsonValue
   | FieldValueExpression
@@ -647,64 +652,64 @@ export type ValueExpression =
   | RandomValueExpression
   | AggregateValueExpression
 
-/** Value expression that reads model data or a temporary choice or pool candidate context. */
+/** 从模型数据或临时选择/候选上下文读取字段的值表达式。 */
 export interface FieldValueExpression {
-  /** Expression kind discriminator. */
+  /** 表达式类型判别字段。 */
   type: 'field'
-  /** Data scope to read; defaults to run data. */
+  /** 要读取的数据作用域；未声明时默认读取局内数据。 */
   scope?: ActionScope
-  /** Field path to read. */
+  /** 要读取的字段路径。 */
   path: string
 }
 
-/** Value expression that calculates a value from child values. */
+/** 根据子值执行算术计算的值表达式。 */
 export interface CalculateValueExpression {
-  /** Expression kind discriminator. */
+  /** 表达式类型判别字段。 */
   type: 'calculate'
-  /** Arithmetic operation to apply. */
+  /** 要执行的算术操作。 */
   operator: CalculateOperator
-  /** Input values. */
+  /** 输入值列表。 */
   values: ValueExpression[]
 }
 
-/** Value expression that produces a random number. */
+/** 生成随机数的值表达式。 */
 export interface RandomValueExpression {
-  /** Expression kind discriminator. */
+  /** 表达式类型判别字段。 */
   type: 'random'
-  /** Minimum random value. */
+  /** 随机数最小值。 */
   min: number
-  /** Maximum random value. */
+  /** 随机数最大值。 */
   max: number
-  /** Whether the result should be an integer. */
+  /** 结果是否应为整数。 */
   integer?: boolean
 }
 
-/** Value expression that returns an aggregate over selected effects or events. */
+/** 返回选中效果或事件集合聚合结果的值表达式。 */
 export interface AggregateValueExpression {
-  /** Expression kind discriminator. */
+  /** 表达式类型判别字段。 */
   type: 'aggregate_value'
-  /** Selector that chooses effects or events. */
+  /** 选择效果或事件的 Selector。 */
   selector: Selector
-  /** Aggregate operation to evaluate. */
+  /** 要计算的聚合操作。 */
   aggregate: AggregateFunction
-  /** Field path used by non-count aggregates. */
+  /** 非 count 聚合使用的字段路径。 */
   field?: string
 }
 
-/** Per-turn run snapshot container. */
+/** 每回合局内快照容器。 */
 export interface RunSnapshotStore {
-  /** Player save identifier. */
+  /** 玩家存档标识。 */
   saveId: string
-  /** Current run data. */
+  /** 当前局内数据。 */
   currentRun: GameModelData
-  /** End-of-turn snapshots. */
+  /** 回合结束时保存的快照列表。 */
   turnSnapshots: TurnSnapshot[]
 }
 
-/** Complete run data captured at the end of a turn. */
+/** 回合结束时捕获的完整局内数据快照。 */
 export interface TurnSnapshot {
-  /** Snapshot turn number. */
+  /** 快照对应的回合数。 */
   turn: number
-  /** Full run data at the end of the turn. */
+  /** 回合结束时的完整局内数据。 */
   data: GameModelData
 }

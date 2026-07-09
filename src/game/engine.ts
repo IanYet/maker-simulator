@@ -20,27 +20,47 @@ import {
   type SelectionContext,
 } from './rules'
 
+/** 单个玩家存档下的完整游戏会话。 */
 export interface GameSession {
+  /** 玩家存档唯一标识。 */
   saveId: string
+  /** 只读默认内容数据。 */
   defaultData: GameModelData
+  /** 可跨局保留的玩家存档数据。 */
   saveData: GameModelData
+  /** 当前进行中的局内数据和快照；没有进行中局时为 null。 */
   runStore: RunSnapshotStore | null
 }
 
+/** 玩家向选择节点提交的单个选项。 */
 export interface ChoiceSelection {
+  /** 被提交的选项 ID。 */
   choiceId: string
+  /** 数量选择模式下提交的数量。 */
   quantity?: number
 }
 
+/** 数量选择项在当前上下文中的可选边界。 */
 export interface QuantityBounds {
+  /** 可提交的最小数量。 */
   min: number
+  /** 可提交的最大数量。 */
   max: number
+  /** 可提交数量的步长。 */
   step: number
+  /** UI 初始展示的默认数量。 */
   defaultValue: number
 }
 
+/** 单次进入事件时允许自动连续跳转的节点上限。 */
 const automaticNodeLimit = 1000
 
+/**
+ * 根据默认内容创建新的玩家存档数据。
+ *
+ * @param defaultData - 校验通过的默认内容数据。
+ * @returns 可持久化的玩家存档数据副本。
+ */
 export function createSaveData(defaultData: GameModelData): GameModelData {
   const saveData = structuredClone(defaultData)
   saveData.meta.kind = 'save'
@@ -51,6 +71,15 @@ export function createSaveData(defaultData: GameModelData): GameModelData {
   return saveData
 }
 
+/**
+ * 创建一个隔离的数据会话，避免 UI 直接持有外部可变引用。
+ *
+ * @param saveId - 玩家存档唯一标识。
+ * @param defaultData - 默认内容数据。
+ * @param saveData - 玩家存档数据。
+ * @param runStore - 可选的局内数据和快照容器。
+ * @returns 可供 UI 和引擎命令使用的会话对象。
+ */
 export function createSession(
   saveId: string,
   defaultData: GameModelData,
@@ -65,6 +94,12 @@ export function createSession(
   }
 }
 
+/**
+ * 深拷贝会话中的可变数据。
+ *
+ * @param session - 原始会话。
+ * @returns 复制后的会话。
+ */
 function cloneSession(session: GameSession): GameSession {
   return {
     saveId: session.saveId,
@@ -74,6 +109,14 @@ function cloneSession(session: GameSession): GameSession {
   }
 }
 
+/**
+ * 为规则执行创建上下文。
+ *
+ * @param session - 当前游戏会话。
+ * @param currentEventId - 可选的当前事件 ID。
+ * @returns 包含默认、存档和局内数据的规则上下文。
+ * @throws {RuleError} 当当前没有进行中局时抛出。
+ */
 function contextFor(session: GameSession, currentEventId?: string): RuleContext {
   if (!session.runStore) throw new RuleError('run', '当前没有进行中的局')
   return {
@@ -84,6 +127,14 @@ function contextFor(session: GameSession, currentEventId?: string): RuleContext 
   }
 }
 
+/**
+ * 开始一局新游戏，并自动推进到需要玩家输入或下一回合阶段。
+ *
+ * @param session - 当前游戏会话。
+ * @param seed - 可选的固定随机种子，主要用于可复现调试。
+ * @returns 启动新局后的会话副本。
+ * @throws {RuleError} 当已有进行中局时抛出。
+ */
 export function startRun(session: GameSession, seed = createSeed()): GameSession {
   if (session.runStore) throw new RuleError('startRun', '已有进行中的局')
   const next = cloneSession(session)
@@ -103,6 +154,14 @@ export function startRun(session: GameSession, seed = createSeed()): GameSession
   return next
 }
 
+/**
+ * 启动一个已出现且需要手动处理的事件。
+ *
+ * @param session - 当前游戏会话。
+ * @param eventId - 要启动的事件 ID。
+ * @returns 处理事件启动后的会话副本。
+ * @throws {RuleError} 当事件不存在或当前不能启动时抛出。
+ */
 export function startEvent(session: GameSession, eventId: string): GameSession {
   const next = cloneSession(session)
   const context = contextFor(next, eventId)
@@ -116,6 +175,14 @@ export function startEvent(session: GameSession, eventId: string): GameSession {
   return next
 }
 
+/**
+ * 继续处理当前处于文本、动作文本或可确认结果节点的事件。
+ *
+ * @param session - 当前游戏会话。
+ * @param eventId - 要继续处理的事件 ID。
+ * @returns 继续事件后的会话副本。
+ * @throws {RuleError} 当当前节点不能继续或缺少后续节点时抛出。
+ */
 export function continueEvent(session: GameSession, eventId: string): GameSession {
   const next = cloneSession(session)
   const context = contextFor(next, eventId)
@@ -136,6 +203,16 @@ export function continueEvent(session: GameSession, eventId: string): GameSessio
   return next
 }
 
+/**
+ * 向当前选择节点提交玩家选择。
+ *
+ * @param session - 当前游戏会话。
+ * @param eventId - 选择节点所属事件 ID。
+ * @param nodeId - 目标选择节点 ID。
+ * @param selections - 玩家提交的选项列表。
+ * @returns 执行选择动作后的会话副本。
+ * @throws {RuleError} 当选择不可用、数量非法或节点配置不完整时抛出。
+ */
 export function submitChoice(
   session: GameSession,
   eventId: string,
@@ -191,6 +268,13 @@ export function submitChoice(
   return next
 }
 
+/**
+ * 在所有必要事件处理完成后进入下一回合。
+ *
+ * @param session - 当前游戏会话。
+ * @returns 进入下一回合并自动推进后的会话副本。
+ * @throws {RuleError} 当当前阶段不允许进入下一回合或仍有待处理事件时抛出。
+ */
 export function nextTurn(session: GameSession): GameSession {
   const next = cloneSession(session)
   const context = contextFor(next)
@@ -204,12 +288,24 @@ export function nextTurn(session: GameSession): GameSession {
   return next
 }
 
+/**
+ * 放弃当前进行中的局，保留玩家存档数据。
+ *
+ * @param session - 当前游戏会话。
+ * @returns 清空局内数据后的会话副本。
+ */
 export function abandonRun(session: GameSession): GameSession {
   const next = cloneSession(session)
   next.runStore = null
   return next
 }
 
+/**
+ * 执行事件启动时机规则并进入入口节点。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param event - 要启动的事件。
+ */
 function beginEvent(context: RuleContext, event: GameEvent) {
   context.currentEventId = event.id
   runTiming(context, 'event_start')
@@ -217,6 +313,17 @@ function beginEvent(context: RuleContext, event: GameEvent) {
   enterNode(context, event, event.entryNode)
 }
 
+/**
+ * 进入指定事件节点，并自动推进所有不需要玩家输入的后续节点。
+ *
+ * 该函数会在每次进入节点时写入 `currentNode`，触发 `event_node` 时机规则，
+ * 然后根据节点类型决定暂停等待玩家输入或继续自动跳转。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param event - 正在处理的事件。
+ * @param nodeId - 要进入的起始节点 ID。
+ * @throws {RuleError} 当节点不存在、自动跳转超限或节点配置无法继续时抛出。
+ */
 function enterNode(context: RuleContext, event: GameEvent, nodeId: string) {
   let targetId: string | null = nodeId
   let routedTargetId: string | null = null
@@ -276,6 +383,19 @@ function enterNode(context: RuleContext, event: GameEvent, nodeId: string) {
   }
 }
 
+/**
+ * 根据 `check` 节点的候选列表解析实际后续节点。
+ *
+ * 解析过程按 `nexts` 声明顺序执行：先检查候选节点的 `conditions`，再执行候选
+ * 节点的 `chance` 判定。第一个同时通过条件与概率的候选节点会被选中。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param event - `check` 节点所属事件。
+ * @param node - 正在解析的 `check` 节点。
+ * @param path - 用于错误定位的模型路径。
+ * @returns 通过判定的候选节点 ID。
+ * @throws {RuleError} 当候选节点不存在或没有候选节点通过判定时抛出。
+ */
 function resolveCheckNext(
   context: RuleContext,
   event: GameEvent,
@@ -299,6 +419,12 @@ function resolveCheckNext(
   throw new RuleError(`${path}.nexts`, '没有候选节点通过条件与概率判定')
 }
 
+/**
+ * 自动推进局内阶段，直到需要玩家输入或达到下一回合入口。
+ *
+ * @param session - 当前游戏会话。
+ * @throws {RuleError} 当阶段不存在或自动推进超过限制时抛出。
+ */
 function advanceRun(session: GameSession) {
   const context = contextFor(session)
   let phases = 0
@@ -361,6 +487,11 @@ function advanceRun(session: GameSession) {
   throw new RuleError('meta.step', '回合阶段自动推进超过限制')
 }
 
+/**
+ * 在回合结束阶段记录完整局内快照。
+ *
+ * @param session - 当前游戏会话。
+ */
 function appendSnapshot(session: GameSession) {
   if (!session.runStore) return
   const snapshot: TurnSnapshot = {
@@ -372,6 +503,12 @@ function appendSnapshot(session: GameSession) {
   else session.runStore.turnSnapshots.push(snapshot)
 }
 
+/**
+ * 结算已获得效果的持续时间。
+ *
+ * @param runData - 当前局内数据。
+ * @throws {RuleError} 当回合持续效果缺少剩余回合数时抛出。
+ */
 function settleDurations(runData: GameModelData) {
   runData.effects.forEach((effect) => {
     if (!effect.acquired || !effect.duration) return
@@ -390,6 +527,12 @@ function settleDurations(runData: GameModelData) {
   })
 }
 
+/**
+ * 结算等待中的事件和事件级超时。
+ *
+ * @param context - 当前规则执行上下文。
+ * @throws {RuleError} 当事件超时但缺少超时节点时抛出。
+ */
 function settleWaitingEvents(context: RuleContext) {
   context.runData.events.forEach((event) => {
     if (!event.currentNode) return
@@ -418,6 +561,11 @@ function settleWaitingEvents(context: RuleContext) {
   })
 }
 
+/**
+ * 将事件标记为完成并移出当前事件流。
+ *
+ * @param event - 要完成的事件。
+ */
 function completeEvent(event: GameEvent) {
   event.occurrences += 1
   event.completed = true
@@ -425,12 +573,28 @@ function completeEvent(event: GameEvent) {
   event.currentNode = null
 }
 
+/**
+ * 按 ID 查找局内事件。
+ *
+ * @param runData - 当前局内数据。
+ * @param eventId - 要查找的事件 ID。
+ * @param path - 错误定位路径。
+ * @returns 找到的事件。
+ * @throws {RuleError} 当事件不存在时抛出。
+ */
 function findEvent(runData: GameModelData, eventId: string, path: string): GameEvent {
   const event = runData.events.find((item) => item.id === eventId)
   if (!event) throw new RuleError(path, `事件 ${eventId} 不存在`)
   return event
 }
 
+/**
+ * 读取事件当前激活的节点。
+ *
+ * @param event - 要读取的事件。
+ * @returns 当前节点。
+ * @throws {RuleError} 当事件未激活或节点不存在时抛出。
+ */
 function currentNode(event: GameEvent): EventNode {
   if (!event.currentNode) throw new RuleError(`events.${event.id}`, '事件尚未激活')
   const node = event.nodes.find((item) => item.id === event.currentNode)
@@ -438,6 +602,12 @@ function currentNode(event: GameEvent): EventNode {
   return node
 }
 
+/**
+ * 判断事件节点是否需要玩家输入才能继续。
+ *
+ * @param node - 要判断的事件节点。
+ * @returns 需要玩家操作时返回 true。
+ */
 function nodeNeedsInput(node: EventNode): boolean {
   return node.type === 'text'
     || node.type === 'choice'
@@ -445,6 +615,12 @@ function nodeNeedsInput(node: EventNode): boolean {
     || (node.type === 'action' && Boolean(node.text))
 }
 
+/**
+ * 返回当前所有正在等待玩家输入的事件。
+ *
+ * @param runData - 当前局内数据。
+ * @returns 需要玩家交互的事件列表。
+ */
 export function activeInteractiveEvents(runData: GameModelData): GameEvent[] {
   return runData.events.filter((event) => {
     if (!event.currentNode) return false
@@ -453,10 +629,22 @@ export function activeInteractiveEvents(runData: GameModelData): GameEvent[] {
   })
 }
 
+/**
+ * 判断当前局内是否存在必须先处理的玩家交互。
+ *
+ * @param runData - 当前局内数据。
+ * @returns 存在必需交互时返回 true。
+ */
 function hasRequiredInteraction(runData: GameModelData): boolean {
   return activeInteractiveEvents(runData).length > 0
 }
 
+/**
+ * 返回已经出现但尚未手动启动的事件。
+ *
+ * @param runData - 当前局内数据。
+ * @returns 待玩家启动的手动事件列表。
+ */
 export function pendingManualEvents(runData: GameModelData): GameEvent[] {
   return runData.events.filter((event) =>
     event.appeared
@@ -466,12 +654,27 @@ export function pendingManualEvents(runData: GameModelData): GameEvent[] {
   )
 }
 
+/**
+ * 根据选择条件过滤当前可用选项。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param node - 选择节点。
+ * @param path - 错误定位路径。
+ * @returns 当前可提交的选项列表。
+ */
 function availableChoices(context: RuleContext, node: ChoiceNode, path: string): Choice[] {
   return node.choices.filter((choice, index) =>
     evaluateConditions(context, choice.conditions ?? [], `${path}.choices[${index}].conditions`),
   )
 }
 
+/**
+ * 获取指定事件当前选择节点的可用选项。
+ *
+ * @param session - 当前游戏会话。
+ * @param eventId - 目标事件 ID。
+ * @returns 当前可用选项列表；当前节点不是选择节点时返回空数组。
+ */
 export function getAvailableChoices(session: GameSession, eventId: string): Choice[] {
   const copy = cloneSession(session)
   const context = contextFor(copy, eventId)
@@ -481,6 +684,15 @@ export function getAvailableChoices(session: GameSession, eventId: string): Choi
   return availableChoices(context, node, `events.${eventId}.nodes.${node.id}`)
 }
 
+/**
+ * 解析数量选项在当前上下文中的上下界。
+ *
+ * @param session - 当前游戏会话。
+ * @param eventId - 目标事件 ID。
+ * @param choiceId - 数量选项 ID。
+ * @returns 可提交数量的上下界、步长和默认值。
+ * @throws {RuleError} 当当前节点不是数量选择节点或选项缺少配置时抛出。
+ */
 export function getQuantityBounds(session: GameSession, eventId: string, choiceId: string): QuantityBounds {
   const copy = cloneSession(session)
   const context = contextFor(copy, eventId)
@@ -492,6 +704,15 @@ export function getQuantityBounds(session: GameSession, eventId: string, choiceI
   return resolveQuantityBounds(context, choice, `events.${eventId}.nodes.${node.id}.choices.${choice.id}`)
 }
 
+/**
+ * 计算单个数量选项的上下界。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param choice - 需要解析的选项。
+ * @param path - 错误定位路径。
+ * @returns 解析后的数量边界。
+ * @throws {RuleError} 当边界表达式不是有限数值或配置非法时抛出。
+ */
 function resolveQuantityBounds(context: RuleContext, choice: Choice, path: string): QuantityBounds {
   if (!choice.quantity) throw new RuleError(path, '选项缺少数量配置')
   const min = resolveValue(context, choice.quantity.min, `${path}.quantity.min`)
@@ -510,6 +731,15 @@ function resolveQuantityBounds(context: RuleContext, choice: Choice, path: strin
   }
 }
 
+/**
+ * 校验玩家提交的数量是否符合选项边界。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param choice - 被提交的选项。
+ * @param selection - 玩家提交的数据。
+ * @param path - 错误定位路径。
+ * @throws {RuleError} 当数量缺失、越界或不符合步长时抛出。
+ */
 function validateQuantity(context: RuleContext, choice: Choice, selection: ChoiceSelection, path: string) {
   const quantity = selection.quantity
   if (typeof quantity !== 'number' || !Number.isFinite(quantity)) throw new RuleError(path, '提交数量无效')
@@ -520,6 +750,15 @@ function validateQuantity(context: RuleContext, choice: Choice, selection: Choic
   }
 }
 
+/**
+ * 校验选择节点提交的选项数量。
+ *
+ * @param node - 当前选择节点。
+ * @param count - 玩家提交的选项数量。
+ * @param availableCount - 当前可用选项数量。
+ * @param eventId - 选择节点所属事件 ID。
+ * @throws {RuleError} 当提交数量不在允许范围内时抛出。
+ */
 function validateSelectionCount(node: ChoiceNode, count: number, availableCount: number, eventId: string) {
   const min = node.minSelections ?? 0
   const max = node.maxSelections ?? availableCount
@@ -528,6 +767,14 @@ function validateSelectionCount(node: ChoiceNode, count: number, availableCount:
   }
 }
 
+/**
+ * 在选择上下文中执行选项动作。
+ *
+ * @param context - 当前规则执行上下文。
+ * @param choice - 被执行动作的选项。
+ * @param selection - 玩家提交的数据。
+ * @param path - 错误定位路径。
+ */
 function runChoiceActions(context: RuleContext, choice: Choice, selection: ChoiceSelection, path: string) {
   const selectionContext: SelectionContext = {
     choiceId: choice.id,
@@ -536,6 +783,13 @@ function runChoiceActions(context: RuleContext, choice: Choice, selection: Choic
   executeActions({ ...context, selection: selectionContext }, choice.actions ?? [], `${path}.actions`)
 }
 
+/**
+ * 穷尽性检查辅助函数。
+ *
+ * @param value - TypeScript 推断出的未处理分支。
+ * @returns 永不返回。
+ * @throws {Error} 始终抛出未处理节点错误。
+ */
 function assertNever(value: never): never {
   throw new Error(`未处理的节点：${JSON.stringify(value)}`)
 }

@@ -3,20 +3,38 @@ import { CharacterPanel } from './CharacterPanel'
 import { EffectPanel } from './EffectPanel'
 import { EventPanel } from './EventPanel'
 
+/** 游戏主界面组件参数。 */
 interface GameScreenProps {
+  /** 当前游戏会话。 */
   session: GameSession
+  /** 当前玩家存档名称。 */
   saveName: string
+  /** 是否正在执行异步命令。 */
   busy: boolean
+  /** 最近一次命令错误信息。 */
   error: string | null
+  /** 开始新局回调。 */
   onStartRun: () => void
+  /** 手动启动事件回调。 */
   onStartEvent: (eventId: string) => void
+  /** 继续当前事件节点回调。 */
   onContinueEvent: (eventId: string) => void
+  /** 提交选择节点回调。 */
   onSubmitChoice: (eventId: string, nodeId: string, selections: ChoiceSelection[]) => void
+  /** 进入下一回合回调。 */
   onNextTurn: () => void
+  /** 放弃当前局回调。 */
   onAbandon: () => void
+  /** 返回存档列表回调。 */
   onBack: () => void
 }
 
+/**
+ * 组装游戏进行中界面。
+ *
+ * @param props - 游戏主界面组件参数。
+ * @returns 游戏主界面。
+ */
 export function GameScreen({
   session,
   saveName,

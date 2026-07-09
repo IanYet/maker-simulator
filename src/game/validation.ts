@@ -9,26 +9,39 @@ import type {
   ValueExpression,
 } from '../types'
 
+/** 内容校验过程中发现的问题。 */
 export interface ValidationIssue {
+  /** 问题所在的模型路径。 */
   path: string
+  /** 问题说明。 */
   message: string
 }
 
+/** 不阻止内容运行的校验警告。 */
 export type ValidationWarning = ValidationIssue
 
+/** 游戏模型运行时校验结果。 */
 export type ValidationResult =
   | {
+      /** 校验是否成功。 */
       success: true
+      /** 校验通过并收窄后的模型数据。 */
       data: GameModelData
+      /** 成功时错误列表固定为空。 */
       errors: []
+      /** 非阻塞警告列表。 */
       warnings: ValidationWarning[]
     }
   | {
+      /** 校验是否成功。 */
       success: false
+      /** 阻止内容运行的错误列表。 */
       errors: ValidationIssue[]
+      /** 非阻塞警告列表。 */
       warnings: ValidationWarning[]
     }
 
+/** 运行时模型校验支持的条件类型集合。 */
 const conditionTypes = new Set([
   'attribute',
   'effect',
@@ -39,6 +52,8 @@ const conditionTypes = new Set([
   'or',
   'not',
 ])
+
+/** 运行时模型校验支持的动作类型集合。 */
 const actionTypes = new Set([
   'modify_attribute',
   'modify_effect',
@@ -46,8 +61,14 @@ const actionTypes = new Set([
   'draw_pool',
   'create_choice',
 ])
+
+/** 运行时模型校验支持的值表达式类型集合。 */
 const expressionTypes = new Set(['field', 'calculate', 'random', 'aggregate_value'])
+
+/** 运行时模型校验支持的事件节点类型集合。 */
 const nodeTypes = new Set(['text', 'choice', 'check', 'action', 'wait', 'result'])
+
+/** 运行时模型校验支持的比较操作符集合。 */
 const comparisonOperators = new Set([
   '==',
   '!=',
@@ -58,8 +79,14 @@ const comparisonOperators = new Set([
   'contains',
   'not_contains',
 ])
+
+/** 运行时模型校验支持的动作修改模式集合。 */
 const actionModes = new Set(['set', 'add', 'multiply', 'min', 'max'])
+
+/** 运行时模型校验支持的数据作用域集合。 */
 const scopes = new Set(['run', 'save', 'default'])
+
+/** 运行时模型校验支持的触发时机集合。 */
 const timings = new Set([
   'turn_start',
   'event_appear',
@@ -69,30 +96,80 @@ const timings = new Set([
   'turn_end',
 ])
 
+/**
+ * 判断值是否为普通对象。
+ *
+ * @param value - 待判断的值。
+ * @returns 值为非数组对象时返回 true。
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * 判断值是否为有限数值。
+ *
+ * @param value - 待判断的值。
+ * @returns 值为有限 number 时返回 true。
+ */
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+/**
+ * 判断值是否为模型支持的 JSON 基础值。
+ *
+ * @param value - 待判断的值。
+ * @returns 值为字符串、有限数值、布尔值或 null 时返回 true。
+ */
 function isJsonPrimitive(value: unknown): value is string | number | boolean | null {
   return value === null || typeof value === 'string' || typeof value === 'boolean' || isFiniteNumber(value)
 }
 
+/**
+ * 判断值是否为非负整数。
+ *
+ * @param value - 待判断的值。
+ * @returns 值为大于等于 0 的整数时返回 true。
+ */
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0
 }
 
+/**
+ * 判断值是否为字符串数组。
+ *
+ * @param value - 待判断的值。
+ * @returns 值为字符串数组时返回 true。
+ */
 function hasStrings(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
 }
 
+/**
+ * 校验未知输入是否符合游戏模型数据结构。
+ *
+ * @param raw - 从 JSON 解析得到的未知数据。
+ * @returns 成功时返回收窄后的模型数据；失败时返回错误列表。
+ */
 export function validateGameModelData(raw: unknown): ValidationResult {
   const errors: ValidationIssue[] = []
   const warnings: ValidationWarning[] = []
+
+  /**
+   * 记录阻塞模型运行的校验错误。
+   *
+   * @param path - 错误所在模型路径。
+   * @param message - 错误说明。
+   */
   const fail = (path: string, message: string) => errors.push({ path, message })
+
+  /**
+   * 记录不阻塞模型运行的校验警告。
+   *
+   * @param path - 警告所在模型路径。
+   * @param message - 警告说明。
+   */
   const warn = (path: string, message: string) => warnings.push({ path, message })
 
   if (!isRecord(raw)) {
@@ -217,6 +294,11 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     ? { success: false, errors, warnings }
     : { success: true, data, errors: [], warnings }
 
+  /**
+   * 校验模型元信息。
+   *
+   * @param model - 当前模型数据。
+   */
   function validateMeta(model: GameModelData) {
     requiredString(model.meta.id, 'meta.id')
     requiredString(model.meta.version, 'meta.version')
@@ -229,6 +311,11 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验角色和属性表结构。
+   *
+   * @param model - 当前模型数据。
+   */
   function validateCharacter(model: GameModelData) {
     requiredString(model.character.id, 'character.id')
     if (!isRecord(model.character.attributes)) {
@@ -269,6 +356,13 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     })
   }
 
+  /**
+   * 校验数组实体 ID 并收集唯一 ID 集合。
+   *
+   * @param items - 待校验的实体数组。
+   * @param path - 数组所在模型路径。
+   * @returns 校验通过的唯一 ID 集合。
+   */
   function uniqueIds(items: unknown[], path: string): Set<string> {
     const ids = new Set<string>()
     items.forEach((item, index) => {
@@ -284,10 +378,22 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     return ids
   }
 
+  /**
+   * 校验字段是否为非空字符串。
+   *
+   * @param value - 待校验的值。
+   * @param path - 字段所在模型路径。
+   */
   function requiredString(value: unknown, path: string) {
     if (typeof value !== 'string' || value.length === 0) fail(path, '必须是非空字符串')
   }
 
+  /**
+   * 校验事件或效果的出现规则。
+   *
+   * @param value - 待校验的出现规则。
+   * @param path - 规则所在模型路径。
+   */
   function validateAppear(value: unknown, path: string) {
     if (!isRecord(value)) {
       fail(path, '必须是对象')
@@ -299,6 +405,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验条件数组。
+   *
+   * @param value - 待校验的条件数组。
+   * @param path - 条件数组所在模型路径。
+   */
   function validateConditions(value: unknown, path: string) {
     if (!Array.isArray(value)) {
       fail(path, '必须是数组')
@@ -307,6 +419,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     value.forEach((condition, index) => validateCondition(condition, `${path}[${index}]`))
   }
 
+  /**
+   * 校验单个条件结构。
+   *
+   * @param value - 待校验的条件。
+   * @param path - 条件所在模型路径。
+   */
   function validateCondition(value: unknown, path: string) {
     if (!isRecord(value) || typeof value.type !== 'string' || !conditionTypes.has(value.type)) {
       fail(`${path}.type`, '未知的条件类型')
@@ -339,6 +457,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验 Selector 结构和效果分类引用。
+   *
+   * @param value - 待校验的 Selector。
+   * @param path - Selector 所在模型路径。
+   */
   function validateSelector(value: unknown, path: string) {
     if (!isRecord(value) || !new Set(['effect', 'event']).has(String(value.target))) {
       fail(`${path}.target`, '选择器目标必须是 effect 或 event')
@@ -371,6 +495,14 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验值表达式结构。
+   *
+   * 静态 JSON 值不需要额外校验，只有带受支持 `type` 的对象会按表达式处理。
+   *
+   * @param value - 待校验的值或表达式。
+   * @param path - 值所在模型路径。
+   */
   function validateExpression(value: unknown, path: string) {
     if (!isRecord(value) || typeof value.type !== 'string' || !expressionTypes.has(value.type)) return
     const expression = value as unknown as ValueExpression
@@ -406,6 +538,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验动作数组。
+   *
+   * @param value - 待校验的动作数组。
+   * @param path - 动作数组所在模型路径。
+   */
   function validateActions(value: unknown, path: string) {
     if (!Array.isArray(value)) {
       fail(path, '必须是数组')
@@ -414,6 +552,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     value.forEach((action, index) => validateAction(action, `${path}[${index}]`))
   }
 
+  /**
+   * 校验单个动作结构。
+   *
+   * @param value - 待校验的动作。
+   * @param path - 动作所在模型路径。
+   */
   function validateAction(value: unknown, path: string) {
     if (!isRecord(value) || typeof value.type !== 'string' || !actionTypes.has(value.type)) {
       fail(`${path}.type`, '未知的动作类型')
@@ -449,6 +593,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验单个事件及其节点图结构。
+   *
+   * @param event - 待校验的事件。
+   * @param index - 事件在 events 数组中的下标。
+   */
   function validateEvent(event: GameEvent, index: number) {
     const path = `events[${index}]`
     if (!isRecord(event)) {
@@ -480,6 +630,16 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     warnUnreachableNodes(event, path, nodeIds)
   }
 
+  /**
+   * 校验事件节点的结构和静态节点引用。
+   *
+   * 对 `check` 节点会额外限制其只能声明 `nexts` 路由候选，避免旧版
+   * `success` / `failure` / `chance` 字段继续进入模型。
+   *
+   * @param node - 待校验的事件节点。
+   * @param path - 用于错误定位的模型路径。
+   * @param nodeIds - 当前事件内全部合法节点 ID。
+   */
   function validateNode(node: EventNode, path: string, nodeIds: Set<string>) {
     if (!isRecord(node) || typeof node.type !== 'string' || !nodeTypes.has(node.type)) {
       fail(`${path}.type`, '未知的节点类型')
@@ -525,6 +685,13 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 校验选择节点中的单个选项。
+   *
+   * @param choice - 待校验的选项。
+   * @param path - 选项所在模型路径。
+   * @param nodeIds - 当前事件内全部合法节点 ID。
+   */
   function validateChoice(choice: Choice, path: string, nodeIds: Set<string>) {
     requiredString(choice.text, `${path}.text`)
     if (choice.conditions !== undefined) validateConditions(choice.conditions, `${path}.conditions`)
@@ -537,8 +704,21 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     }
   }
 
+  /**
+   * 从入口节点遍历事件图，并对不可达节点产生警告。
+   *
+   * @param event - 待检查的事件。
+   * @param path - 事件所在模型路径。
+   * @param nodeIds - 当前事件内全部合法节点 ID。
+   */
   function warnUnreachableNodes(event: GameEvent, path: string, nodeIds: Set<string>) {
     const visited = new Set<string>()
+
+    /**
+     * 递归标记从指定节点可达的所有后续节点。
+     *
+     * @param id - 当前访问的节点 ID。
+     */
     const visit = (id: string) => {
       if (visited.has(id)) return
       visited.add(id)
@@ -557,7 +737,16 @@ export function validateGameModelData(raw: unknown): ValidationResult {
     })
   }
 
+  /**
+   * 校验跨区域的静态引用关系。
+   */
   function validateStaticReferences() {
+    /**
+     * 递归检查条件中引用的属性、效果和事件是否存在。
+     *
+     * @param condition - 待检查的条件。
+     * @param path - 条件所在模型路径。
+     */
     const walkCondition = (condition: Condition, path: string) => {
       if (condition.type === 'and' || condition.type === 'or' || condition.type === 'not') {
         condition.conditions.forEach((item, index) => walkCondition(item, `${path}.conditions[${index}]`))
@@ -569,6 +758,12 @@ export function validateGameModelData(raw: unknown): ValidationResult {
         fail(`${path}.eventId`, '引用了不存在的事件')
       }
     }
+    /**
+     * 递归检查动作中引用的属性、效果、事件和候选池是否存在。
+     *
+     * @param action - 待检查的动作。
+     * @param path - 动作所在模型路径。
+     */
     const walkAction = (action: Action, path: string) => {
       if (action.type === 'modify_attribute' && !attributeIds.has(action.attribute)) {
         fail(`${path}.attribute`, '引用了不存在的属性')
@@ -588,6 +783,13 @@ export function validateGameModelData(raw: unknown): ValidationResult {
         fail(`${path}.effectId`, '引用了不存在的效果')
       }
     }
+    /**
+     * 检查同一区域下可选的条件和动作列表。
+     *
+     * @param conditions - 可选条件列表。
+     * @param actions - 可选动作列表。
+     * @param path - 区域所在模型路径。
+     */
     const inspect = (conditions: Condition[] | undefined, actions: Action[] | undefined, path: string) => {
       conditions?.forEach((item, index) => walkCondition(item, `${path}.conditions[${index}]`))
       actions?.forEach((item, index) => walkAction(item, `${path}.actions[${index}]`))

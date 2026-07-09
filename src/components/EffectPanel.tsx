@@ -1,10 +1,21 @@
 import type { Effect, EffectKindDefinition } from '../types'
 
+/** 效果状态面板组件参数。 */
 interface EffectPanelProps {
+  /** 当前局内全部效果状态。 */
   effects: Effect[]
+  /** 内容配置声明的效果类型列表。 */
   effectKinds: EffectKindDefinition[]
 }
 
+/**
+ * 展示完整效果列表和已获取状态。
+ *
+ * @param props - 效果状态面板组件参数。
+ * @param props.effects - 当前局内全部效果状态。
+ * @param props.effectKinds - 内容配置声明的效果类型列表。
+ * @returns 效果状态面板。
+ */
 export function EffectPanel({ effects, effectKinds }: EffectPanelProps) {
   const kindLabels = new Map(effectKinds.map((kind) => [kind.id, kind.displayName]))
 
