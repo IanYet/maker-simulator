@@ -1,0 +1,583 @@
+{
+  "meta": {
+    "id": "demo2_frozen_world",
+    "version": "1.0.0",
+    "turn": 0,
+    "seed": "demo2_frozen_world_seed",
+    "kind": "default"
+  },
+  "character": {
+    "id": "global_state",
+    "attributes": {
+      "health": {
+        "displayName": "生命值",
+        "enabled": true,
+        "value": 100,
+        "min": 0,
+        "max": 100
+      },
+      "willpower": {
+        "displayName": "意志力",
+        "enabled": true,
+        "value": 100,
+        "min": 0,
+        "max": 100
+      },
+      "balance": {
+        "displayName": "余额",
+        "enabled": true,
+        "value": 50000,
+        "min": 0
+      },
+      "temperature": {
+        "displayName": "温度",
+        "enabled": true,
+        "value": 35,
+        "min": -100,
+        "max": 100
+      },
+      "location": {
+        "displayName": "地点",
+        "enabled": true,
+        "value": "杭州市"
+      }
+    }
+  },
+  "effectKinds": [
+    {
+      "id": "system",
+      "displayName": "系统"
+    }
+  ],
+  "effects": [
+    {
+      "id": "daily_event_scheduler",
+      "name": "每日事件调度",
+      "description": "每回合从每日事件池中抽取所有当前可以显示的事件。",
+      "kind": "system",
+      "unlocked": true,
+      "appeared": true,
+      "acquired": true,
+      "level": 1,
+      "stacks": 1,
+      "value": 0,
+      "tags": [
+        "system",
+        "event_scheduler"
+      ],
+      "appear": {
+        "conditions": [],
+        "chance": 0
+      },
+      "duration": {
+        "type": "permanent",
+        "remaining": null
+      },
+      "triggers": [
+        {
+          "timing": "event_appear",
+          "conditions": [],
+          "actions": [
+            {
+              "type": "draw_pool",
+              "poolId": "daily_events",
+              "onDraw": [
+                {
+                  "type": "modify_event",
+                  "eventId": "$drewId",
+                  "field": "appeared",
+                  "mode": "set",
+                  "value": true
+                }
+              ],
+              "onEmpty": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "effectCombos": [],
+  "pools": [
+    {
+      "id": "daily_events",
+      "selector": {
+        "target": "event"
+      },
+      "count": {
+        "type": "aggregate_value",
+        "selector": {
+          "target": "event"
+        },
+        "aggregate": "count"
+      },
+      "unique": true,
+      "weight": 1
+    }
+  ],
+  "events": [
+    {
+      "id": "day_0_frozen_dream",
+      "name": "盛夏冻梦",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "foreground",
+      "startMode": "auto",
+      "repeatable": false,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "frozen_dream",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "day": 0
+      },
+      "appear": {
+        "conditions": [
+          {
+            "type": "turn",
+            "operator": "==",
+            "value": 0
+          }
+        ],
+        "chance": 1
+      },
+      "nodes": [
+        {
+          "id": "frozen_dream",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "盛夏的夜晚闷热得让人难以入睡，我却在辗转间坠入了一个异常清晰的梦。梦里，两天后的世界毫无征兆地陷入严寒：天空被铅灰色的云层压住，呼啸的风卷着冰屑掠过城市，街道、车辆和楼宇迅速冻结，熟悉的一切都被苍白的冰雪吞没。那股刺骨的寒意、玻璃冻裂的脆响，以及人们仓皇失措的呼喊，都真实得不像幻觉。\n\n我猛然惊醒时，窗外仍是盛夏，空调低声运转，后背却已被冷汗浸透。手机里的日期提醒我，明天原本要和女友启程去新疆旅游避暑。机票、酒店和行程早已安排妥当，她也期待这趟旅行很久了。按理说，那不过是一场荒诞的噩梦，可梦中每一个细节都清晰地留在脑海里，仿佛并非预兆，而是一段已经亲历过的记忆。\n\n距离梦中的冰河时代只剩两天。我坐在渐亮的晨光里，看着手机上的旅行计划，第一次对明天的出发产生了犹豫。",
+          "result": "background_introduced",
+          "actions": [],
+          "completeEvent": true
+        }
+      ]
+    },
+    {
+      "id": "hangzhou_train_station",
+      "name": "火车站",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "foreground",
+      "startMode": "manual",
+      "repeatable": true,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "choose_train",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "departure": "杭州市",
+        "destination": "家"
+      },
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "nodes": [
+        {
+          "id": "choose_train",
+          "type": "choice",
+          "visibility": "foreground",
+          "text": "火车站仍在正常运行。只要现在进站乘车，我就可以踏上回家的路。",
+          "mode": "single",
+          "choices": [
+            {
+              "id": "take_train_home",
+              "text": "乘火车回家",
+              "actions": [
+                {
+                  "type": "modify_attribute",
+                  "attribute": "location",
+                  "mode": "set",
+                  "value": "火车"
+                },
+                {
+                  "type": "modify_event",
+                  "eventId": "train_journey",
+                  "field": "appeared",
+                  "mode": "set",
+                  "value": true
+                }
+              ],
+              "next": "start_train_journey"
+            }
+          ]
+        },
+        {
+          "id": "start_train_journey",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "列车驶出站台，城市的热浪被甩在车窗后。我坐在靠窗的位置，看着轨道两侧的楼群逐渐后退，心里仍反复想着那个过于真实的梦。此刻我已经在火车上，接下来只能等待列车把我带回家。",
+          "result": "train_journey_started",
+          "actions": [],
+          "completeEvent": true
+        }
+      ]
+    },
+    {
+      "id": "train_journey",
+      "name": "火车旅途",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "foreground",
+      "startMode": "auto",
+      "repeatable": false,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "travel_by_train",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "duration_turns": 1,
+        "destination": "家"
+      },
+      "appear": {
+        "conditions": [],
+        "chance": 0
+      },
+      "nodes": [
+        {
+          "id": "travel_by_train",
+          "type": "wait",
+          "visibility": "foreground",
+          "text": "列车在铁轨上持续向前。车厢里最初还保持着旅行时的平静，有人低声打电话，有人翻看行李，也有人像我一样盯着窗外发呆。广播提示本段旅途还需要一些时间，我只能在座位上等待下一站到来。",
+          "remainingTurns": 1,
+          "endConditions": [],
+          "timeoutNode": "check_arrival_day",
+          "next": "check_arrival_day"
+        },
+        {
+          "id": "check_arrival_day",
+          "type": "check",
+          "visibility": "foreground",
+          "nexts": [
+            "arrive_home_by_train",
+            "trigger_trapped_on_train"
+          ]
+        },
+        {
+          "id": "arrive_home_by_train",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "经过一整天的颠簸，列车终于接近目的地。列车赶在真正的极寒席卷交通系统之前抵达。我拖着行李走下站台，刺眼的日光仍带着盛夏的余温。无论那个梦是否会成真，至少此刻我已经回到了家。",
+          "result": "arrived_home_by_train",
+          "conditions": [
+            {
+              "type": "turn",
+              "operator": "<=",
+              "value": 2
+            }
+          ],
+          "chance": 1,
+          "actions": [
+            {
+              "type": "modify_attribute",
+              "attribute": "location",
+              "mode": "set",
+              "value": "家"
+            }
+          ],
+          "completeEvent": true
+        },
+        {
+          "id": "trigger_trapped_on_train",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "列车没能按时抵达。广播一遍遍重复前方线路异常、全车原地等待的通知，窗外的景色开始被灰白色吞没。车厢里的温度明显下降，乘客们的交谈声逐渐变成压抑的骚动。我意识到，自己被困在了这趟火车上。",
+          "result": "trapped_on_train_triggered",
+          "chance": 1,
+          "actions": [
+            {
+              "type": "modify_event",
+              "eventId": "trapped_on_train",
+              "field": "appeared",
+              "mode": "set",
+              "value": true
+            }
+          ],
+          "completeEvent": true
+        }
+      ]
+    },
+    {
+      "id": "trapped_on_train",
+      "name": "被困车中",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "foreground",
+      "startMode": "auto",
+      "repeatable": false,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "cold_train_carriage",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "location_detail": "停运列车",
+        "risk": "low_temperature"
+      },
+      "appear": {
+        "conditions": [],
+        "chance": 0
+      },
+      "nodes": [
+        {
+          "id": "cold_train_carriage",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "列车停在不知名的区间里，车窗外的世界像被突然抽走了所有颜色。远处的电线结着冰，铁轨边的杂草在寒风里迅速变白，车厢供暖开始断断续续。乘务员试图维持秩序，但没有人能给出恢复运行的时间。\n\n我把衣服裹紧，听见周围乘客不断刷新手机消息：道路封闭、机场停摆、多个城市气温暴跌。梦里的冰河时代已经追上了我，而我现在既不在家，也不在安全的地方，只被困在一节逐渐变冷的车厢里。",
+          "result": "trapped_on_train",
+          "actions": [
+            {
+              "type": "modify_attribute",
+              "attribute": "location",
+              "mode": "set",
+              "value": "火车"
+            },
+            {
+              "type": "modify_attribute",
+              "attribute": "willpower",
+              "mode": "add",
+              "value": -10
+            }
+          ],
+          "completeEvent": true
+        }
+      ]
+    },
+    {
+      "id": "hangzhou_airport",
+      "name": "飞机场",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "foreground",
+      "startMode": "manual",
+      "repeatable": true,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "check_flight_status",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "flight_day": 2,
+        "departure": "杭州市",
+        "destination": "新疆"
+      },
+      "appear": {
+        "conditions": [],
+        "chance": 1
+      },
+      "nodes": [
+        {
+          "id": "check_flight_status",
+          "type": "check",
+          "visibility": "foreground",
+          "nexts": [
+            "airport_options",
+            "flight_closed"
+          ]
+        },
+        {
+          "id": "airport_options",
+          "type": "choice",
+          "visibility": "foreground",
+          "text": "我来到机场查看飞往新疆的航班。机场大厅里人来人往，广播不断播报着航班信息。",
+          "conditions": [
+            {
+              "type": "turn",
+              "operator": "<=",
+              "value": 2
+            }
+          ],
+          "chance": 1,
+          "mode": "single",
+          "choices": [
+            {
+              "id": "fly_to_xinjiang",
+              "text": "搭乘航班前往新疆",
+              "conditions": [
+                {
+                  "type": "turn",
+                  "operator": "==",
+                  "value": 2
+                }
+              ],
+              "actions": [
+                {
+                  "type": "modify_attribute",
+                  "attribute": "location",
+                  "mode": "set",
+                  "value": "新疆"
+                }
+              ],
+              "next": "arrive_xinjiang"
+            },
+            {
+              "id": "leave_airport",
+              "text": "暂不出发，离开机场",
+              "actions": [],
+              "next": "left_airport"
+            }
+          ]
+        },
+        {
+          "id": "arrive_xinjiang",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "飞机离开杭州，按原定航线飞往新疆。",
+          "result": "arrived_xinjiang",
+          "actions": [],
+          "completeEvent": true
+        },
+        {
+          "id": "left_airport",
+          "type": "result",
+          "visibility": "foreground",
+          "text": "我没有登机，转身离开了机场。",
+          "result": "left_airport",
+          "actions": [],
+          "completeEvent": true
+        },
+        {
+          "id": "flight_closed",
+          "type": "result",
+          "visibility": "background",
+          "text": "Day 2 已经过去，飞往新疆的航班现已关闭，我无法再按原计划启程。",
+          "result": "flight_missed",
+          "chance": 1,
+          "actions": [],
+          "completeEvent": true
+        }
+      ]
+    },
+    {
+      "id": "day_3_temperature_collapse",
+      "name": "全球降温",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "background",
+      "startMode": "auto",
+      "repeatable": false,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "temperature_reaches_minus_30",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "day": 3,
+        "temperature": -30
+      },
+      "appear": {
+        "conditions": [
+          {
+            "type": "turn",
+            "operator": "==",
+            "value": 3
+          }
+        ],
+        "chance": 1
+      },
+      "nodes": [
+        {
+          "id": "temperature_reaches_minus_30",
+          "type": "result",
+          "visibility": "background",
+          "text": "Day 3，梦中的灾难成为现实。全球气温在极短时间内暴跌，温度降至零下三十摄氏度。盛夏戛然而止，冰雪开始覆盖城市。",
+          "result": "temperature_reached_minus_30",
+          "actions": [
+            {
+              "type": "modify_attribute",
+              "attribute": "temperature",
+              "mode": "set",
+              "value": -30
+            },
+            {
+              "type": "modify_event",
+              "eventId": "hangzhou_train_station",
+              "field": "appeared",
+              "mode": "set",
+              "value": false
+            },
+            {
+              "type": "modify_event",
+              "eventId": "hangzhou_airport",
+              "field": "appeared",
+              "mode": "set",
+              "value": false
+            }
+          ],
+          "completeEvent": true
+        }
+      ]
+    },
+    {
+      "id": "day_7_temperature_collapse",
+      "name": "严寒加剧",
+      "unlocked": true,
+      "appeared": false,
+      "visibility": "background",
+      "startMode": "auto",
+      "repeatable": false,
+      "occurrences": 0,
+      "completed": false,
+      "result": null,
+      "entryNode": "temperature_reaches_minus_50",
+      "currentNode": null,
+      "remainingTurns": 0,
+      "endConditions": [],
+      "timeoutNode": null,
+      "data": {
+        "day": 7,
+        "temperature": -50
+      },
+      "appear": {
+        "conditions": [
+          {
+            "type": "turn",
+            "operator": "==",
+            "value": 7
+          }
+        ],
+        "chance": 1
+      },
+      "nodes": [
+        {
+          "id": "temperature_reaches_minus_50",
+          "type": "result",
+          "visibility": "background",
+          "text": "Day 7，席卷全球的寒潮仍未停止。气温继续降至零下五十摄氏度，曾经熟悉的世界彻底陷入极寒。",
+          "result": "temperature_reached_minus_50",
+          "actions": [
+            {
+              "type": "modify_attribute",
+              "attribute": "temperature",
+              "mode": "set",
+              "value": -50
+            }
+          ],
+          "completeEvent": true
+        }
+      ]
+    }
+  ]
+}

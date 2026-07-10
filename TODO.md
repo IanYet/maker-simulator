@@ -7,3 +7,12 @@
 - [x] Effect.kind的类型也是动态的，所以跟角色属性差不多，一开始就有一个字段枚举所有的kind，方便渲染。
 ---
 - [x] 修改event check节点的功能：check节点本身不包含文本与check条件，但是它的指向一个nexts节点数组，check节点的功能是根据候选节点的condition与chance计算出后续节点是什么并跳转过去。
+---
+- [ ] 明确单回合的流程：回合开始自动进入turn_start,combo_check，这两个阶段玩家没法操作;删除event_appear阶段，因为我们会手动在配置文件里添加一个每回合执行的effect用于draw_pool;新增一个阶段：根据;
+---
+- [ ] event新增一个字段用于标识事件当前回合处理状态，包括待处理，处于哪个node，已完成，已超时。代替completed字段与currentNode字段。
+- [ ] event新增一个字段用于记录本次事件从开始到结束的流程路径，因为某些check需要判断事件是否经历了某个节点，代替result字段。可重复事件每次开始时都会清空路径数组
+- [ ] event新增一个字段required，来表示一个待处理的事件，必须进入入口节点才可以进行下一回合
+- [ ] 事件node也需要一个required字段，表示当前node必须被处理，才可以进入下一回合。
+- [ ] event text node新增yesText 与 noText，用于渲染两个按钮，yesText点击后会进入next节点，noText停留在此节点。
+- [ ] check节点
