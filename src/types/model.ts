@@ -4,14 +4,24 @@
 export type Primitive = string | number | boolean | null
 
 /**
- * State 中允许保存的 JSON 值。
- */
-export type JsonValue = Primitive | JsonValue[] | { [key: string]: JsonValue }
-
-/**
  * 使用 UTC ISO 8601 字符串表示的时间戳。
  */
 export type Timestamp = string
+
+/**
+ * RunData 持有的可序列化 PRNG 状态。
+ */
+export interface RandomState {
+	/** 创建 RunData 时确定的随机种子。 */
+	seed: string
+	/** 已提交的 PRNG 调用数量。 */
+	cursor: number
+}
+
+/**
+ * 引擎注入的伪随机数函数，每次返回 `[0, 1)` 内的数。
+ */
+export type Random = () => number
 
 /**
  * 将对象、数组及其嵌套成员递归转换为只读类型。
@@ -115,8 +125,10 @@ export interface CommonConfig {
 	tags: string[]
 	/** 面向玩家的可选说明文本。 */
 	description?: string
-	/** 默认展示顺序；数值较小的对象排在前面。 */
-	order?: number
+	/** 同类对象的随机判定顺序。 */
+	order: number
+	/** `[0, 1)` 的独立判定概率，或 `[1, 10]` 的相对权重。 */
+	weight: ReactiveValue<number>
 	/** 是否在界面中展示。 */
 	visible: boolean
 	/** 是否已解锁，或用于计算解锁状态的 Rule。 */
@@ -195,8 +207,6 @@ export type NodeId = string
 export interface TextNodeBase extends CommonConfig {
 	/** 节点展示的叙事内容。 */
 	content: string
-	/** 节点被选中的机会值或计算 Rule。 */
-	chance: ReactiveValue<number>
 	/** 节点处于当前状态时注册的 Reaction。 */
 	reactionList?: Reaction[]
 	/** 未处理该节点时是否阻止进入下一回合。 */
@@ -347,8 +357,8 @@ export interface NodeSelection {
 export interface CommonState {
 	/** 对应同层 Config 对象的 id。 */
 	id: string
-	/** 对 order 默认值的可选覆盖。 */
-	order?: number
+	/** 对 weight 字面初始值的可选覆盖。 */
+	weight?: number
 	/** 对 visible 字面默认值的可选覆盖。 */
 	visible?: boolean
 	/** 对 unlocked 字面默认值的可选覆盖。 */
@@ -406,8 +416,6 @@ export type NodeCommandState = CommonState
  * EventNode Config 的稀疏状态及回合选择字段。
  */
 export interface EventNodeState extends CommonState {
-	/** TextNode 当前有效的机会值。 */
-	chance?: number
 	/** TextNode 当前是否阻止进入下一回合。 */
 	required?: boolean
 	/** 与 TextNode.choices 同构的 Choice 状态对象。 */
@@ -438,8 +446,6 @@ export interface GameState {
 	effects: Record<string, EffectState>
 	/** 以 EventConfig id 为 key 的稀疏 Event 状态。 */
 	events: Record<string, EventState>
-	/** 没有对应 Config 对象的剧本自定义事实。 */
-	values: Record<string, JsonValue>
 }
 
 /**
@@ -479,8 +485,10 @@ export interface CommonRuntime {
 	tags: string[]
 	/** 可选说明文本。 */
 	description?: string
-	/** 当前展示顺序。 */
-	order?: number
+	/** 同类对象的随机判定顺序。 */
+	order: number
+	/** 当前有效的随机判定权重或独立概率。 */
+	weight: number
 	/** 当前是否展示。 */
 	visible: boolean
 	/** 当前有效的解锁状态。 */
@@ -578,8 +586,6 @@ export interface NodeCommandRuntime extends CommonRuntime {
 export interface TextNodeRuntimeBase extends CommonRuntime {
 	/** 叙事内容。 */
 	content: string
-	/** 当前有效的机会值。 */
-	chance: number
 	/** 节点 Reaction 列表。 */
 	reactionList?: Reaction[]
 	/** 当前是否阻止进入下一回合。 */
@@ -653,8 +659,6 @@ export interface GameRuntime {
 	effects: Record<string, EffectRuntime>
 	/** 以 EventConfig id 为 key 的 Event 运行时视图。 */
 	events: Record<string, EventRuntime>
-	/** 当前层级可见的剧本自定义事实。 */
-	values: Record<string, JsonValue>
 }
 
 /**
@@ -749,6 +753,8 @@ export interface RunData {
 	endedAt?: Timestamp
 	/** 当前 RunData 允许自动保留的 TurnData 数量。 */
 	maxTurnCount: number
+	/** 基于 currentTurnId 检查点创建的 PRNG 工作状态。 */
+	randomState: RandomState
 	/** 基于 currentTurnId 检查点创建的 RunState 工作状态。 */
 	state: RunState
 	/** 基于 currentTurnId 检查点创建的 TurnState 工作状态。 */
@@ -762,7 +768,7 @@ export interface RunData {
 }
 
 /**
- * 一个 TurnData 保存的完整逻辑 State 快照。
+ * 一个 TurnData 保存的完整逻辑 State 与 PRNG 快照。
  */
 export interface StateSnapshot {
 	/** 检查点对应的 ProfileState。 */
@@ -771,6 +777,8 @@ export interface StateSnapshot {
 	runState: RunState
 	/** 检查点对应的 TurnState。 */
 	turnState: TurnState
+	/** 检查点对应的 PRNG 状态。 */
+	randomState: RandomState
 }
 
 /**
@@ -790,8 +798,58 @@ export interface TurnData {
 	createdAt: Timestamp
 	/** 是否排除在自动清理之外。 */
 	pinned: boolean
-	/** 该检查点保存的完整逻辑 State。 */
+	/** 该检查点保存的完整逻辑 State 与 PRNG 状态。 */
 	snapshot: StateSnapshot
+}
+
+/**
+ * 由注册名称索引的 Action 调用集合。
+ */
+export type ActionFunctions = Record<string, (...args: Primitive[]) => void>
+
+/**
+ * 由注册名称索引的 Rule 调用集合。
+ */
+export type RuleFunctions = Record<string, <TResult = unknown>(...args: Primitive[]) => TResult>
+
+/**
+ * 引擎注入 Rule 的只读脚本上下文。
+ */
+export interface RuleContext {
+	/** 只读的原始内容配置。 */
+	readonly config: DeepReadonly<GameConfig>
+	/** 合并到 ProfileState 的只读运行时视图。 */
+	readonly profile: DeepReadonly<ProfileRuntime>
+	/** 合并到 RunState 的只读运行时视图。 */
+	readonly runData: DeepReadonly<RunRuntime>
+	/** 合并到 TurnState 的只读运行时视图。 */
+	readonly turnData: DeepReadonly<TurnRuntime>
+	/** 绑定当前 RunData RandomState 的 PRNG 函数。 */
+	readonly random: Random
+	/** 可供当前 Rule 调用的所有 Action。 */
+	readonly action: ActionFunctions
+	/** 可供当前 Rule 调用的所有 Rule。 */
+	readonly rule: RuleFunctions
+}
+
+/**
+ * 引擎注入 Action 的事务脚本上下文。
+ */
+export interface ActionContext {
+	/** 只读的原始内容配置。 */
+	readonly config: DeepReadonly<GameConfig>
+	/** 合并到 ProfileState 的事务内可写运行时视图。 */
+	readonly profile: ProfileRuntime
+	/** 合并到 RunState 的事务内可写运行时视图。 */
+	readonly runData: RunRuntime
+	/** 合并到 TurnState 的事务内可写运行时视图。 */
+	readonly turnData: TurnRuntime
+	/** 绑定当前 RunData RandomState 的 PRNG 函数。 */
+	readonly random: Random
+	/** 可供当前 Action 调用的所有 Action。 */
+	readonly action: ActionFunctions
+	/** 可供当前 Action 调用的所有 Rule。 */
+	readonly rule: RuleFunctions
 }
 
 /**
@@ -799,13 +857,7 @@ export interface TurnData {
  *
  * @template TResult Rule 返回值类型。
  */
-export type RuleCalc<TResult = unknown> = (
-	config: DeepReadonly<GameConfig>,
-	profile: DeepReadonly<ProfileRuntime>,
-	runData: DeepReadonly<RunRuntime>,
-	turnData: DeepReadonly<TurnRuntime>,
-	...args: Primitive[]
-) => TResult
+export type RuleCalc<TResult = unknown> = (context: RuleContext, ...args: Primitive[]) => TResult
 
 /**
  * 一个可注册的 Rule JavaScript 实现。
@@ -815,7 +867,7 @@ export type RuleCalc<TResult = unknown> = (
 export interface RuleImplementation<TResult = unknown> {
 	/** Rule 注册名称。 */
 	key: string
-	/** Rule 的纯计算函数。 */
+	/** Rule 的只读计算函数。 */
 	calc: RuleCalc<TResult>
 }
 
@@ -827,13 +879,7 @@ export type RuleRegistry = Record<string, RuleImplementation>
 /**
  * Action JavaScript 实现的执行函数。
  */
-export type ActionExec = (
-	config: DeepReadonly<GameConfig>,
-	profile: ProfileRuntime,
-	runData: RunRuntime,
-	turnData: TurnRuntime,
-	...args: Primitive[]
-) => void
+export type ActionExec = (context: ActionContext, ...args: Primitive[]) => void
 
 /**
  * 一个可注册的 Action JavaScript 实现。
