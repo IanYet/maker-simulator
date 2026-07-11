@@ -115,6 +115,8 @@ export interface CommonConfig {
   tags: string[]
   /** 面向玩家的可选说明文本。 */
   description?: string
+  /** 默认展示顺序；数值较小的对象排在前面。 */
+  order?: number
   /** 是否在界面中展示。 */
   visible: boolean
   /** 是否已解锁，或用于计算解锁状态的 Rule。 */
@@ -164,8 +166,8 @@ export type AnyAttributeConfig = NumberAttributeConfig | EnumAttributeConfig
  * 角色或抽象属性载体的配置。
  */
 export interface CharacterConfig extends CommonConfig {
-  /** 该角色拥有的属性列表。 */
-  attributeList: AnyAttributeConfig[]
+  /** 以 AttributeConfig id 为 key 的属性对象。 */
+  attributeMap: Record<string, AnyAttributeConfig>
 }
 
 /**
@@ -233,8 +235,8 @@ export interface NodeCommand extends CommonConfig {
 export interface SingleTextNode extends TextNodeBase {
   /** 单选节点判别字段。 */
   type: 'single'
-  /** 当前有效的单选选项列表或计算 Rule。 */
-  choice: ReactiveValue<SingleChoice[]>
+  /** 以 SingleChoice id 为 key 的选项对象或计算 Rule。 */
+  choiceMap: ReactiveValue<Record<string, SingleChoice>>
 }
 
 /**
@@ -243,10 +245,10 @@ export interface SingleTextNode extends TextNodeBase {
 export interface MultipleTextNode extends TextNodeBase {
   /** 多选节点判别字段。 */
   type: 'multiple'
-  /** 当前有效的多选选项列表或计算 Rule。 */
-  choice: ReactiveValue<MultipleChoice[]>
-  /** 用于提交、取消或退出的命令列表。 */
-  commandList: NodeCommand[]
+  /** 以 MultipleChoice id 为 key 的选项对象或计算 Rule。 */
+  choiceMap: ReactiveValue<Record<string, MultipleChoice>>
+  /** 以 NodeCommand id 为 key 的命令对象。 */
+  commandMap: Record<string, NodeCommand>
 }
 
 /**
@@ -260,8 +262,8 @@ export type TextNode = SingleTextNode | MultipleTextNode
 export interface CheckNode extends CommonConfig {
   /** 检查节点判别字段。 */
   type: 'check'
-  /** 该检查节点允许指向的候选节点 id。 */
-  nodeList: NodeId[]
+  /** 以候选节点 id 为 key 的可达节点集合。 */
+  candidateNodeMap: Record<NodeId, true>
   /** 进入节点时执行的检查 Action。 */
   check: Action
 }
@@ -277,8 +279,8 @@ export type EventNode = SingleTextNode | MultipleTextNode | CheckNode
 export interface EventConfig extends CommonConfig {
   /** 事件实例创建后进入的首个节点 id。 */
   entryNodeId: NodeId
-  /** 事件包含的节点列表。 */
-  nodeList: EventNode[]
+  /** 以 EventNode id 为 key 的事件节点对象。 */
+  nodeMap: Record<NodeId, EventNode>
   /** EventConfig 级别持续注册的 Reaction。 */
   reactionList?: Reaction[]
 }
@@ -289,12 +291,12 @@ export interface EventConfig extends CommonConfig {
 export interface GameConfig {
   /** 游戏内容包元信息。 */
   meta: ConfigMeta
-  /** 角色配置列表。 */
-  characterList: CharacterConfig[]
-  /** Effect 配置列表。 */
-  effectList: EffectConfig[]
-  /** Event 配置列表。 */
-  eventList: EventConfig[]
+  /** 以 CharacterConfig id 为 key 的角色对象。 */
+  characterMap: Record<string, CharacterConfig>
+  /** 以 EffectConfig id 为 key 的 Effect 对象。 */
+  effectMap: Record<string, EffectConfig>
+  /** 以 EventConfig id 为 key 的 Event 对象。 */
+  eventMap: Record<string, EventConfig>
 }
 
 /**
@@ -335,8 +337,8 @@ export interface ChoiceSelection {
 export interface NodeSelection {
   /** 对应的 EventInstance id。 */
   eventInstanceId: string
-  /** 该节点已选择的 Choice 列表。 */
-  choice: ChoiceSelection[]
+  /** 以 Choice id 为 key 的选择结果对象。 */
+  choiceMap: Record<string, ChoiceSelection>
 }
 
 /**
@@ -345,6 +347,8 @@ export interface NodeSelection {
 export interface CommonState {
   /** 对应同层 Config 对象的 id。 */
   id: string
+  /** 对 order 默认值的可选覆盖。 */
+  order?: number
   /** 对 visible 字面默认值的可选覆盖。 */
   visible?: boolean
   /** 对 unlocked 字面默认值的可选覆盖。 */
@@ -365,8 +369,8 @@ export interface AttributeState extends CommonState {
  * CharacterConfig 的稀疏状态。
  */
 export interface CharacterState extends CommonState {
-  /** 与 CharacterConfig.attributeList 同构的属性状态列表。 */
-  attributeList?: AttributeState[]
+  /** 与 CharacterConfig.attributeMap 同构的属性状态对象。 */
+  attributeMap?: Record<string, AttributeState>
 }
 
 /**
@@ -406,34 +410,34 @@ export interface EventNodeState extends CommonState {
   chance?: number
   /** TextNode 当前是否阻止进入下一回合。 */
   required?: boolean
-  /** 与 TextNode.choice 同构的 Choice 状态列表。 */
-  choice?: ChoiceState[]
-  /** 与 MultipleTextNode.commandList 同构的命令状态列表。 */
-  commandList?: NodeCommandState[]
-  /** 仅 TurnState 使用的多选结果列表。 */
-  selectionList?: NodeSelection[]
+  /** 与 TextNode.choiceMap 同构的 Choice 状态对象。 */
+  choiceMap?: Record<string, ChoiceState>
+  /** 与 MultipleTextNode.commandMap 同构的命令状态对象。 */
+  commandMap?: Record<string, NodeCommandState>
+  /** 仅 TurnState 使用、以 EventInstance id 为 key 的多选结果。 */
+  selectionMap?: Record<string, NodeSelection>
 }
 
 /**
- * EventConfig 的稀疏状态及事件实例列表。
+ * EventConfig 的稀疏状态及事件实例对象。
  */
 export interface EventState extends CommonState {
-  /** 与 EventConfig.nodeList 同构的节点状态列表。 */
-  nodeList?: EventNodeState[]
-  /** 仅 RunState 使用的事件实例列表。 */
-  instanceList?: EventInstance[]
+  /** 与 EventConfig.nodeMap 同构的节点状态对象。 */
+  nodeMap?: Record<string, EventNodeState>
+  /** 仅 RunState 使用、以 EventInstance id 为 key 的事件实例对象。 */
+  instanceMap?: Record<string, EventInstance>
 }
 
 /**
  * 与 GameConfig 对象树同构的稀疏状态。
  */
 export interface GameState {
-  /** CharacterConfig 的稀疏状态列表。 */
-  characterList: CharacterState[]
-  /** EffectConfig 的稀疏状态列表。 */
-  effectList: EffectState[]
-  /** EventConfig 的稀疏状态列表。 */
-  eventList: EventState[]
+  /** 以 CharacterConfig id 为 key 的稀疏角色状态。 */
+  characterMap: Record<string, CharacterState>
+  /** 以 EffectConfig id 为 key 的稀疏 Effect 状态。 */
+  effectMap: Record<string, EffectState>
+  /** 以 EventConfig id 为 key 的稀疏 Event 状态。 */
+  eventMap: Record<string, EventState>
   /** 没有对应 Config 对象的剧本自定义事实。 */
   valueMap: Record<string, JsonValue>
 }
@@ -475,6 +479,8 @@ export interface CommonRuntime {
   tags: string[]
   /** 可选说明文本。 */
   description?: string
+  /** 当前展示顺序。 */
+  order?: number
   /** 当前是否展示。 */
   visible: boolean
   /** 当前有效的解锁状态。 */
@@ -518,8 +524,8 @@ export type AttributeRuntime = NumberAttributeRuntime | EnumAttributeRuntime
  * CharacterConfig 合并 State 后的完整运行时视图。
  */
 export interface CharacterRuntime extends CommonRuntime {
-  /** 角色当前拥有的属性运行时视图。 */
-  attributeList: AttributeRuntime[]
+  /** 以 AttributeConfig id 为 key 的属性运行时视图。 */
+  attributeMap: Record<string, AttributeRuntime>
 }
 
 /**
@@ -578,8 +584,8 @@ export interface TextNodeRuntimeBase extends CommonRuntime {
   reactionList?: Reaction[]
   /** 当前是否阻止进入下一回合。 */
   required?: boolean
-  /** 本回合当前节点的多选结果。 */
-  selectionList?: NodeSelection[]
+  /** 本回合以 EventInstance id 为 key 的多选结果。 */
+  selectionMap?: Record<string, NodeSelection>
 }
 
 /**
@@ -588,8 +594,8 @@ export interface TextNodeRuntimeBase extends CommonRuntime {
 export interface SingleTextNodeRuntime extends TextNodeRuntimeBase {
   /** 单选节点判别字段。 */
   type: 'single'
-  /** 当前有效的单选选项。 */
-  choice: SingleChoiceRuntime[]
+  /** 以 SingleChoice id 为 key 的当前有效选项。 */
+  choiceMap: Record<string, SingleChoiceRuntime>
 }
 
 /**
@@ -598,10 +604,10 @@ export interface SingleTextNodeRuntime extends TextNodeRuntimeBase {
 export interface MultipleTextNodeRuntime extends TextNodeRuntimeBase {
   /** 多选节点判别字段。 */
   type: 'multiple'
-  /** 当前有效的多选选项。 */
-  choice: MultipleChoiceRuntime[]
-  /** 当前有效的节点命令。 */
-  commandList: NodeCommandRuntime[]
+  /** 以 MultipleChoice id 为 key 的当前有效选项。 */
+  choiceMap: Record<string, MultipleChoiceRuntime>
+  /** 以 NodeCommand id 为 key 的当前有效命令。 */
+  commandMap: Record<string, NodeCommandRuntime>
 }
 
 /**
@@ -610,8 +616,8 @@ export interface MultipleTextNodeRuntime extends TextNodeRuntimeBase {
 export interface CheckNodeRuntime extends CommonRuntime {
   /** 检查节点判别字段。 */
   type: 'check'
-  /** 候选节点 id。 */
-  nodeList: NodeId[]
+  /** 以候选节点 id 为 key 的可达节点集合。 */
+  candidateNodeMap: Record<NodeId, true>
   /** 进入节点时执行的 Action。 */
   check: Action
 }
@@ -630,12 +636,12 @@ export type EventNodeRuntime =
 export interface EventRuntime extends CommonRuntime {
   /** 事件入口节点 id。 */
   entryNodeId: NodeId
-  /** 当前有效的节点列表。 */
-  nodeList: EventNodeRuntime[]
+  /** 以 EventNode id 为 key 的当前有效节点。 */
+  nodeMap: Record<NodeId, EventNodeRuntime>
   /** EventConfig 级 Reaction 列表。 */
   reactionList?: Reaction[]
-  /** 当前 RunData 中该事件的实例列表。 */
-  instanceList: EventInstance[]
+  /** 以 EventInstance id 为 key 的当前事件实例。 */
+  instanceMap: Record<string, EventInstance>
 }
 
 /**
@@ -644,12 +650,12 @@ export interface EventRuntime extends CommonRuntime {
 export interface GameRuntime {
   /** 游戏内容包元信息。 */
   meta: ConfigMeta
-  /** 角色运行时视图列表。 */
-  characterList: CharacterRuntime[]
-  /** Effect 运行时视图列表。 */
-  effectList: EffectRuntime[]
-  /** Event 运行时视图列表。 */
-  eventList: EventRuntime[]
+  /** 以 CharacterConfig id 为 key 的角色运行时视图。 */
+  characterMap: Record<string, CharacterRuntime>
+  /** 以 EffectConfig id 为 key 的 Effect 运行时视图。 */
+  effectMap: Record<string, EffectRuntime>
+  /** 以 EventConfig id 为 key 的 Event 运行时视图。 */
+  eventMap: Record<string, EventRuntime>
   /** 当前层级可见的剧本自定义事实。 */
   valueMap: Record<string, JsonValue>
 }
