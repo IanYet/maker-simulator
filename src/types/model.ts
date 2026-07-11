@@ -1,0 +1,848 @@
+/**
+ * Rule 与 Action 配置参数允许使用的基础类型。
+ */
+export type Primitive = string | number | boolean | null
+
+/**
+ * State 中允许保存的 JSON 值。
+ */
+export type JsonValue = Primitive | JsonValue[] | { [key: string]: JsonValue }
+
+/**
+ * 使用 UTC ISO 8601 字符串表示的时间戳。
+ */
+export type Timestamp = string
+
+/**
+ * 将对象、数组及其嵌套成员递归转换为只读类型。
+ */
+export type DeepReadonly<T> = T extends (...args: infer TArgs) => infer TResult
+  ? (...args: TArgs) => TResult
+  : T extends readonly (infer TItem)[]
+    ? readonly DeepReadonly<TItem>[]
+    : T extends object
+      ? { readonly [TKey in keyof T]: DeepReadonly<T[TKey]> }
+      : T
+
+/**
+ * Config 中的一次 Rule 调用。
+ */
+export interface Rule {
+  /** Rule 实现的注册名称。 */
+  key: string
+  /** 传递给 Rule 实现的基础类型参数。 */
+  args: Primitive[]
+}
+
+/**
+ * 可以使用字面默认值或 Rule 计算结果的配置字段。
+ *
+ * @template T 字段解析后的值类型。
+ */
+export type ReactiveValue<T> =
+  | T
+  | {
+      /** Rule 不可用前的配置默认值。 */
+      value: T
+      /** 用于计算字段有效值的 Rule。 */
+      rule: Rule
+    }
+
+/**
+ * Config 中的一次 Action 调用。
+ */
+export interface Action {
+  /** Action 实现的注册名称。 */
+  key: string
+  /** 传递给 Action 实现的基础类型参数。 */
+  args: Primitive[]
+}
+
+/**
+ * Reaction 直接观察的运行时字段引用。
+ */
+export interface ValueRef {
+  /** 数据来源，例如 self、profile、runData 或 turnData。 */
+  source: string
+  /** 来源对象中的字段名称。 */
+  field: string
+}
+
+/**
+ * Reaction 可以观察的字段引用或 Rule 调用。
+ */
+export type ReactionSource = ValueRef | Rule
+
+/**
+ * 自动观察运行时值并调度 Action 的配置。
+ */
+export interface Reaction {
+  /** 被持续观察的字段或 Rule。 */
+  watch: ReactionSource
+  /** 可选的变化前值过滤条件。 */
+  from?: Primitive
+  /** 可选的变化后值过滤条件。 */
+  to?: Primitive
+  /** 满足变化条件时执行的 Action。 */
+  action: Action
+}
+
+/**
+ * 游戏内容包的元信息与存档策略。
+ */
+export interface ConfigMeta {
+  /** 游戏内容包的稳定标识符。 */
+  id: string
+  /** 游戏名称。 */
+  name: string
+  /** 用于内容迁移的版本号。 */
+  version: string
+  /** 游戏背景介绍。 */
+  background: string
+  /** 每个 RunData 默认保留的 TurnData 数量。 */
+  maxTurnCountPerRun: number
+}
+
+/**
+ * 所有可引用 Config 对象共享的字段。
+ */
+export interface CommonConfig {
+  /** 所属集合内稳定且唯一的标识符。 */
+  id: string
+  /** 面向玩家的展示名称。 */
+  displayName: string
+  /** 用于筛选、检索和规则归类的标签。 */
+  tags: string[]
+  /** 面向玩家的可选说明文本。 */
+  description?: string
+  /** 是否在界面中展示。 */
+  visible: boolean
+  /** 是否已解锁，或用于计算解锁状态的 Rule。 */
+  unlocked: ReactiveValue<boolean>
+  /** 是否可在当前流程中使用，或用于计算启用状态的 Rule。 */
+  enabled: ReactiveValue<boolean>
+}
+
+/**
+ * AttributeConfig 的公共字段。
+ */
+export interface AttributeConfig extends CommonConfig {
+  /** 属性的数据类型。 */
+  type: 'number' | 'enum'
+  /** 属性的初始数值；枚举属性使用从零开始的下标。 */
+  value: number
+}
+
+/**
+ * 数值属性配置。
+ */
+export interface NumberAttributeConfig extends AttributeConfig {
+  /** 数值属性判别字段。 */
+  type: 'number'
+  /** 可选的最小值。 */
+  min?: number
+  /** 可选的最大值。 */
+  max?: number
+}
+
+/**
+ * 枚举属性配置。
+ */
+export interface EnumAttributeConfig extends AttributeConfig {
+  /** 枚举属性判别字段。 */
+  type: 'enum'
+  /** 枚举下标对应的展示文本。 */
+  valueDisplay: string[]
+}
+
+/**
+ * 可被角色持有的属性配置。
+ */
+export type AnyAttributeConfig = NumberAttributeConfig | EnumAttributeConfig
+
+/**
+ * 角色或抽象属性载体的配置。
+ */
+export interface CharacterConfig extends CommonConfig {
+  /** 该角色拥有的属性列表。 */
+  attributeList: AnyAttributeConfig[]
+}
+
+/**
+ * Effect 配置。
+ */
+export interface EffectConfig extends CommonConfig {
+  /** 是否已经获得，或用于计算获得状态的 Rule。 */
+  acquired: ReactiveValue<boolean>
+  /** 是否已经激活，或用于计算激活状态的 Rule。 */
+  actived: ReactiveValue<boolean>
+  /** 可选的绑定 CharacterConfig id。 */
+  bindCharacterId?: string
+  /** Effect 持续观察的 Reaction 列表。 */
+  reactionList: Reaction[]
+}
+
+/**
+ * EventConfig 内局部节点的标识符。
+ */
+export type NodeId = string
+
+/**
+ * TextNode 共享的配置字段。
+ */
+export interface TextNodeBase extends CommonConfig {
+  /** 节点展示的叙事内容。 */
+  content: string
+  /** 节点被选中的机会值或计算 Rule。 */
+  chance: ReactiveValue<number>
+  /** 节点处于当前状态时注册的 Reaction。 */
+  reactionList?: Reaction[]
+  /** 未处理该节点时是否阻止进入下一回合。 */
+  required?: ReactiveValue<boolean>
+}
+
+/**
+ * 单选节点中的一个选项。
+ */
+export interface SingleChoice extends CommonConfig {
+  /** 玩家选择该选项后立即执行的 Action。 */
+  action: Action
+}
+
+/**
+ * 多选节点中的一个可计数选项。
+ */
+export interface MultipleChoice extends CommonConfig {
+  /** 提交选择时提供给 Action 的配置值。 */
+  value: Primitive
+  /** 单次允许选择的最大数量或计算 Rule。 */
+  maxCount?: ReactiveValue<number>
+}
+
+/**
+ * 多选节点提交、取消或退出时使用的命令。
+ */
+export interface NodeCommand extends CommonConfig {
+  /** 执行命令时调用的 Action。 */
+  action: Action
+}
+
+/**
+ * 选择后立即执行 Action 的单选叙事节点。
+ */
+export interface SingleTextNode extends TextNodeBase {
+  /** 单选节点判别字段。 */
+  type: 'single'
+  /** 当前有效的单选选项列表或计算 Rule。 */
+  choice: ReactiveValue<SingleChoice[]>
+}
+
+/**
+ * 允许选择多种、每种多个选项的叙事节点。
+ */
+export interface MultipleTextNode extends TextNodeBase {
+  /** 多选节点判别字段。 */
+  type: 'multiple'
+  /** 当前有效的多选选项列表或计算 Rule。 */
+  choice: ReactiveValue<MultipleChoice[]>
+  /** 用于提交、取消或退出的命令列表。 */
+  commandList: NodeCommand[]
+}
+
+/**
+ * 所有叙事节点的联合类型。
+ */
+export type TextNode = SingleTextNode | MultipleTextNode
+
+/**
+ * 进入后执行检查 Action 的规则检查节点。
+ */
+export interface CheckNode extends CommonConfig {
+  /** 检查节点判别字段。 */
+  type: 'check'
+  /** 该检查节点允许指向的候选节点 id。 */
+  nodeList: NodeId[]
+  /** 进入节点时执行的检查 Action。 */
+  check: Action
+}
+
+/**
+ * EventConfig 可以包含的节点类型。
+ */
+export type EventNode = SingleTextNode | MultipleTextNode | CheckNode
+
+/**
+ * 由节点图组成的事件配置。
+ */
+export interface EventConfig extends CommonConfig {
+  /** 事件实例创建后进入的首个节点 id。 */
+  entryNodeId: NodeId
+  /** 事件包含的节点列表。 */
+  nodeList: EventNode[]
+  /** EventConfig 级别持续注册的 Reaction。 */
+  reactionList?: Reaction[]
+}
+
+/**
+ * 一份完整的策划内容配置。
+ */
+export interface GameConfig {
+  /** 游戏内容包元信息。 */
+  meta: ConfigMeta
+  /** 角色配置列表。 */
+  characterList: CharacterConfig[]
+  /** Effect 配置列表。 */
+  effectList: EffectConfig[]
+  /** Event 配置列表。 */
+  eventList: EventConfig[]
+}
+
+/**
+ * 一次事件运行实例。
+ */
+export interface EventInstance {
+  /** 所属 RunData 内唯一的实例 id。 */
+  instanceId: string
+  /** 对应 EventConfig 的 id。 */
+  eventId: string
+  /** 事件实例当前状态。 */
+  status: 'active' | 'completed' | 'abandoned'
+  /** 当前所在节点 id。 */
+  currentNodeId: NodeId
+  /** 实际访问过的节点路径。 */
+  nodePath: NodeId[]
+  /** 创建该实例时的逻辑回合数。 */
+  startedTurn: number
+  /** 实例完成或放弃时的逻辑回合数。 */
+  endedTurn?: number
+}
+
+/**
+ * 多选节点中一个 Choice 的本回合选择结果。
+ */
+export interface ChoiceSelection {
+  /** 对应 Choice Config 的 id。 */
+  id: string
+  /** Choice Config 提供的提交值。 */
+  value: Primitive
+  /** 本次选择的数量。 */
+  count: number
+}
+
+/**
+ * 某个 EventInstance 在一个节点上的本回合选择结果。
+ */
+export interface NodeSelection {
+  /** 对应的 EventInstance id。 */
+  eventInstanceId: string
+  /** 该节点已选择的 Choice 列表。 */
+  choice: ChoiceSelection[]
+}
+
+/**
+ * Config 对象 State 共享的稀疏字段。
+ */
+export interface CommonState {
+  /** 对应同层 Config 对象的 id。 */
+  id: string
+  /** 对 visible 字面默认值的可选覆盖。 */
+  visible?: boolean
+  /** 对 unlocked 字面默认值的可选覆盖。 */
+  unlocked?: boolean
+  /** 对 enabled 字面默认值的可选覆盖。 */
+  enabled?: boolean
+}
+
+/**
+ * AttributeConfig 的稀疏状态。
+ */
+export interface AttributeState extends CommonState {
+  /** 属性的当前值。 */
+  value?: number
+}
+
+/**
+ * CharacterConfig 的稀疏状态。
+ */
+export interface CharacterState extends CommonState {
+  /** 与 CharacterConfig.attributeList 同构的属性状态列表。 */
+  attributeList?: AttributeState[]
+}
+
+/**
+ * EffectConfig 的稀疏状态及运行时字段。
+ */
+export interface EffectState extends CommonState {
+  /** Effect 当前是否已获得。 */
+  acquired?: boolean
+  /** Effect 当前是否已激活。 */
+  actived?: boolean
+  /** Effect 当前绑定的 CharacterConfig id。 */
+  bindCharacterId?: string
+  /** Effect 最近一次获得时的逻辑回合数。 */
+  acquiredTurn?: number
+  /** Effect 最近一次激活时的逻辑回合数。 */
+  activedTurn?: number
+}
+
+/**
+ * Choice Config 的稀疏状态。
+ */
+export interface ChoiceState extends CommonState {
+  /** MultipleChoice 当前允许选择的最大数量。 */
+  maxCount?: number
+}
+
+/**
+ * NodeCommand Config 的稀疏状态。
+ */
+export type NodeCommandState = CommonState
+
+/**
+ * EventNode Config 的稀疏状态及回合选择字段。
+ */
+export interface EventNodeState extends CommonState {
+  /** TextNode 当前有效的机会值。 */
+  chance?: number
+  /** TextNode 当前是否阻止进入下一回合。 */
+  required?: boolean
+  /** 与 TextNode.choice 同构的 Choice 状态列表。 */
+  choice?: ChoiceState[]
+  /** 与 MultipleTextNode.commandList 同构的命令状态列表。 */
+  commandList?: NodeCommandState[]
+  /** 仅 TurnState 使用的多选结果列表。 */
+  selectionList?: NodeSelection[]
+}
+
+/**
+ * EventConfig 的稀疏状态及事件实例列表。
+ */
+export interface EventState extends CommonState {
+  /** 与 EventConfig.nodeList 同构的节点状态列表。 */
+  nodeList?: EventNodeState[]
+  /** 仅 RunState 使用的事件实例列表。 */
+  instanceList?: EventInstance[]
+}
+
+/**
+ * 与 GameConfig 对象树同构的稀疏状态。
+ */
+export interface GameState {
+  /** CharacterConfig 的稀疏状态列表。 */
+  characterList: CharacterState[]
+  /** EffectConfig 的稀疏状态列表。 */
+  effectList: EffectState[]
+  /** EventConfig 的稀疏状态列表。 */
+  eventList: EventState[]
+  /** 没有对应 Config 对象的剧本自定义事实。 */
+  valueMap: Record<string, JsonValue>
+}
+
+/**
+ * 跨 RunData 保存的稀疏状态。
+ */
+export type ProfileState = GameState
+
+/**
+ * 当前 RunData 保存的稀疏状态。
+ */
+export type RunState = GameState
+
+/**
+ * TurnState 当前所处的阶段。
+ */
+export type TurnPhase = 'initializing' | 'turn_start' | 'event_handle' | 'turn_end'
+
+/**
+ * 当前回合保存的稀疏状态及回合字段。
+ */
+export interface TurnState extends GameState {
+  /** 当前时间线的逻辑回合数。 */
+  turnNumber: number
+  /** 当前回合阶段。 */
+  phase: TurnPhase
+}
+
+/**
+ * CommonConfig 在运行时解析后的完整字段。
+ */
+export interface CommonRuntime {
+  /** Config 对象 id。 */
+  id: string
+  /** 展示名称。 */
+  displayName: string
+  /** 分类标签。 */
+  tags: string[]
+  /** 可选说明文本。 */
+  description?: string
+  /** 当前是否展示。 */
+  visible: boolean
+  /** 当前有效的解锁状态。 */
+  unlocked: boolean
+  /** 当前有效的启用状态。 */
+  enabled: boolean
+}
+
+/**
+ * 数值属性的完整运行时视图。
+ */
+export interface NumberAttributeRuntime extends CommonRuntime {
+  /** 数值属性判别字段。 */
+  type: 'number'
+  /** 当前属性值。 */
+  value: number
+  /** 可选最小值。 */
+  min?: number
+  /** 可选最大值。 */
+  max?: number
+}
+
+/**
+ * 枚举属性的完整运行时视图。
+ */
+export interface EnumAttributeRuntime extends CommonRuntime {
+  /** 枚举属性判别字段。 */
+  type: 'enum'
+  /** 当前枚举下标。 */
+  value: number
+  /** 枚举下标对应的展示文本。 */
+  valueDisplay: string[]
+}
+
+/**
+ * 所有属性运行时视图的联合类型。
+ */
+export type AttributeRuntime = NumberAttributeRuntime | EnumAttributeRuntime
+
+/**
+ * CharacterConfig 合并 State 后的完整运行时视图。
+ */
+export interface CharacterRuntime extends CommonRuntime {
+  /** 角色当前拥有的属性运行时视图。 */
+  attributeList: AttributeRuntime[]
+}
+
+/**
+ * EffectConfig 合并 State 后的完整运行时视图。
+ */
+export interface EffectRuntime extends CommonRuntime {
+  /** 当前是否已获得。 */
+  acquired: boolean
+  /** 当前是否已激活。 */
+  actived: boolean
+  /** 当前绑定的 CharacterConfig id。 */
+  bindCharacterId?: string
+  /** Effect 配置的 Reaction 列表。 */
+  reactionList: Reaction[]
+  /** 最近一次获得时的逻辑回合数。 */
+  acquiredTurn?: number
+  /** 最近一次激活时的逻辑回合数。 */
+  activedTurn?: number
+}
+
+/**
+ * SingleChoice 合并 State 后的完整运行时视图。
+ */
+export interface SingleChoiceRuntime extends CommonRuntime {
+  /** 选择后执行的 Action。 */
+  action: Action
+}
+
+/**
+ * MultipleChoice 合并 State 后的完整运行时视图。
+ */
+export interface MultipleChoiceRuntime extends CommonRuntime {
+  /** 提交给 Action 的配置值。 */
+  value: Primitive
+  /** 当前允许选择的最大数量。 */
+  maxCount?: number
+}
+
+/**
+ * NodeCommand 合并 State 后的完整运行时视图。
+ */
+export interface NodeCommandRuntime extends CommonRuntime {
+  /** 执行命令时调用的 Action。 */
+  action: Action
+}
+
+/**
+ * TextNode 的完整运行时公共字段。
+ */
+export interface TextNodeRuntimeBase extends CommonRuntime {
+  /** 叙事内容。 */
+  content: string
+  /** 当前有效的机会值。 */
+  chance: number
+  /** 节点 Reaction 列表。 */
+  reactionList?: Reaction[]
+  /** 当前是否阻止进入下一回合。 */
+  required?: boolean
+  /** 本回合当前节点的多选结果。 */
+  selectionList?: NodeSelection[]
+}
+
+/**
+ * 单选 TextNode 的完整运行时视图。
+ */
+export interface SingleTextNodeRuntime extends TextNodeRuntimeBase {
+  /** 单选节点判别字段。 */
+  type: 'single'
+  /** 当前有效的单选选项。 */
+  choice: SingleChoiceRuntime[]
+}
+
+/**
+ * 多选 TextNode 的完整运行时视图。
+ */
+export interface MultipleTextNodeRuntime extends TextNodeRuntimeBase {
+  /** 多选节点判别字段。 */
+  type: 'multiple'
+  /** 当前有效的多选选项。 */
+  choice: MultipleChoiceRuntime[]
+  /** 当前有效的节点命令。 */
+  commandList: NodeCommandRuntime[]
+}
+
+/**
+ * CheckNode 的完整运行时视图。
+ */
+export interface CheckNodeRuntime extends CommonRuntime {
+  /** 检查节点判别字段。 */
+  type: 'check'
+  /** 候选节点 id。 */
+  nodeList: NodeId[]
+  /** 进入节点时执行的 Action。 */
+  check: Action
+}
+
+/**
+ * EventNode 的完整运行时联合类型。
+ */
+export type EventNodeRuntime =
+  | SingleTextNodeRuntime
+  | MultipleTextNodeRuntime
+  | CheckNodeRuntime
+
+/**
+ * EventConfig 合并 State 后的完整运行时视图。
+ */
+export interface EventRuntime extends CommonRuntime {
+  /** 事件入口节点 id。 */
+  entryNodeId: NodeId
+  /** 当前有效的节点列表。 */
+  nodeList: EventNodeRuntime[]
+  /** EventConfig 级 Reaction 列表。 */
+  reactionList?: Reaction[]
+  /** 当前 RunData 中该事件的实例列表。 */
+  instanceList: EventInstance[]
+}
+
+/**
+ * Config 与 State 合并后的完整游戏对象树。
+ */
+export interface GameRuntime {
+  /** 游戏内容包元信息。 */
+  meta: ConfigMeta
+  /** 角色运行时视图列表。 */
+  characterList: CharacterRuntime[]
+  /** Effect 运行时视图列表。 */
+  effectList: EffectRuntime[]
+  /** Event 运行时视图列表。 */
+  eventList: EventRuntime[]
+  /** 当前层级可见的剧本自定义事实。 */
+  valueMap: Record<string, JsonValue>
+}
+
+/**
+ * 合并到 ProfileState 层级的运行时视图。
+ */
+export type ProfileRuntime = GameRuntime
+
+/**
+ * 合并到 RunState 层级的运行时视图。
+ */
+export type RunRuntime = GameRuntime
+
+/**
+ * 合并到 TurnState 层级的运行时视图。
+ */
+export interface TurnRuntime extends GameRuntime {
+  /** 当前时间线的逻辑回合数。 */
+  turnNumber: number
+  /** 当前回合阶段。 */
+  phase: TurnPhase
+}
+
+/**
+ * Profile 中一个可恢复 TurnData 的引用。
+ */
+export interface TurnRef {
+  /** 所属 RunData id。 */
+  runId: string
+  /** 所属 RunData 中的 TurnData id。 */
+  turnId: string
+}
+
+/**
+ * 一份用户存档容器。
+ */
+export interface Profile {
+  /** 存档 id。 */
+  profileId: string
+  /** 存档数据结构版本。 */
+  stateVersion: number
+  /** 对应 ConfigMeta.id。 */
+  configId: string
+  /** 对应 ConfigMeta.version。 */
+  configVersion: string
+  /** 存档创建时间。 */
+  createdAt: Timestamp
+  /** 存档最后更新时间。 */
+  updatedAt: Timestamp
+  /** 当前恢复游标对应的 ProfileState 工作状态。 */
+  state: ProfileState
+  /** 该存档包含的全部 RunData。 */
+  runDataMap: Record<string, RunData>
+  /** 最后提交或由玩家选择继续的检查点。 */
+  current: TurnRef
+}
+
+/**
+ * RunData 生命周期状态。
+ */
+export type RunStatus = 'active' | 'succeeded' | 'failed' | 'abandoned'
+
+/**
+ * 新 RunData 的来源类型。
+ */
+export type RunOriginKind = 'branch' | 'restart'
+
+/**
+ * 新 RunData 的历史来源记录。
+ */
+export interface RunOrigin {
+  /** 分支继续或重新开始。 */
+  kind: RunOriginKind
+  /** 来源检查点；允许指向已经删除的 TurnData。 */
+  source: TurnRef
+}
+
+/**
+ * 一条独立的局内时间线。
+ */
+export interface RunData {
+  /** Profile 内唯一的 RunData id。 */
+  runId: string
+  /** 可选的时间线来源。 */
+  origin?: RunOrigin
+  /** 当前时间线状态。 */
+  status: RunStatus
+  /** 时间线创建时间。 */
+  createdAt: Timestamp
+  /** 时间线最后更新时间。 */
+  updatedAt: Timestamp
+  /** 时间线结束时间。 */
+  endedAt?: Timestamp
+  /** 当前 RunData 允许自动保留的 TurnData 数量。 */
+  maxTurnCount: number
+  /** 基于 currentTurnId 检查点创建的 RunState 工作状态。 */
+  state: RunState
+  /** 基于 currentTurnId 检查点创建的 TurnState 工作状态。 */
+  turnState: TurnState
+  /** 当前检查点 id。 */
+  currentTurnId: string
+  /** 按提交顺序排列的 TurnData id。 */
+  turnOrder: string[]
+  /** 通过 id 定位本时间线中的 TurnData。 */
+  turnDataMap: Record<string, TurnData>
+}
+
+/**
+ * 一个 TurnData 保存的完整逻辑 State 快照。
+ */
+export interface StateSnapshot {
+  /** 检查点对应的 ProfileState。 */
+  profileState: ProfileState
+  /** 检查点对应的 RunState。 */
+  runState: RunState
+  /** 检查点对应的 TurnState。 */
+  turnState: TurnState
+}
+
+/**
+ * TurnData 检查点类型。
+ */
+export type CheckpointKind = 'initial' | 'turn_end' | 'terminal' | 'abandoned'
+
+/**
+ * 稳定边界上的可恢复检查点。
+ */
+export interface TurnData {
+  /** 所属 RunData 内唯一的检查点 id。 */
+  turnId: string
+  /** 检查点类型。 */
+  kind: CheckpointKind
+  /** 检查点提交时间。 */
+  createdAt: Timestamp
+  /** 是否排除在自动清理之外。 */
+  pinned: boolean
+  /** 该检查点保存的完整逻辑 State。 */
+  snapshot: StateSnapshot
+}
+
+/**
+ * Rule JavaScript 实现的计算函数。
+ *
+ * @template TResult Rule 返回值类型。
+ */
+export type RuleCalc<TResult = unknown> = (
+  config: DeepReadonly<GameConfig>,
+  profile: DeepReadonly<ProfileRuntime>,
+  runData: DeepReadonly<RunRuntime>,
+  turnData: DeepReadonly<TurnRuntime>,
+  ...args: Primitive[]
+) => TResult
+
+/**
+ * 一个可注册的 Rule JavaScript 实现。
+ *
+ * @template TResult Rule 返回值类型。
+ */
+export interface RuleImplementation<TResult = unknown> {
+  /** Rule 注册名称。 */
+  key: string
+  /** Rule 的纯计算函数。 */
+  calc: RuleCalc<TResult>
+}
+
+/**
+ * Rule 名称到 JavaScript 实现的注册表。
+ */
+export type RuleRegistry = Record<string, RuleImplementation>
+
+/**
+ * Action JavaScript 实现的执行函数。
+ */
+export type ActionExec = (
+  config: DeepReadonly<GameConfig>,
+  profile: ProfileRuntime,
+  runData: RunRuntime,
+  turnData: TurnRuntime,
+  ...args: Primitive[]
+) => void
+
+/**
+ * 一个可注册的 Action JavaScript 实现。
+ */
+export interface ActionImplementation {
+  /** Action 注册名称。 */
+  key: string
+  /** 修改 State 的执行函数。 */
+  exec: ActionExec
+}
+
+/**
+ * Action 名称到 JavaScript 实现的注册表。
+ */
+export type ActionRegistry = Record<string, ActionImplementation>
