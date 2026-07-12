@@ -39,7 +39,13 @@ import type { SaveRepository } from '../persistence'
 import { deepFreeze, stableArgs } from '../package-loader/linker'
 import { nextRandom } from './random'
 import { createRuntimeView, readPath } from './state-view'
-import type { RuntimeMonitor, RuntimeMonitorFactory, RuntimeTraceKind } from './monitor'
+import {
+	argsTraceDetail,
+	commandTraceDetail,
+	type RuntimeMonitor,
+	type RuntimeMonitorFactory,
+	type RuntimeTraceKind,
+} from './monitor'
 import { NoopRuntimeMonitor } from './monitor'
 
 const ACTION_LIMIT = 512
@@ -315,8 +321,62 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				revision: this.#revision,
 			}
 		} finally {
-			this.trace('command', command.type, performance.now() - started, outcome, 0)
+			this.trace(
+				'command',
+				command.type,
+				performance.now() - started,
+				outcome,
+				0,
+				undefined,
+				this.commandTraceDetail(command)
+			)
 		}
+	}
+
+	private commandTraceDetail(command: RuntimeCommand): Readonly<Record<string, Primitive>> {
+		try {
+			return this.commandTraceDetailUnsafe(command)
+		} catch {
+			// Monitoring must never change the command result.
+			return commandTraceDetail(command)
+		}
+	}
+
+	private commandTraceDetailUnsafe(command: RuntimeCommand): Readonly<Record<string, Primitive>> {
+		const detail = commandTraceDetail(command)
+		if (
+			command.type !== 'choose-single' &&
+			command.type !== 'set-multiple-choice' &&
+			command.type !== 'execute-node-command'
+		) {
+			return detail
+		}
+
+		const eventId = Object.entries(this.currentRun().state.events).find(([, state]) =>
+			state.instances?.[command.eventInstanceId]
+		)?.[0]
+		const event = eventId ? this.game.config.events[eventId] : undefined
+		const node = event?.nodes[command.nodeId]
+		if (!node || node.type === 'check') return detail
+
+		if (command.type === 'choose-single') {
+			if (node.type !== 'single') return detail
+			const authoredChoices = 'rule' in node.choices ? node.choices.value : node.choices
+			const choice = Object.values(authoredChoices).find((item) => item.id === command.choiceId)
+			return choice
+				? { ...detail, actionKey: choice.action.key }
+				: detail
+		}
+		if (command.type === 'set-multiple-choice') {
+			if (node.type !== 'multiple') return detail
+			const authoredChoices = 'rule' in node.choices ? node.choices.value : node.choices
+			const choice = Object.values(authoredChoices).find((item) => item.id === command.choiceId)
+			return choice
+				? { ...detail, value: choice.value }
+				: detail
+		}
+		const authoredCommand = node.type === 'multiple' ? node.commands[command.commandId] : undefined
+		return authoredCommand ? { ...detail, actionKey: authoredCommand.action.key } : detail
 	}
 
 	private async startEvent(eventId: string): Promise<void> {
@@ -710,7 +770,15 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			stat.maxMs = Math.max(stat.maxMs, duration)
 			unit.ruleStats.set(call.key, stat)
 			if (this.#monitor.verbose)
-				this.trace('rule-summary', call.key, duration, 'ok', unit.ruleStack.length, unit)
+				this.trace(
+					'rule-summary',
+					call.key,
+					duration,
+					'ok',
+					unit.ruleStack.length,
+					unit,
+					{ args: argsTraceDetail(call.args) }
+				)
 		}
 	}
 
@@ -769,7 +837,19 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				performance.now() - started,
 				outcome,
 				unit.actionStack.length + 1,
-				unit
+				unit,
+				{
+					actionKey: call.key,
+					args: argsTraceDetail(call.args),
+					...(sourceEventInstanceId ? { eventInstanceId: sourceEventInstanceId } : {}),
+					...(frame.writes[0]
+						? {
+							eventField: frame.writes[0].property,
+							previousValue: String(frame.writes[0].previous),
+							nextValue: String(frame.writes[0].next),
+						}
+						: {}),
+				}
 			)
 		}
 	}
@@ -833,7 +913,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			0,
 			'ok',
 			unit.actionStack.length,
-			unit
+			unit,
+			{ eventId, nodeId, eventInstanceId: instanceId }
 		)
 		this.runAction(unit, node.check, instanceId, new Set(Object.keys(node.candidateNodes)))
 		const instance = unit.run.state.events[eventId].instances?.[instanceId]
@@ -991,7 +1072,13 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					outcome,
 					unit.actionStack.length,
 					unit,
-					{ action: task.definition.reaction.action.key }
+					{
+						action: task.definition.reaction.action.key,
+						args: argsTraceDetail(task.definition.reaction.action.args),
+						...(task.definition.sourceEventInstanceId
+							? { eventInstanceId: task.definition.sourceEventInstanceId }
+							: {}),
+					}
 				)
 			}
 		}

@@ -1,4 +1,4 @@
-import type { Primitive, TurnPhase } from '../types'
+import type { Primitive, RuntimeCommand, TurnPhase } from '../types'
 
 export type RuntimeTraceKind =
 	| 'command'
@@ -21,6 +21,45 @@ export interface RuntimeTrace {
 	durationMs: number
 	outcome: 'ok' | 'error' | 'rollback'
 	detail?: Readonly<Record<string, Primitive>>
+}
+
+/**
+ * 将 RuntimeCommand 的业务参数投影为可安全打印的标量字段。
+ * 不把完整 State、Config 或脚本对象交给控制台。
+ */
+export function commandTraceDetail(command: RuntimeCommand): Readonly<Record<string, Primitive>> {
+	switch (command.type) {
+		case 'start-event':
+			return { commandType: command.type, eventId: command.eventId }
+		case 'choose-single':
+			return {
+				commandType: command.type,
+				eventInstanceId: command.eventInstanceId,
+				nodeId: command.nodeId,
+				choiceId: command.choiceId,
+			}
+		case 'set-multiple-choice':
+			return {
+				commandType: command.type,
+				eventInstanceId: command.eventInstanceId,
+				nodeId: command.nodeId,
+				choiceId: command.choiceId,
+				count: command.count,
+			}
+		case 'execute-node-command':
+			return {
+				commandType: command.type,
+				eventInstanceId: command.eventInstanceId,
+				nodeId: command.nodeId,
+				commandId: command.commandId,
+			}
+		case 'advance-turn':
+			return { commandType: command.type, value: 'next-turn' }
+	}
+}
+
+export function argsTraceDetail(args: readonly Primitive[]): string {
+	return JSON.stringify(args)
 }
 
 export interface RuntimeMonitor {
@@ -54,8 +93,13 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 		try {
 			this.#records.push(value)
 			const indent = '  '.repeat(Math.max(0, value.depth))
+			const detail = value.detail
+				? Object.entries(value.detail)
+					.map(([key, item]) => `${key}=${String(item)}`)
+					.join(' ')
+				: ''
 			console.info(
-				`[maker-runtime] run=${value.runId} turn=${value.turnNumber} unit=${value.unitId} ${indent}${value.kind} ${value.name} ${value.durationMs.toFixed(2)}ms ${value.outcome}`,
+				`[maker-runtime] run=${value.runId} turn=${value.turnNumber} unit=${value.unitId} ${indent}${value.kind} ${value.name}${detail ? ` ${detail}` : ''} ${value.durationMs.toFixed(2)}ms ${value.outcome}`,
 				value.detail ?? '',
 			)
 		} catch {

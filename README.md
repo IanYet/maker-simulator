@@ -107,7 +107,14 @@ node scripts/build-frostbound-package.mjs
 ?runtimeMonitor=verbose   额外输出逐 Rule 记录
 ```
 
-监控数据只输出到当前浏览器控制台，不写入存档。
+日志会把指令参数直接展开到单行中，例如事件、实例、节点、Choice、Command、数量和多选值；Action 会同时显示 Action key、参数与事件节点跳转值：
+
+```text
+[maker-runtime] ... command choose-single commandType=choose-single eventInstanceId=event-01 nodeId=entry choiceId=explore actionKey=event.goto ... ok
+[maker-runtime] ... action event.goto actionKey=event.goto args=["crossroads","fortune-check"] eventInstanceId=event-01 eventField=currentNodeId previousValue=entry nextValue=fortune-check ... ok
+```
+
+监控数据只输出到当前浏览器控制台，不写入存档，也不会打印完整 State 或 Config。
 
 ## 架构
 
