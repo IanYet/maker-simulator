@@ -669,6 +669,36 @@
         }
       },
       "reactionList": []
+    },
+    "whiteout-cycle": {
+      "id": "whiteout-cycle",
+      "displayName": "极寒循环",
+      "tags": [
+        "world",
+        "condition"
+      ],
+      "description": "每回合开始推进气温、风暴和避难所消耗；前六回合气温下降 2 度，第七回合起下降 4 度。",
+      "order": 15,
+      "weight": 5,
+      "visible": true,
+      "unlocked": true,
+      "enabled": true,
+      "acquired": true,
+      "actived": true,
+      "reactionList": [
+        {
+          "watch": {
+            "key": "turn.is-start",
+            "args": []
+          },
+          "from": false,
+          "to": true,
+          "action": {
+            "key": "world.turn-start",
+            "args": []
+          }
+        }
+      ]
     }
   },
   "events": {
@@ -820,21 +850,7 @@
             }
           }
         }
-      },
-      "reactionList": [
-        {
-          "watch": {
-            "key": "turn.is-start",
-            "args": []
-          },
-          "from": false,
-          "to": true,
-          "action": {
-            "key": "world.turn-start",
-            "args": []
-          }
-        }
-      ]
+      }
     },
     "frozen-supermarket": {
       "id": "frozen-supermarket",

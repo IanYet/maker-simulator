@@ -173,6 +173,8 @@ interface EffectConfig extends CommonConfig {
 
 `acquired` 表示效果是否已经获得，`actived` 表示效果是否已生效。`reactionList` 响应效果字段或其他派生值的变化，例如获得、激活、失效以及激活后的每回合开始。`bindCharacterId` 存在时必须指向 Config 中的 character。
 
+策划默认约定：不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，优先声明在 Effect 上；Effect 的 `displayName` 与 `description` 应说明持续规则及其影响，让玩家能在效果面板看到这些规则。EventConfig Reaction 主要用于事件内容自身的持续响应。
+
 效果获得与激活的直接状态值和发生回合保存在 RunState 的 `effects` 对应 EffectState 中。所有 EffectConfig 的 Reaction 在创建、载入、分支或截断恢复 RunData 时注册，无需等待 EffectState 出现；注册时只建立基准值。依赖图、已解析值和上次值属于引擎内部运行时缓存，可由 State 重新构建。
 
 ### 事件 Event

@@ -132,7 +132,8 @@ GamePackageLoader → schema/linker → LoadedGamePackage
 
 ## 计划
 
-1. 实现游戏脚本的可视化编辑器。
-2. 接入 AI，提供游戏脚本生成 Agent App。
+1. 用dls代替js进行脚本表达
+2. 实现游戏脚本的可视化编辑器。
+3. 接入 AI，提供游戏脚本生成 Agent App。
 
 后续还计划补充内容版本迁移、包级媒体字段、完整调试协议、自动化验证工具和更大规模的脚本性能分析。

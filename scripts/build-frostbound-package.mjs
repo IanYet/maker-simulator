@@ -189,6 +189,12 @@ const effects = {
     actived: reactive(false, 'status.at-least', 'survivor', 'morale', 8),
     reactionList: [],
   }),
+  'whiteout-cycle': effect('whiteout-cycle', '极寒循环', 15, '每回合开始推进气温、风暴和避难所消耗；前六回合气温下降 2 度，第七回合起下降 4 度。', {
+    tags: ['world', 'condition'],
+    acquired: true,
+    actived: true,
+    reactionList: [{ watch: rule('turn.is-start'), from: false, to: true, action: action('world.turn-start') }],
+  }),
 }
 
 const events = {}
@@ -209,7 +215,6 @@ addEvent(gameEvent(
   ],
   {
     tags: ['home'],
-    reactionList: [{ watch: rule('turn.is-start'), from: false, to: true, action: action('world.turn-start') }],
   },
 ))
 
@@ -473,7 +478,14 @@ function assertPackage() {
   }
 
   const reachableEvents = new Set()
-  const reachableEffects = new Set(['frostbite', 'starvation', 'hope'])
+  const reachableEffects = new Set(
+    Object.values(config.effects)
+      .filter((effect) => effect.acquired === true)
+      .map((effect) => effect.id),
+  )
+  reachableEffects.add('frostbite')
+  reachableEffects.add('starvation')
+  reachableEffects.add('hope')
   let changed = true
   while (changed) {
     changed = false
