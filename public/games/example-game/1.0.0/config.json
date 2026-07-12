@@ -1,0 +1,322 @@
+{
+  "meta": {
+    "id": "example-game",
+    "name": "事件网络示例",
+    "version": "1.0.0",
+    "background": "用于验证事件、选择、Reaction、随机检查点与终局流程的最小示例包。",
+    "maxTurnCountPerRun": 12
+  },
+  "characters": {
+    "player": {
+      "id": "player",
+      "displayName": "旅人",
+      "tags": ["player"],
+      "description": "正在穿越事件网络的旅人。",
+      "order": 1,
+      "weight": 5,
+      "visible": true,
+      "unlocked": true,
+      "enabled": true,
+      "attributes": {
+        "health": {
+          "id": "health",
+          "displayName": "体力",
+          "tags": ["survival"],
+          "order": 1,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "number",
+          "value": 8,
+          "min": 0,
+          "max": 10
+        },
+        "supplies": {
+          "id": "supplies",
+          "displayName": "物资",
+          "tags": ["resource"],
+          "order": 2,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "number",
+          "value": 2,
+          "min": 0,
+          "max": 20
+        },
+        "ending": {
+          "id": "ending",
+          "displayName": "旅途状态",
+          "tags": ["ending"],
+          "order": 3,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "enum",
+          "value": 0,
+          "valueDisplay": ["尚在旅途", "抵达彼岸"]
+        }
+      }
+    }
+  },
+  "effects": {
+    "road-fatigue": {
+      "id": "road-fatigue",
+      "displayName": "长路疲惫",
+      "tags": ["persistent"],
+      "description": "每个回合开始时消耗一点体力。",
+      "order": 1,
+      "weight": 5,
+      "visible": true,
+      "unlocked": true,
+      "enabled": true,
+      "acquired": true,
+      "actived": true,
+      "bindCharacterId": "player",
+      "reactionList": [
+        {
+          "watch": { "key": "turn.is-start", "args": [] },
+          "from": false,
+          "to": true,
+          "action": { "key": "player.change-health", "args": [-1] }
+        }
+      ]
+    },
+    "lucky-token": {
+      "id": "lucky-token",
+      "displayName": "幸运符",
+      "tags": ["reward"],
+      "description": "一次成功探索留下的纪念。",
+      "order": 2,
+      "weight": 5,
+      "visible": true,
+      "unlocked": true,
+      "enabled": true,
+      "acquired": false,
+      "actived": false,
+      "reactionList": []
+    }
+  },
+  "events": {
+    "crossroads": {
+      "id": "crossroads",
+      "displayName": "雾中岔路",
+      "tags": ["repeatable"],
+      "description": "一条可以探索、整理物资或结束旅途的岔路。",
+      "order": 1,
+      "weight": 5,
+      "visible": true,
+      "unlocked": true,
+      "enabled": true,
+      "entryNodeId": "entry",
+      "reactionList": [],
+      "nodes": {
+        "entry": {
+          "id": "entry",
+          "displayName": "三条路",
+          "tags": ["entry"],
+          "order": 1,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "single",
+          "content": "雾在脚边分开。左侧传来铃声，右侧有一间废弃补给站，正前方则亮着终点的灯。",
+          "required": false,
+          "choices": {
+            "explore": {
+              "id": "explore",
+              "displayName": "走向铃声",
+              "tags": ["risk"],
+              "order": 1,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.goto", "args": ["crossroads", "fortune-check"] }
+            },
+            "supplies": {
+              "id": "supplies",
+              "displayName": "整理补给站",
+              "tags": ["resource"],
+              "order": 2,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.goto", "args": ["crossroads", "supply-room"] }
+            },
+            "ending": {
+              "id": "ending",
+              "displayName": "走向灯光",
+              "tags": ["ending"],
+              "order": 3,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.goto", "args": ["crossroads", "ending"] }
+            }
+          }
+        },
+        "fortune-check": {
+          "id": "fortune-check",
+          "displayName": "雾中判定",
+          "tags": ["check"],
+          "order": 2,
+          "weight": 5,
+          "visible": false,
+          "unlocked": true,
+          "enabled": true,
+          "type": "check",
+          "candidateNodes": { "fortunate": true, "unfortunate": true },
+          "check": { "key": "event.random-path", "args": ["crossroads", "fortunate", "unfortunate"] }
+        },
+        "fortunate": {
+          "id": "fortunate",
+          "displayName": "铃声的礼物",
+          "tags": ["success"],
+          "order": 3,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "single",
+          "content": "铃声来自一枚挂在枯枝上的银色符牌。它温暖得像一小块太阳。",
+          "required": true,
+          "choices": {
+            "take": {
+              "id": "take",
+              "displayName": "收下幸运符",
+              "tags": ["reward"],
+              "order": 1,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.take-token", "args": ["crossroads"] }
+            }
+          }
+        },
+        "unfortunate": {
+          "id": "unfortunate",
+          "displayName": "空响",
+          "tags": ["failure"],
+          "order": 4,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "single",
+          "content": "你追上的只是风穿过铁环的声音，回程又耗掉了一点体力。",
+          "required": true,
+          "choices": {
+            "return": {
+              "id": "return",
+              "displayName": "回到岔路",
+              "tags": ["return"],
+              "order": 1,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.hurt-and-return", "args": ["crossroads", "entry"] }
+            }
+          }
+        },
+        "supply-room": {
+          "id": "supply-room",
+          "displayName": "补给架",
+          "tags": ["multiple"],
+          "order": 5,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "multiple",
+          "content": "架子上只剩下几件还能使用的东西。选择要带走的数量，然后确认。",
+          "required": true,
+          "choices": {
+            "ration": {
+              "id": "ration",
+              "displayName": "压缩口粮",
+              "tags": ["supply"],
+              "order": 1,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "value": "ration",
+              "maxCount": 3
+            },
+            "water": {
+              "id": "water",
+              "displayName": "净水袋",
+              "tags": ["supply"],
+              "order": 2,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "value": "water",
+              "maxCount": 2
+            }
+          },
+          "commands": {
+            "take": {
+              "id": "take",
+              "displayName": "装入背包并离开",
+              "tags": ["confirm"],
+              "order": 1,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.collect-and-complete", "args": ["crossroads", "supply-room"] }
+            },
+            "leave": {
+              "id": "leave",
+              "displayName": "空手离开",
+              "tags": ["cancel"],
+              "order": 2,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "event.complete", "args": ["crossroads"] }
+            }
+          }
+        },
+        "ending": {
+          "id": "ending",
+          "displayName": "彼岸灯火",
+          "tags": ["ending"],
+          "order": 6,
+          "weight": 5,
+          "visible": true,
+          "unlocked": true,
+          "enabled": true,
+          "type": "single",
+          "content": "雾忽然退到身后。你知道这条路已经完成，而所有岔路仍留在另一个检查点里。",
+          "required": true,
+          "choices": {
+            "finish": {
+              "id": "finish",
+              "displayName": "结束旅途",
+              "tags": ["ending"],
+              "order": 1,
+              "weight": 5,
+              "visible": true,
+              "unlocked": true,
+              "enabled": true,
+              "action": { "key": "run.finish", "args": ["crossroads"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

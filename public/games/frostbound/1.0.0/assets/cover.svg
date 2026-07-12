@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-labelledby="title description">
+  <title id="title">白夜余烬</title>
+  <desc id="description">深蓝色雪原上，一列亮着暖色车灯的移动避难所驶向极光。</desc>
+  <rect width="1200" height="640" fill="#1f1d3d"/>
+  <path d="M0 390 190 285l130 82 172-151 176 172 150-106 210 120 172-83v321H0Z" fill="#c5b0f4"/>
+  <path d="M0 462c211-52 393-45 548 20 172 72 390 64 652-24v182H0Z" fill="#f4ecd6"/>
+  <path d="M137 142c176-101 331-93 466 23 128 109 284 116 468 19" fill="none" stroke="#c8e6cd" stroke-width="44" stroke-linecap="round" opacity=".8"/>
+  <g transform="translate(382 405)">
+    <path d="M0 69 39 20h238l52 49v74H0Z" fill="#000"/>
+    <rect x="61" y="42" width="70" height="47" rx="8" fill="#dceeb1"/>
+    <rect x="148" y="42" width="70" height="47" rx="8" fill="#dceeb1"/>
+    <circle cx="67" cy="145" r="30" fill="#000" stroke="#fff" stroke-width="10"/>
+    <circle cx="270" cy="145" r="30" fill="#000" stroke="#fff" stroke-width="10"/>
+    <path d="m330 100 115 19" stroke="#000" stroke-width="17"/>
+  </g>
+  <text x="70" y="92" fill="#fff" font-family="Inter,system-ui,sans-serif" font-size="64" font-weight="650">白夜余烬</text>
+  <text x="74" y="132" fill="#fff" font-family="ui-monospace,monospace" font-size="18" letter-spacing="4">FROSTBOUND · DAY TEN</text>
+</svg>

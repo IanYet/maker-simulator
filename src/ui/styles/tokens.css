@@ -1,0 +1,35 @@
+:root {
+	--color-black: #000;
+	--color-white: #fff;
+	--color-hairline: #e6e6e6;
+	--color-hairline-soft: #f1f1f1;
+	--color-surface-soft: #f7f7f5;
+	--color-lime: #dceeb1;
+	--color-lilac: #c5b0f4;
+	--color-cream: #f4ecd6;
+	--color-pink: #efd4d4;
+	--color-mint: #c8e6cd;
+	--color-coral: #f3c9b6;
+	--color-navy: #1f1d3d;
+	--color-magenta: #ff3d8b;
+	--color-success: #1ea64a;
+	--space-hair: 1px;
+	--space-xxs: 4px;
+	--space-xs: 8px;
+	--space-sm: 12px;
+	--space-md: 16px;
+	--space-lg: 24px;
+	--space-xl: 32px;
+	--space-xxl: 48px;
+	--space-section: 96px;
+	--radius-xs: 2px;
+	--radius-sm: 6px;
+	--radius-md: 8px;
+	--radius-lg: 24px;
+	--radius-xl: 32px;
+	--radius-pill: 50px;
+	--radius-full: 9999px;
+	--font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+	--shadow-dropdown: 0 4px 16px rgb(0 0 0 / 6%);
+}

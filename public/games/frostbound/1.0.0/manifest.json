@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "frostbound",
+  "version": "1.0.0",
+  "name": "白夜余烬",
+  "entries": {
+    "config": "./config.json",
+    "rules": "./rules.js",
+    "actions": "./actions.js"
+  },
+  "assets": "./assets/"
+}

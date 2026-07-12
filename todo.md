@@ -1,0 +1,4 @@
+- [x] 读取所有 docs/game-design 下的文档与 types 下的类型声明，检查文档之间以及文档与类型定义之间的设计缺口和不一致。审计结论见 [设计一致性审计](./docs/game-design/design-audit.md)。
+- [x] 阅读docs下所有文档。根据docs目录下的技术规格说明文档，开发整个系统。技术细节在game-design目录下，如果有冲突，以技术规格说明文档为准。当前是一个vite空项目，除了类型与文档不能动，其他随便修改与删除。
+- [x] 编写一个游戏包，参考docs/game-design/script-authoring.md:主题是极寒末日求生，要求尽可能全面体现这套系统能力的effect与event，内容连贯，所有对象可达。effect不少于十个，event不少于二十个，回合数不少于10，结局不少于三个。
+- [x] 编写readme.md：这是一个*网状叙事的事件驱动的构建rougelike游戏*类型游戏脚本的模拟运行环境，主要用来玩法验证，目前以实现viewer，计划实现 1.可视化编辑器，2.接入ai的游戏脚本生成agent app。还有其他你认为需要补充进的内容
