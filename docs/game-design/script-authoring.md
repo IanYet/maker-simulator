@@ -157,7 +157,7 @@ interface CharacterConfig extends CommonConfig {
 
 ### 效果 Effect
 
-效果表示可由 action 改变 state、但不包含叙事内容的对象。效果可以绑定到一个 character，也可以不绑定任何 character。
+效果表示可由 action 改变 state、但不包含叙事内容的对象。效果可以绑定到一个 character，也可以不绑定任何 character。可以是一次性物品，持续性物品，buff/debuff，功法，效果，奖励等等所有可以改变state的抽象。
 
 ```ts
 interface EffectConfig extends CommonConfig {
@@ -176,7 +176,7 @@ interface EffectConfig extends CommonConfig {
 效果获得与激活的直接状态值和发生回合保存在 RunState 的 `effects` 对应 EffectState 中。所有 EffectConfig 的 Reaction 在创建、载入、分支或截断恢复 RunData 时注册，无需等待 EffectState 出现；注册时只建立基准值。依赖图、已解析值和上次值属于引擎内部运行时缓存，可由 State 重新构建。
 
 ### 事件 Event
-事件是叙事的对象。一个事件是一张有向图：节点负责展示叙事、执行动作或检查规则；边由动作或规则决定。
+事件是叙事的对象。一个事件是一张有向图：节点负责展示叙事、执行动作或检查规则；边由动作或规则决定。事件可以是事件，区域，商店，科技树等等所有有剧情有分支节点的抽象
 
 ```ts
 interface EventConfig extends CommonConfig {
