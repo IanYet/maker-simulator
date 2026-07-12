@@ -7,7 +7,7 @@ import {
 	type RefObject,
 } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import type { ActiveEventView, AttributeView, SessionCommandResult } from '../../types'
+import type { ActiveEventView, AttributeView, EffectView, SessionCommandResult } from '../../types'
 import { useAppServices } from '../../app/useAppServices'
 import type { GameSessionImpl } from '../../session'
 import { Button, ConfirmDialog, LiveRegion, StatusBanner, Surface } from '../components'
@@ -26,6 +26,43 @@ interface AttributeChange {
 }
 
 const attributeKey = (characterId: string, attributeId: string): string => `${characterId}.${attributeId}`
+
+function EffectCard({
+	effect,
+	session,
+	busy,
+	execute,
+}: {
+	effect: EffectView
+	session: GameSessionImpl
+	busy: boolean
+	execute: (command: Promise<SessionCommandResult>) => Promise<void>
+}) {
+	const pending = !effect.actived
+	return (
+		<article className={`${styles.effectCard} ${effect.actived ? styles.effectCardActive : styles.effectCardPending}`}>
+			<div className={styles.effectName}>
+				<span>{effect.displayName}</span>
+				<span className={styles.pill}>{effect.actived ? '已激活' : '待激活'}</span>
+			</div>
+			{effect.description && <p className={styles.effectText}>{effect.description}</p>}
+			{effect.bindCharacterDisplayName && <p className={styles.effectText}>绑定：{effect.bindCharacterDisplayName}</p>}
+			{pending && effect.manuallyActivatable && (
+				<div className={styles.effectActions}>
+					<Button
+						className={styles.effectAction}
+						disabled={busy || !effect.canActivate}
+						onClick={() => void execute(session.activateEffect(effect.effectId))}
+						variant="secondary"
+					>
+						激活
+					</Button>
+				</div>
+			)}
+			{pending && !effect.manuallyActivatable && <p className={styles.effectHint}>等待条件满足</p>}
+		</article>
+	)
+}
 
 /** 游戏主界面：连接 SessionView、事件操作、属性/Effect 面板和回合推进。 */
 export function PlayPage() {
@@ -120,6 +157,8 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 		}
 		return groups
 	}, [view])
+	const activeEffects = view.runtime.effects.filter((effect) => effect.actived)
+	const pendingEffects = view.runtime.effects.filter((effect) => !effect.actived)
 
 	/** 执行 Session 命令，统一处理错误提示、属性动画和终局导航。 */
 	async function execute(command: Promise<SessionCommandResult>): Promise<void> {
@@ -223,19 +262,24 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 					</section>
 					<section className={styles.sideSection}>
 						<h2 className={styles.sectionLabel}>Effects / 构建</h2>
-						<div className={styles.effectList}>
-							{view.runtime.effects.length === 0 && <p>尚未获得 Effect。</p>}
-							{view.runtime.effects.map((effect) => (
-								<article className={`${styles.effectCard} ${effect.actived ? styles.effectCardActive : ''}`} key={effect.effectId}>
-									<div className={styles.effectName}>
-										<span>{effect.displayName}</span>
-										<span className={styles.pill}>{effect.actived ? '已激活' : '未激活'}</span>
+						{view.runtime.effects.length === 0 ? <p>尚未获得 Effect。</p> : (
+							<>
+								<div className={styles.effectGroup}>
+									<h3 className={styles.effectGroupTitle}>已激活</h3>
+									<div className={styles.effectList}>
+										{activeEffects.length === 0 && <p>暂无已激活 Effect。</p>}
+										{activeEffects.map((effect) => <EffectCard busy={view.busy} effect={effect} execute={execute} key={effect.effectId} session={session} />)}
 									</div>
-									{effect.description && <p className={styles.effectText}>{effect.description}</p>}
-									{effect.bindCharacterDisplayName && <p className={styles.effectText}>绑定：{effect.bindCharacterDisplayName}</p>}
-								</article>
-							))}
-						</div>
+								</div>
+								<div className={styles.effectGroup}>
+									<h3 className={styles.effectGroupTitle}>已获得 · 待激活</h3>
+									<div className={styles.effectList}>
+										{pendingEffects.length === 0 && <p>暂无待激活 Effect。</p>}
+										{pendingEffects.map((effect) => <EffectCard busy={view.busy} effect={effect} execute={execute} key={effect.effectId} session={session} />)}
+									</div>
+								</div>
+							</>
+						)}
 					</section>
 				</aside>
 				<section className={styles.playMain}>

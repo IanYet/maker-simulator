@@ -43,12 +43,13 @@ const enumAttribute = (id, name, order, value, valueDisplay, options = {}) => ({
   valueDisplay,
 })
 
-/** 生成带获得/激活状态和 Reaction 列表的 Effect 定义。 */
+/** 生成带获得/激活状态、手动激活能力和 Reaction 列表的 Effect 定义。 */
 function effect(id, name, order, description, options = {}) {
   return {
     ...common(id, name, order, { tags: options.tags ?? ['build'], description }),
     acquired: options.acquired ?? false,
     actived: options.actived ?? false,
+    manuallyActivatable: options.manuallyActivatable ?? false,
     ...(options.bindCharacterId ? { bindCharacterId: options.bindCharacterId } : {}),
     reactionList: options.reactionList ?? [],
   }

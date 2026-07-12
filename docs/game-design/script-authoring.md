@@ -165,13 +165,17 @@ interface EffectConfig extends CommonConfig {
     acquired: ReactiveValue<boolean>;
     /** 是否已生效或其计算规则。 */
     actived: ReactiveValue<boolean>;
+    /** 是否允许玩家在事件处理阶段手动激活。 */
+    manuallyActivatable: boolean;
     /** 绑定目标的 character id。 */
     bindCharacterId?: string;
     reactionList: Reaction[];
 }
 ```
 
-`acquired` 表示效果是否已经获得，`actived` 表示效果是否已生效。`reactionList` 响应效果字段或其他派生值的变化，例如获得、激活、失效以及激活后的每回合开始。`bindCharacterId` 存在时必须指向 Config 中的 character。
+`acquired` 表示效果是否已经获得，`actived` 表示效果是否已生效。`manuallyActivatable` 为 `true` 时，已获得且尚未激活的 Effect 会在事件处理阶段提供手动激活入口；省略该字段等同于 `false`。这类 Effect 的 `actived` 必须使用字面值，不能使用 Rule 派生值。`reactionList` 响应效果字段或其他派生值的变化，例如获得、激活、失效以及激活后的每回合开始。`bindCharacterId` 存在时必须指向 Config 中的 character。
+
+手动激活由宿主发送 `activate-effect` RuntimeCommand，Runtime 在事务中把 `actived` 写为 `true`，随后按正常流程稳定该 Effect 的 Reaction。Effect 的激活副作用、资源消耗和提示 Action 应声明在观察 `self.actived` 从 `false` 到 `true` 的 Reaction 中；Reaction Action 抛错时，激活状态和同一处理单元中的其它写入一起回滚。
 
 策划默认约定：不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，优先声明在 Effect 上；Effect 的 `displayName` 与 `description` 应说明持续规则及其影响，让玩家能在效果面板看到这些规则。EventConfig Reaction 主要用于事件内容自身的持续响应。
 

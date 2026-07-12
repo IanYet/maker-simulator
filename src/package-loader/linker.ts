@@ -167,6 +167,17 @@ export function linkConfig(
 		visitCommon(effect, rules, base)
 		visitReactive(effect.acquired, rules, `${base}/acquired`)
 		visitReactive(effect.actived, rules, `${base}/actived`)
+		if (
+			effect.manuallyActivatable &&
+			typeof effect.actived === 'object' &&
+			effect.actived !== null &&
+			'rule' in effect.actived
+		) {
+			fail(
+				'Manually activatable Effect must use a literal actived value',
+				`${base}/actived`,
+			)
+		}
 		if (effect.bindCharacterId && !config.characters[effect.bindCharacterId]) {
 			fail(`Unknown Character “${effect.bindCharacterId}”`, `${base}/bindCharacterId`)
 		}

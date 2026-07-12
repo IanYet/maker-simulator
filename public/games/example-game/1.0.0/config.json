@@ -75,6 +75,7 @@
       "enabled": true,
       "acquired": true,
       "actived": true,
+      "manuallyActivatable": false,
       "bindCharacterId": "player",
       "reactionList": [
         {
@@ -89,7 +90,7 @@
       "id": "lucky-token",
       "displayName": "幸运符",
       "tags": ["reward"],
-      "description": "一次成功探索留下的纪念。",
+      "description": "一次成功探索留下的纪念，激活后恢复一点体力。",
       "order": 2,
       "weight": 5,
       "visible": true,
@@ -97,7 +98,15 @@
       "enabled": true,
       "acquired": false,
       "actived": false,
-      "reactionList": []
+      "manuallyActivatable": true,
+      "reactionList": [
+        {
+          "watch": { "source": "self", "path": ["actived"] },
+          "from": false,
+          "to": true,
+          "action": { "key": "player.change-health", "args": [1] }
+        }
+      ]
     }
   },
   "events": {

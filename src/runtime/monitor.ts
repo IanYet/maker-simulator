@@ -32,6 +32,8 @@ export function commandTraceDetail(command: RuntimeCommand): Readonly<Record<str
 	switch (command.type) {
 		case 'start-event':
 			return { commandType: command.type, eventId: command.eventId }
+		case 'activate-effect':
+			return { commandType: command.type, effectId: command.effectId }
 		case 'choose-single':
 			return {
 				commandType: command.type,

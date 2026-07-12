@@ -190,6 +190,8 @@ export interface EffectConfig extends CommonConfig {
 	acquired: ReactiveValue<boolean>
 	/** 是否已经激活，或用于计算激活状态的 Rule。 */
 	actived: ReactiveValue<boolean>
+	/** 是否允许玩家在事件处理阶段手动激活。 */
+	manuallyActivatable: boolean
 	/** 可选的绑定 CharacterConfig id。 */
 	bindCharacterId?: string
 	/** Effect 持续观察的 Reaction 列表。 */
@@ -546,6 +548,8 @@ export interface EffectRuntime extends CommonRuntime {
 	acquired: boolean
 	/** 当前是否已激活。 */
 	actived: boolean
+	/** 是否允许玩家手动激活。 */
+	manuallyActivatable: boolean
 	/** 当前绑定的 CharacterConfig id。 */
 	bindCharacterId?: string
 	/** Effect 配置的 Reaction 列表。 */
@@ -722,6 +726,7 @@ export interface ActionCharacterRuntime extends ActionCommonRuntime {
 export interface ActionEffectRuntime extends ActionCommonRuntime {
 	acquired: boolean
 	actived: boolean
+	readonly manuallyActivatable: boolean
 	bindCharacterId?: string
 	readonly reactionList: DeepReadonly<Reaction[]>
 	readonly acquiredTurn?: number

@@ -17,6 +17,7 @@
 ```ts
 type RuntimeCommand =
     | { type: 'start-event'; eventId: string }
+    | { type: 'activate-effect'; effectId: string }
     | {
           type: 'choose-single';
           eventInstanceId: string;
@@ -89,6 +90,8 @@ interface EffectView {
     displayName: string;
     description?: string;
     actived: boolean;
+    manuallyActivatable: boolean;
+    canActivate: boolean;
     bindCharacterId?: string;
     bindCharacterDisplayName?: string;
 }
@@ -190,6 +193,7 @@ GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最
 | UI 操作 | Runtime 调用 | 引擎行为 |
 | --- | --- | --- |
 | 点击可启动事件卡 | `dispatch({ type: 'start-event', eventId })` | 校验 phase、unlocked/enabled、`activeInstanceId` 与本回合启动记录，原子创建实例并设置 active id |
+| 点击手动激活 Effect | `dispatch({ type: 'activate-effect', effectId })` | 校验 Effect 能力和当前状态，在 RunState 中写入 `actived = true`，再稳定 Effect Reaction |
 | 点击进行中事件 | 无 gameplay command | 只改变 UI 聚焦状态 |
 | 点击单选项 | `dispatch({ type: 'choose-single', ... })` | 定位当前 Choice，通过执行器运行其 Action |
 | 增减多选数量 | `dispatch({ type: 'set-multiple-choice', ... })` | 校验 count/maxCount，写 TurnState 临时选择 |
@@ -198,7 +202,7 @@ GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最
 | 渲染属性、Effect、卡片 | 无 | 只读取 snapshot selector 结果 |
 | 进入 CheckNode | 无 UI 绑定 | 引擎自动运行 check Action，直到 TextNode、完成或错误 |
 
-可启动卡片 selector 使用有效 `visible && unlocked && enabled`，并排除 `activeInstanceId` 已存在或本回合已启动过实例的 EventConfig。一个 EventConfig 每个逻辑回合最多成功执行一次 `StartEvent`；实例 active 期间不再应用事件级 `visible`、`unlocked` 与 `enabled`，其入口始终可见且可用。实例结束时引擎清除 `activeInstanceId`，历史实例继续保留在 `instances`。属性、Effect、事件与选项按 `order` 升序、id 升序作为稳定后备次序。每个处理单元稳定后 selector 实时重算。
+可启动卡片 selector 使用有效 `visible && unlocked && enabled`，并排除 `activeInstanceId` 已存在或本回合已启动过实例的 EventConfig。Effect selector 只投影 `visible && unlocked && acquired` 的 Effect；`canActivate` 还要求 `manuallyActivatable`、`actived = false`、有效 `enabled` 和 `event_handle` phase。一个 EventConfig 每个逻辑回合最多成功执行一次 `StartEvent`；实例 active 期间不再应用事件级 `visible`、`unlocked` 与 `enabled`，其入口始终可见且可用。实例结束时引擎清除 `activeInstanceId`，历史实例继续保留在 `instances`。属性、Effect、事件与选项按 `order` 升序、id 升序作为稳定后备次序。每个处理单元稳定后 selector 实时重算。
 
 UI focus、弹窗、存档树选中项属于组件或应用状态，不写入 Gameplay State。引擎只在处理单元稳定后增加 revision 并通知一次，React render 和 StrictMode 重复渲染都不能推进 PRNG 或产生写入。
 
@@ -220,7 +224,7 @@ type TurnPhase =
 | --- | --- | --- | --- |
 | `initializing` | 新游戏或 restart 构造 runtime | 无 | Reaction baseline 建立后自动开始首回合 |
 | `turn_start` | 首回合或上一回合提交完成 | 无 | 开始阶段稳定后自动进入 `event_handle` |
-| `event_handle` | 等待玩家处理零到多个事件 | 事件/节点命令、`advance-turn` | 事件交互保持本 phase；下一回合命令进入 `turn_end` |
+| `event_handle` | 等待玩家处理零到多个事件或激活 Effect | 事件/节点命令、`activate-effect`、`advance-turn` | 事件交互保持本 phase；下一回合命令进入 `turn_end` |
 | `turn_end` | `advance-turn` 通过门禁 | 无 | 稳定后终局或创建回合检查点，再自动开始下一回合 |
 
 状态机采用 run-to-idle：internal transition、Rule invalidation、Action 与 Reaction 持续执行，直到 `event_handle` 用户输入点或 RunData 结束才发布 snapshot。依赖 phase 的脚本是在观察公开生命周期状态，不具备推进状态机的权限。
@@ -272,6 +276,8 @@ flowchart TD
     E2 -- 否 --> F{发布事件面板并等待玩家操作}
     F -- 点击事件卡 --> G[StartEvent 命令<br/>创建实例并设置 activeInstanceId<br/>进入入口节点]
     F -- Choice/Command --> H[执行 Config Action]
+    F -- 手动激活 Effect --> H2[写入 actived=true<br/>稳定 Effect Reaction]
+    H2 --> F
     F -- 下一回合 --> I{required 门禁通过?}
     I -- 否 --> F
     I -- 是 --> J[phase = turn_end<br/>运行 Action/Reaction 到稳定]

@@ -295,6 +295,9 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				case 'start-event':
 					await this.startEvent(command.eventId)
 					break
+				case 'activate-effect':
+					await this.activateEffect(command.effectId)
+					break
 				case 'choose-single':
 					await this.chooseSingle(
 						command.eventInstanceId,
@@ -426,6 +429,31 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			eventState.activeInstanceId = instanceId
 			const entry = this.game.config.events[eventId].nodes[event.entryNodeId]
 			if (entry.type === 'check') this.runCheck(unit, instanceId, entry.id)
+		})
+	}
+
+	/**
+	 * 在当前回合直接激活已获得且声明支持手动激活的 Effect。
+	 * 状态写入与随后触发的 Effect Reaction 共用同一处理单元；任一 Reaction
+	 * 失败时，激活状态和其它写入一起回滚。
+	 */
+	private async activateEffect(effectId: string): Promise<void> {
+		this.requireInputPhase()
+		await this.runUnit(`activate-effect:${effectId}`, (unit) => {
+			const config = this.game.config.effects[effectId]
+			const effect = this.runView(unit).effects[effectId]
+			if (!config || !effect) throw new RuntimeFailure('not-found', 'The Effect does not exist')
+			if (!config.manuallyActivatable)
+				throw new RuntimeFailure('not-enabled', 'The Effect cannot be activated manually')
+			if (typeof config.actived !== 'boolean')
+				throw new RuntimeFailure('not-enabled', 'The Effect activation is controlled by a Rule')
+			if (!effect.visible || !effect.unlocked || !effect.enabled)
+				throw new RuntimeFailure('not-enabled', 'The Effect is not currently available')
+			if (!effect.acquired)
+				throw new RuntimeFailure('not-enabled', 'The Effect has not been acquired')
+			if (effect.actived)
+				throw new RuntimeFailure('not-enabled', 'The Effect is already active')
+			this.runView(unit, true).effects[effectId].actived = true
 		})
 	}
 
@@ -1271,6 +1299,13 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 							displayName: effect.displayName,
 							...(effect.description ? { description: effect.description } : {}),
 							actived: effect.actived,
+							manuallyActivatable: config.manuallyActivatable,
+							canActivate:
+								config.manuallyActivatable &&
+								!effect.actived &&
+								effect.enabled &&
+								run.status === 'active' &&
+								run.turnState.phase === 'event_handle',
 							...(effect.bindCharacterId
 								? { bindCharacterId: effect.bindCharacterId }
 								: {}),

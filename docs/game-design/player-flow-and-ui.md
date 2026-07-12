@@ -220,7 +220,9 @@ Character 与 Attribute 使用当前运行时已解析值。
 | --- | --- |
 | `visible && unlocked && acquired` | 显示 Effect |
 | `actived = true` | 使用“已激活”样式 |
-| `actived = false` 且已经获得 | 使用“未激活”样式 |
+| `actived = false` 且已经获得 | 在“已获得 · 待激活”区域显示 |
+| `manuallyActivatable && canActivate` | 在待激活 Effect 卡片显示“激活”按钮 |
+| `manuallyActivatable = false` 且 `actived = false` | 显示等待条件提示，不提供手动按钮 |
 | 尚未获得 | 默认不展示 |
 | active 状态变化 | 在处理单元稳定后刷新，可以播放非阻塞提示 |
 

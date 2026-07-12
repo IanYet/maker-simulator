@@ -74,6 +74,11 @@ export class GameSessionImpl implements GameSession {
 		return this.command(() => this.runtime.dispatch({ type: 'start-event', eventId }))
 	}
 
+	/** 手动激活一个已获得的 Effect。 */
+	activateEffect(effectId: string): Promise<SessionCommandResult> {
+		return this.command(() => this.runtime.dispatch({ type: 'activate-effect', effectId }))
+	}
+
 	/** 提交当前单选节点的 Choice。 */
 	chooseSingle(eventInstanceId: string, nodeId: string, choiceId: string): Promise<SessionCommandResult> {
 		return this.command(() => this.runtime.dispatch({ type: 'choose-single', eventInstanceId, nodeId, choiceId }))

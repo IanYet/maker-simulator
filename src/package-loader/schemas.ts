@@ -72,6 +72,7 @@ const effectSchema = z.strictObject({
 	...commonShape,
 	acquired: reactive(z.boolean()),
 	actived: reactive(z.boolean()),
+	manuallyActivatable: z.boolean().default(false),
 	bindCharacterId: idSchema.optional(),
 	reactionList: z.array(reactionSchema),
 })

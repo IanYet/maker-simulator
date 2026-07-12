@@ -11,6 +11,7 @@ import type {
 /** UI 到 GameplayRuntime 的权威命令协议。 */
 export type RuntimeCommand =
 	| { type: 'start-event'; eventId: string }
+	| { type: 'activate-effect'; effectId: string }
 	| {
 			type: 'choose-single'
 			eventInstanceId: string
@@ -89,6 +90,8 @@ export interface EffectView {
 	readonly displayName: string
 	readonly description?: string
 	readonly actived: boolean
+	readonly manuallyActivatable: boolean
+	readonly canActivate: boolean
 	readonly bindCharacterId?: string
 	readonly bindCharacterDisplayName?: string
 }
@@ -236,6 +239,8 @@ export interface GameSession {
 	focusEvent(eventInstanceId?: string): void
 	/** 启动事件卡片。 */
 	startEvent(eventId: string): Promise<SessionCommandResult>
+	/** 手动激活一个已获得的 Effect。 */
+	activateEffect(effectId: string): Promise<SessionCommandResult>
 	/** 提交单选节点选项。 */
 	chooseSingle(
 		eventInstanceId: string,

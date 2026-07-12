@@ -405,6 +405,24 @@ button.profileCard {
 	background: var(--color-mint);
 }
 
+.effectCardPending {
+	background: var(--color-cream);
+}
+
+.effectGroup + .effectGroup {
+	margin-top: var(--space-xl);
+	padding-top: var(--space-lg);
+	border-top: 1px solid var(--color-hairline-soft);
+}
+
+.effectGroupTitle {
+	margin-bottom: var(--space-sm);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.45px;
+	text-transform: uppercase;
+}
+
 .effectName {
 	display: flex;
 	align-items: center;
@@ -418,6 +436,26 @@ button.profileCard {
 	margin: 0;
 	font-size: 14px;
 	line-height: 1.45;
+}
+
+.effectHint {
+	margin: var(--space-sm) 0 0;
+	color: var(--color-navy);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.3px;
+}
+
+.effectActions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: var(--space-md);
+}
+
+.effectAction {
+	min-height: 36px;
+	padding: 5px 13px;
+	font-size: 13px;
 }
 
 .playMain {

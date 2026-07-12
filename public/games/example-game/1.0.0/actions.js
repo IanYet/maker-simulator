@@ -32,7 +32,6 @@ export const actions = {
     key: 'event.take-token',
     exec: (context, eventId) => {
       context.runState.effects['lucky-token'].acquired = true
-      context.runState.effects['lucky-token'].actived = true
       activeInstance(context, eventId).status = 'completed'
     },
   },
