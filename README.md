@@ -82,6 +82,7 @@ public/games/
 新增游戏包时，先阅读：
 
 - [开发文档](./docs/development.md)
+- [故事脚本编写 Skill](./.codex/skills/write-story-script/SKILL.md)
 - [游戏脚本编写指南](./docs/game-design/script-authoring.md)
 - [外部游戏包与加载](./docs/game-design/game-package.md)
 - [运行时系统设计](./docs/game-design/runtime-system.md)
