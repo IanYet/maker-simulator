@@ -117,6 +117,8 @@ interface CommonConfig {
 
 `visible` 控制对象是否在 UI 中显示。`unlocked` 控制对象是否可以从 Profile 进入 RunData，`enabled` 控制对象是否在游戏流程中可用。
 
+在一份Profile中，一旦某个对象`unlocked`了，那这份profile，从任何turn进入游戏，即使回退时间线，该对象仍然是unlocked的状态。
+
 ### 属性 Attribute
 属性没有独立叙事或动作，是依托于 character 的状态。character 可以是具体人物，也可以是抽象对象，例如“玩家”“城镇”“世界”或“本局”。属性不能脱离其 character 单独存在。
 
