@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "games": [
+    {
+      "id": "example-game",
+      "version": "1.0.0",
+      "name": "事件网络示例",
+      "background": "用于验证事件、选择、Reaction、随机检查点与终局流程的最小示例包。",
+      "manifest": "./example-game/1.0.0/manifest.json"
+    },
+    {
+      "id": "frostbound",
+      "version": "1.0.0",
+      "name": "白夜余烬",
+      "background": "极寒末日后的第十日，经营移动避难所、连接幸存者与设施，在终末白障到来前构建一条可活下去的路线。",
+      "manifest": "./frostbound/1.0.0/manifest.json",
+      "cover": "./frostbound/1.0.0/assets/cover.svg"
+    }
+  ],
+  "defaultVersions": {
+    "example-game": "1.0.0",
+    "frostbound": "1.0.0"
+  }
+}

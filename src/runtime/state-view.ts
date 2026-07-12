@@ -1,0 +1,238 @@
+import type {
+	GameConfig,
+	GameState,
+	Primitive,
+	Rule,
+	TurnState,
+} from '../types'
+
+interface ViewEnvironment {
+	readonly config: GameConfig
+	readonly layers: readonly GameState[]
+	readonly turnState?: TurnState
+	readonly writable?: GameState
+	readonly scope: 'profile' | 'run' | 'turn'
+	readonly evaluateRule: (rule: Rule) => unknown
+	readonly onEventWrite?: (
+		path: readonly string[],
+		property: 'currentNodeId' | 'status',
+		previous: unknown,
+		next: unknown,
+	) => void
+}
+
+const hasOwn = (value: object, key: PropertyKey): boolean =>
+	Object.prototype.hasOwnProperty.call(value, key)
+
+function isReactive(value: unknown): value is { value: unknown; rule: Rule } {
+	return value !== null && typeof value === 'object' && 'value' in value && 'rule' in value
+}
+
+function resolveReactive(value: unknown, environment: ViewEnvironment): unknown {
+	return isReactive(value) ? environment.evaluateRule(value.rule) : value
+}
+
+function configAt(environment: ViewEnvironment, path: readonly string[]): unknown {
+	let cursor: unknown = environment.config
+	for (const segment of path) {
+		cursor = resolveReactive(cursor, environment)
+		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) return undefined
+		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
+	}
+	return resolveReactive(cursor, environment)
+}
+
+function rawConfigAt(config: GameConfig, path: readonly string[]): unknown {
+	let cursor: unknown = config
+	for (const segment of path) {
+		if (isReactive(cursor)) cursor = cursor.value
+		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) return undefined
+		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
+	}
+	return cursor
+}
+
+function stateAt(state: GameState, path: readonly string[]): unknown {
+	let cursor: unknown = state
+	for (const segment of path) {
+		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) return undefined
+		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
+	}
+	return cursor
+}
+
+function effectiveAt(environment: ViewEnvironment, path: readonly string[]): unknown {
+	if (path.length === 1 && environment.turnState && (path[0] === 'turnNumber' || path[0] === 'phase')) {
+		return environment.turnState[path[0]]
+	}
+	const rawConfig = rawConfigAt(environment.config, path)
+	if (isReactive(rawConfig)) return environment.evaluateRule(rawConfig.rule)
+	for (let index = environment.layers.length - 1; index >= 0; index -= 1) {
+		const value = stateAt(environment.layers[index], path)
+		if (value !== undefined) return value
+	}
+	return configAt(environment, path)
+}
+
+function stateObjectKeys(environment: ViewEnvironment, path: readonly string[]): string[] {
+	const keys = new Set<string>()
+	const configured = configAt(environment, path)
+	if (configured !== null && typeof configured === 'object') {
+		for (const key of Object.keys(configured)) keys.add(key)
+	}
+	for (const state of environment.layers) {
+		const value = stateAt(state, path)
+		if (value !== null && typeof value === 'object') {
+			for (const key of Object.keys(value)) keys.add(key)
+		}
+	}
+	if (path.length === 0 && environment.turnState) {
+		keys.add('turnNumber')
+		keys.add('phase')
+	}
+	return [...keys]
+}
+
+function needsId(path: readonly string[]): boolean {
+	return (
+		(path.length === 2 && ['characters', 'effects', 'events'].includes(path[0])) ||
+		(path.length === 4 && path[0] === 'characters' && path[2] === 'attributes') ||
+		(path.length === 4 && path[0] === 'events' && path[2] === 'nodes') ||
+		(path.length === 6 && path[0] === 'events' && path[2] === 'nodes' && ['choices', 'commands'].includes(path[4]))
+	)
+}
+
+function ensureParent(state: GameState, path: readonly string[]): Record<string, unknown> {
+	let cursor = state as unknown as Record<string, unknown>
+	const traversed: string[] = []
+	for (const segment of path) {
+		traversed.push(segment)
+		const current = cursor[segment]
+		if (current === undefined) {
+			const created: Record<string, unknown> = {}
+			if (needsId(traversed)) created.id = segment
+			cursor[segment] = created
+			cursor = created
+		} else if (current !== null && typeof current === 'object') {
+			cursor = current as Record<string, unknown>
+		} else {
+			throw new Error(`Cannot write through non-object state path ${traversed.join('.')}`)
+		}
+	}
+	return cursor
+}
+
+function isEventLifecycle(path: readonly string[], property: PropertyKey): property is 'currentNodeId' | 'status' {
+	return (
+		path.length === 4 &&
+		path[0] === 'events' &&
+		path[2] === 'instances' &&
+		(property === 'currentNodeId' || property === 'status')
+	)
+}
+
+function isSyntheticRecord(path: readonly string[]): boolean {
+	return path.length === 3 && path[0] === 'events' && path[2] === 'instances'
+}
+
+function isWritableContentPath(path: readonly string[]): boolean {
+	const property = path.at(-1)
+	if (!property) return false
+	if (['weight', 'visible', 'unlocked', 'enabled'].includes(property)) return true
+	if (path.length === 5 && path[0] === 'characters' && path[2] === 'attributes' && property === 'value') return true
+	if (path.length === 3 && path[0] === 'effects' && ['acquired', 'actived', 'bindCharacterId'].includes(property)) return true
+	if (path.length === 5 && path[0] === 'events' && path[2] === 'nodes' && property === 'required') return true
+	if (path.length === 7 && path[0] === 'events' && path[2] === 'nodes' && path[4] === 'choices' && property === 'maxCount') return true
+	return false
+}
+
+function validateWrite(environment: ViewEnvironment, path: readonly string[], value: unknown): unknown {
+	const property = path.at(-1)
+	if (property === 'weight') {
+		if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10) throw new Error('weight must be between 0 and 10')
+	}
+	if (property === 'maxCount') {
+		if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) throw new Error('maxCount must be a non-negative integer')
+	}
+	if (property === 'value' && path[0] === 'characters') {
+		const attribute = configAt(environment, path.slice(0, -1))
+		if (attribute === null || typeof attribute !== 'object' || typeof value !== 'number' || !Number.isFinite(value)) {
+			throw new Error('Attribute value must be a finite number')
+		}
+		const typed = attribute as { type: string; min?: number; max?: number; valueDisplay?: readonly string[] }
+		if (typed.type === 'enum') {
+			if (!Number.isInteger(value) || value < 0 || value >= (typed.valueDisplay?.length ?? 0)) throw new Error('Invalid enum attribute value')
+		} else {
+			return Math.min(typed.max ?? Number.POSITIVE_INFINITY, Math.max(typed.min ?? Number.NEGATIVE_INFINITY, value))
+		}
+	}
+	if (property === 'bindCharacterId' && value !== undefined) {
+		if (typeof value !== 'string' || !environment.config.characters[value]) throw new Error('Unknown Effect character binding')
+	}
+	if (['visible', 'unlocked', 'enabled', 'acquired', 'actived', 'required'].includes(property ?? '') && typeof value !== 'boolean') {
+		throw new Error(`${String(property)} must be boolean`)
+	}
+	return value
+}
+
+function makeProxy(environment: ViewEnvironment, path: readonly string[]): object {
+	return new Proxy(Object.create(null) as Record<string, unknown>, {
+		get(_target, property) {
+			if (property === Symbol.toStringTag) return 'MakerRuntimeView'
+			if (property === 'toJSON') return undefined
+			if (typeof property !== 'string') return undefined
+			const childPath = [...path, property]
+			const value = effectiveAt(environment, childPath)
+			if (value === undefined && isSyntheticRecord(childPath)) return makeProxy(environment, childPath)
+			if (Array.isArray(value)) return Object.freeze([...value])
+			if (value !== null && typeof value === 'object') return makeProxy(environment, childPath)
+			return value
+		},
+		set(_target, property, next) {
+			if (typeof property !== 'string' || !environment.writable) throw new Error('Rule runtime views are read-only')
+			const childPath = [...path, property]
+			const lifecycle = isEventLifecycle(path, property)
+			if (lifecycle && environment.scope !== 'run') throw new Error('EventInstance lifecycle is writable only through runState')
+			if (!lifecycle && !isWritableContentPath(childPath)) throw new Error(`State path ${childPath.join('.')} is read-only`)
+			const rawConfig = rawConfigAt(environment.config, childPath)
+			if (isReactive(rawConfig)) throw new Error(`Rule-derived field ${childPath.join('.')} cannot be assigned`)
+			const previous = effectiveAt(environment, childPath)
+			const value = lifecycle ? next : validateWrite(environment, childPath, next)
+			if (lifecycle) environment.onEventWrite?.(path, property, previous, value)
+			const parent = ensureParent(environment.writable, path)
+			if (value === undefined) delete parent[property]
+			else parent[property] = value
+			return true
+		},
+		ownKeys() {
+			return stateObjectKeys(environment, path)
+		},
+		has(_target, property) {
+			return typeof property === 'string' && stateObjectKeys(environment, path).includes(property)
+		},
+		getOwnPropertyDescriptor(_target, property) {
+			if (typeof property === 'string' && stateObjectKeys(environment, path).includes(property)) {
+				return { enumerable: true, configurable: true }
+			}
+			return undefined
+		},
+		deleteProperty() {
+			throw new Error('Deleting runtime fields is not supported')
+		},
+	})
+}
+
+export function createRuntimeView(environment: ViewEnvironment): Record<string, unknown> {
+	return makeProxy(environment, []) as Record<string, unknown>
+}
+
+export function readPath(root: unknown, path: readonly string[]): Primitive | undefined {
+	let cursor = root
+	for (const segment of path) {
+		if (cursor === null || typeof cursor !== 'object') return undefined
+		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
+	}
+	return cursor === null || ['string', 'number', 'boolean'].includes(typeof cursor)
+		? (cursor as Primitive)
+		: undefined
+}

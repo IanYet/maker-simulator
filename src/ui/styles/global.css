@@ -1,0 +1,66 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	font-family: var(--font-sans);
+	font-synthesis: none;
+	font-kerning: normal;
+	color: var(--color-black);
+	background: var(--color-white);
+	text-rendering: optimizeLegibility;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100vh;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+button,
+a {
+	-webkit-tap-highlight-color: transparent;
+}
+
+a {
+	color: inherit;
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-black);
+	outline-offset: 3px;
+}
+
+::selection {
+	color: var(--color-white);
+	background: var(--color-black);
+}
+
+h1,
+h2,
+h3,
+p {
+	margin-block-start: 0;
+}
+
+button:disabled {
+	cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+}
