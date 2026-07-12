@@ -112,6 +112,12 @@ function visitCommon(value: CommonConfig, rules: RuleRegistry, path: string): vo
 	visitReactive(value.enabled, rules, `${path}/enabled`)
 }
 
+/**
+ * 校验 catalog、manifest、Config 与脚本 registry 的身份和静态引用。
+ * linking 成功后，Runtime 才可以安全地注册 Rule、Action 和 Reaction。
+ *
+ * @throws {GamePackageLoadError} 任意身份、引用或节点目标不一致时抛出。
+ */
 export function linkConfig(
 	descriptor: Readonly<GamePackageDescriptor>,
 	manifest: Readonly<GamePackageManifest>,
@@ -217,6 +223,11 @@ export function linkConfig(
 	}
 }
 
+/**
+ * 校验 Rule/Action 模块的导出形状，并返回可供 Runtime 使用的 registry。
+ *
+ * @throws {GamePackageLoadError} 模块缺少 registry、key 不一致或实现不是函数时抛出。
+ */
 export function validateRegistries(
 	ruleModule: unknown,
 	actionModule: unknown,
@@ -258,6 +269,7 @@ export function validateRegistries(
 	return { rules: rules as RuleRegistry, actions: actions as ActionRegistry }
 }
 
+/** 深度冻结 Config 与 registry，防止运行时脚本意外修改静态包对象。 */
 export function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
 	if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value
 	const object = value as object
@@ -267,10 +279,12 @@ export function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
 	return Object.freeze(value)
 }
 
+/** 将基础参数稳定序列化，用于 Rule 递归检测和监控标识。 */
 export function stableArgs(args: readonly Primitive[]): string {
 	return JSON.stringify(args)
 }
 
+/** 根据 EventNode id 找到其所属 EventConfig；找不到时返回 undefined。 */
 export function eventForNode(config: GameConfig, eventId: string): EventConfig | undefined {
 	return config.events[eventId]
 }

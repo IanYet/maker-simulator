@@ -28,6 +28,7 @@ function kindLabel(turn: TurnData): string {
 				: '放弃记录'
 }
 
+/** 存档浏览页：展示多条 RunData 时间线和稳定检查点操作。 */
 export function SavesPage() {
 	const { gameId = '' } = useParams()
 	const services = useAppServices()

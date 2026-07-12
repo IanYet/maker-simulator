@@ -1,15 +1,19 @@
+/** 从当前 TurnState 读取属性值，供纯 Rule 复用。 */
 function attribute(context, characterId, attributeId) {
   return context.turnState.characters[characterId].attributes[attributeId].value
 }
 
+/** 读取事件历史实例；不存在时由 State 视图提供空集合语义。 */
 function instances(context, eventId) {
   return Object.values(context.runState.events[eventId].instances)
 }
 
+/** 判断指定 Effect 是否已获得。 */
 function hasEffect(context, effectId) {
   return context.turnState.effects[effectId].acquired
 }
 
+/** 汇总当前多选节点已选数量。 */
 function selectionTotal(context, eventId, nodeId) {
   const instanceId = context.runState.events[eventId].activeInstanceId
   if (!instanceId) return 0
@@ -19,6 +23,7 @@ function selectionTotal(context, eventId, nodeId) {
     : 0
 }
 
+/** Frostbound 的纯 Rule registry；不写 State、不推进随机游标。 */
 export const rules = {
   'turn.is-start': {
     key: 'turn.is-start',

@@ -24,6 +24,11 @@ interface MakerSimulatorDatabase extends DBSchema {
 let databasePromise: Promise<IDBPDatabase<MakerSimulatorDatabase>> | undefined
 const DATABASE_VERSION = 2
 
+/**
+ * 打开并缓存 Maker Simulator 的 IndexedDB 连接。
+ *
+ * 升级逻辑按对象仓库和索引是否存在进行幂等创建，兼容旧版本数据库。
+ */
 export function getDatabase(): Promise<IDBPDatabase<MakerSimulatorDatabase>> {
 	databasePromise ??= openDB<MakerSimulatorDatabase>('maker-simulator', DATABASE_VERSION, {
 		upgrade(database, _oldVersion, _newVersion, transaction) {

@@ -11,7 +11,14 @@ function catalogUrl(): string {
 	return new URL('games/catalog.json', base).href
 }
 
+/**
+ * 通过同源 HTTP 资源读取游戏包。
+ *
+ * JavaScript registry 以 Blob URL 导入，既保持包的 ESM 形式，也避免把外部包
+ * 直接纳入应用构建图；包脚本仍然必须来自当前 origin 并被视为可信代码。
+ */
 export class FetchGamePackageSource implements GamePackageSource {
+	/** 读取并校验 catalog，同时检查包身份和默认版本引用。 */
 	async list(): Promise<LocatedGameCatalog> {
 		const location = catalogUrl()
 		try {
@@ -49,6 +56,7 @@ export class FetchGamePackageSource implements GamePackageSource {
 		}
 	}
 
+	/** 读取 JSON 文本并把网络、HTTP、解析错误转换为带位置的异常。 */
 	async readJson<T>(location: string): Promise<T> {
 		let response: Response
 		try {
@@ -72,6 +80,11 @@ export class FetchGamePackageSource implements GamePackageSource {
 		}
 	}
 
+	/**
+	 * 读取可信 JavaScript registry，并以 ESM 模块对象返回。
+	 *
+	 * @param location 必须是同源且 JavaScript MIME 类型正确的 URL。
+	 */
 	async importTrustedModule(location: string): Promise<unknown> {
 		const response = await fetch(location, {
 			cache: import.meta.env.DEV ? 'no-cache' : 'default',
@@ -93,6 +106,7 @@ export class FetchGamePackageSource implements GamePackageSource {
 		}
 	}
 
+	/** 将 manifest 相对路径解析为同源绝对 URL。 */
 	resolve(base: string, reference: string): string {
 		const resolved = new URL(reference, base)
 		if (!['http:', 'https:'].includes(resolved.protocol)) {

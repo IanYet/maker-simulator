@@ -32,6 +32,7 @@ export type RuntimeCommand =
 	  }
 	| { type: 'advance-turn' }
 
+/** RuntimeCommand 的拒绝原因。 */
 export type RuntimeCommandErrorCode =
 	| 'busy'
 	| 'invalid-phase'
@@ -41,6 +42,7 @@ export type RuntimeCommandErrorCode =
 	| 'blocked'
 	| 'script-error'
 
+/** RuntimeCommand 的成功/失败结果及当前 Runtime revision。 */
 export type RuntimeCommandResult =
 	| { ok: true; revision: number }
 	| {
@@ -50,6 +52,7 @@ export type RuntimeCommandResult =
 			revision: number
 	  }
 
+/** Session 门面额外包装的应用层错误原因。 */
 export type SessionCommandErrorCode =
 	| RuntimeCommandErrorCode
 	| 'persistence-error'
@@ -57,6 +60,7 @@ export type SessionCommandErrorCode =
 	| 'not-active'
 	| 'incompatible-save'
 
+/** Session 命令结果；revision 仅用于 UI 观察状态变化。 */
 export type SessionCommandResult =
 	| { ok: true; revision: number }
 	| {
@@ -66,6 +70,7 @@ export type SessionCommandResult =
 			revision: number
 	  }
 
+/** UI 属性面板使用的已解析属性。 */
 export interface AttributeView {
 	readonly characterId: string
 	readonly characterDisplayName: string
@@ -78,6 +83,7 @@ export interface AttributeView {
 	readonly max?: number
 }
 
+/** UI Effect 面板使用的已获得效果。 */
 export interface EffectView {
 	readonly effectId: string
 	readonly displayName: string
@@ -87,12 +93,14 @@ export interface EffectView {
 	readonly bindCharacterDisplayName?: string
 }
 
+/** UI 可启动事件卡片的最小视图。 */
 export interface EventCardView {
 	readonly eventId: string
 	readonly displayName: string
 	readonly description?: string
 }
 
+/** active EventNode 的共同展示字段。 */
 export interface EventNodeViewBase {
 	readonly nodeId: NodeId
 	readonly displayName: string
@@ -101,6 +109,7 @@ export interface EventNodeViewBase {
 	readonly required: boolean
 }
 
+/** 单选节点中的可用选项。 */
 export interface SingleChoiceView {
 	readonly choiceId: string
 	readonly displayName: string
@@ -108,6 +117,7 @@ export interface SingleChoiceView {
 	readonly enabled: boolean
 }
 
+/** 多选节点中的数量和值视图。 */
 export interface MultipleChoiceView {
 	readonly choiceId: string
 	readonly displayName: string
@@ -118,6 +128,7 @@ export interface MultipleChoiceView {
 	readonly maxCount?: number
 }
 
+/** 多选节点提交选择时可执行的命令。 */
 export interface NodeCommandView {
 	readonly commandId: string
 	readonly displayName: string
@@ -139,6 +150,7 @@ export interface MultipleEventNodeView extends EventNodeViewBase {
 /** CheckNode 会在发布 snapshot 前自动处理，因此不会进入 UI read model。 */
 export type EventNodeView = SingleEventNodeView | MultipleEventNodeView
 
+/** 当前 Run 中仍处于 active 的事件实例。 */
 export interface ActiveEventView {
 	readonly eventId: string
 	readonly eventInstanceId: string
@@ -192,9 +204,13 @@ export type RuntimeSnapshot = RuntimeSnapshotBase &
 		  }
 	)
 
+/** Runtime 对外公开的状态、命令和生命周期接口。 */
 export interface GameplayRuntime {
+	/** 执行一条玩家或宿主命令。 */
 	dispatch(command: RuntimeCommand): Promise<RuntimeCommandResult>
+	/** 订阅稳定快照发布。 */
 	subscribe(listener: () => void): () => void
+	/** 读取当前不可变 UI read model。 */
 	getSnapshot(): RuntimeSnapshot
 }
 
@@ -212,31 +228,42 @@ export interface SessionView {
 
 /** React/UI 使用的 facade；camelCase 方法只转换为 RuntimeCommand 或应用命令。 */
 export interface GameSession {
+	/** 订阅 SessionView。 */
 	subscribe(listener: () => void): () => void
+	/** 读取当前 SessionView。 */
 	getView(): SessionView
 	/** 只更新应用级 UI focus；省略参数表示清除聚焦。 */
 	focusEvent(eventInstanceId?: string): void
+	/** 启动事件卡片。 */
 	startEvent(eventId: string): Promise<SessionCommandResult>
+	/** 提交单选节点选项。 */
 	chooseSingle(
 		eventInstanceId: string,
 		nodeId: string,
 		choiceId: string,
 	): Promise<SessionCommandResult>
+	/** 更新多选节点的选择数量。 */
 	updateSelection(
 		eventInstanceId: string,
 		nodeId: string,
 		choiceId: string,
 		count: number,
 	): Promise<SessionCommandResult>
+	/** 执行多选节点命令。 */
 	executeNodeCommand(
 		eventInstanceId: string,
 		nodeId: string,
 		commandId: string,
 	): Promise<SessionCommandResult>
+	/** 通过回合门禁并进入下一回合。 */
 	advanceTurn(): Promise<SessionCommandResult>
+	/** 保存并离开当前游玩页。 */
 	exitAndSave(): Promise<SessionCommandResult>
+	/** 放弃当前 Run 并离开游玩页。 */
 	abandonAndExit(): Promise<SessionCommandResult>
+	/** 打开存档浏览器。 */
 	openSaveBrowser(): Promise<SessionCommandResult>
+	/** 从终局/放弃记录重新开始。 */
 	restartRun(): Promise<SessionCommandResult>
 }
 
@@ -248,5 +275,6 @@ export type SaveCommand =
 	| { type: 'set-checkpoint-pinned'; source: TurnRef; pinned: boolean }
 
 export interface SaveBrowserController {
+	/** 执行继续、分支、截断或 pin 操作。 */
 	dispatch(command: SaveCommand): Promise<SessionCommandResult>
 }

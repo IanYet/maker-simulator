@@ -222,10 +222,16 @@ function makeProxy(environment: ViewEnvironment, path: readonly string[]): objec
 	})
 }
 
+/**
+ * 创建供 Rule、Action 和 Runtime selector 使用的分层 State Proxy。
+ * 读取时按 Profile → Run → Turn → Config 合并；写入时只允许 ActionContext
+ * 的白名单字段，并把事件生命周期写入交给 Runtime 记录。
+ */
 export function createRuntimeView(environment: ViewEnvironment): Record<string, unknown> {
 	return makeProxy(environment, []) as Record<string, unknown>
 }
 
+/** 按路径读取 Proxy/普通对象中的基础值；对象或数组结果返回 undefined。 */
 export function readPath(root: unknown, path: readonly string[]): Primitive | undefined {
 	let cursor = root
 	for (const segment of path) {

@@ -11,6 +11,7 @@ const deltaAttributes = [
   'signal',
 ]
 
+/** 读取当前事件实例；Action 不直接访问 RunData 容器。 */
 function activeInstance(context, eventId) {
   const event = context.runState.events[eventId]
   const instanceId = event.activeInstanceId
@@ -18,16 +19,19 @@ function activeInstance(context, eventId) {
   return event.instances[instanceId]
 }
 
+/** 读取当前多选节点的选择结果。 */
 function selection(context, eventId, nodeId) {
   const instanceId = context.runState.events[eventId].activeInstanceId
   if (!instanceId) throw new Error(`Event ${eventId} has no active instance`)
   return context.turnState.events[eventId].nodes[nodeId].selections?.[instanceId]
 }
 
+/** 判断一个 Effect 是否已获得。 */
 function acquired(context, effectId) {
   return context.runState.effects[effectId].acquired
 }
 
+/** Frostbound 的 Action registry；所有 State 写入均通过 ActionContext 完成。 */
 export const actions = {
   'state.change': {
     key: 'state.change',
@@ -163,6 +167,7 @@ export const actions = {
       }
     },
   },
+  /** 每回合开始推进气温、风暴、食物、温暖和健康消耗。 */
   'world.turn-start': {
     key: 'world.turn-start',
     exec: (context) => {

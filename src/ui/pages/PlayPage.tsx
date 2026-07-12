@@ -27,6 +27,7 @@ interface AttributeChange {
 
 const attributeKey = (characterId: string, attributeId: string): string => `${characterId}.${attributeId}`
 
+/** 游戏主界面：连接 SessionView、事件操作、属性/Effect 面板和回合推进。 */
 export function PlayPage() {
 	const { profileId = '' } = useParams()
 	const services = useAppServices()
@@ -91,6 +92,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 		return () => clearTimeout(timer)
 	}, [attributeChanges])
 
+	/** 记录一次命令造成的属性差异，并交给面板动画短暂展示。 */
 	function showAttributeChanges(previous: readonly AttributeView[], current: readonly AttributeView[], revision: number): void {
 		const previousByKey = new Map(previous.map((attribute) => [attributeKey(attribute.characterId, attribute.attributeId), attribute]))
 		const changes: Record<string, AttributeChange> = {}
@@ -119,6 +121,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 		return groups
 	}, [view])
 
+	/** 执行 Session 命令，统一处理错误提示、属性动画和终局导航。 */
 	async function execute(command: Promise<SessionCommandResult>): Promise<void> {
 		const previousAttributes = view.runtime.attributes
 		setMessage(undefined)

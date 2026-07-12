@@ -22,6 +22,7 @@ function copySnapshotToWorking(profile: Profile, run: RunData, snapshot: StateSn
 	run.randomState = structuredClone(snapshot.randomState)
 }
 
+/** 从当前检查点继续游玩；历史检查点必须先创建分支或截断。 */
 export function continueCheckpoint(input: Profile, source: TurnRef): Profile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
@@ -33,6 +34,7 @@ export function continueCheckpoint(input: Profile, source: TurnRef): Profile {
 	return profile
 }
 
+/** 从可游玩的检查点复制一条独立 RunData 时间线。 */
 export function createBranch(input: Profile, source: TurnRef): Profile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
@@ -69,6 +71,7 @@ export function createBranch(input: Profile, source: TurnRef): Profile {
 	return profile
 }
 
+/** 删除目标检查点之后的历史，并把同一条时间线恢复到该检查点。 */
 export function truncateAndContinue(input: Profile, source: TurnRef): Profile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
@@ -89,6 +92,7 @@ export function truncateAndContinue(input: Profile, source: TurnRef): Profile {
 	return profile
 }
 
+/** 修改检查点的 pin 状态，影响后续自动保留策略。 */
 export function setCheckpointPinned(input: Profile, source: TurnRef, pinned: boolean): Profile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)

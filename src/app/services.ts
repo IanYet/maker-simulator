@@ -13,6 +13,7 @@ import { GameSessionImpl, SaveBrowserControllerImpl } from '../session'
 
 type Navigate = (path: string, options?: { replace?: boolean }) => void
 
+/** 游戏列表页所需的包状态、位置和存档数量。 */
 export interface GameListItem {
 	readonly descriptor: GamePackageDescriptor
 	readonly location: LocatedGamePackage
@@ -21,6 +22,10 @@ export interface GameListItem {
 	readonly saveCount: number
 }
 
+/**
+ * 应用层组合根：集中创建包加载器、持久化、Runtime 和 Session。
+ * 页面通过该服务协调导航相关操作，不直接耦合 IndexedDB 或包资源 URL。
+ */
 export class AppServices {
 	readonly saves = new IndexedDbSaveRepository()
 	readonly metadata = new AppMetadataRepository()
@@ -28,11 +33,13 @@ export class AppServices {
 	readonly monitorFactory = createMonitorFactory()
 	#catalog?: Promise<LocatedGameCatalog>
 
+	/** 读取并缓存当前 catalog。 */
 	getCatalog(): Promise<LocatedGameCatalog> {
 		this.#catalog ??= this.packages.list()
 		return this.#catalog
 	}
 
+	/** 加载默认版本并返回游戏列表页可展示的包状态。 */
 	async listGames(): Promise<readonly GameListItem[]> {
 		const catalog = await this.getCatalog()
 		const ids = [...new Set(catalog.packages.map((item) => item.descriptor.id))].sort()
@@ -61,6 +68,7 @@ export class AppServices {
 		}))
 	}
 
+	/** 按 catalog 默认版本取得一个完整的 LoadedGamePackage。 */
 	async getDefaultPackage(gameId: string): Promise<LoadedGamePackage> {
 		const catalog = await this.getCatalog()
 		const version = catalog.defaultVersions[gameId]
@@ -72,6 +80,7 @@ export class AppServices {
 		return this.packages.load(location)
 	}
 
+	/** 创建新 Profile、初始检查点并写入最近访问元数据。 */
 	async createNewGame(gameId: string): Promise<Profile> {
 		const game = await this.getDefaultPackage(gameId)
 		const profile = createProfile(game)
@@ -82,6 +91,7 @@ export class AppServices {
 		return saved
 	}
 
+	/** 按 Profile 版本精确恢复可交互 Session。 */
 	async openSession(profileId: string, navigate: Navigate): Promise<GameSessionImpl> {
 		const profile = await this.saves.get(profileId)
 		if (!profile) throw new Error('The requested save does not exist')
@@ -91,6 +101,7 @@ export class AppServices {
 		return new GameSessionImpl(runtime, this.saves, this.metadata, navigate)
 	}
 
+	/** 打开只读的 terminal/abandoned 检查点，用于结果页展示。 */
 	async openResult(profileId: string, source: TurnRef): Promise<GameplayRuntimeImpl> {
 		const stored = await this.saves.get(profileId)
 		if (!stored) throw new Error('The requested save does not exist')
@@ -109,6 +120,7 @@ export class AppServices {
 		return GameplayRuntimeImpl.open(game, profile, this.saves, this.monitorFactory)
 	}
 
+	/** 从终局或放弃记录创建 restart 时间线。 */
 	async restart(profileId: string, source: TurnRef): Promise<void> {
 		const profile = await this.saves.get(profileId)
 		if (!profile) throw new Error('The requested save does not exist')
@@ -118,6 +130,7 @@ export class AppServices {
 		await this.metadata.setRecentProfile(next.configId, next.profileId)
 	}
 
+	/** 创建连接 Persistence 与最近 Profile 元数据的存档控制器。 */
 	createSaveController(profileId: string): SaveBrowserControllerImpl {
 		return new SaveBrowserControllerImpl(profileId, this.saves, this.metadata)
 	}

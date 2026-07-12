@@ -12,6 +12,7 @@ type LoadState =
 	| { status: 'error'; message: string }
 	| { status: 'ready'; games: readonly GameListItem[] }
 
+/** 游戏包目录页：读取 catalog、加载默认版本并展示可用性。 */
 export function GamesPage() {
 	const services = useAppServices()
 	const [state, setState] = useState<LoadState>({ status: 'loading' })

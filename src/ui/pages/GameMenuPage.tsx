@@ -15,6 +15,7 @@ function currentTurn(profile: Profile): TurnData {
 	return profile.runDatas[profile.current.runId].turnDatas[profile.current.turnId]
 }
 
+/** 游戏菜单页：展示版本、最近存档和新建/继续/存档入口。 */
 export function GameMenuPage() {
 	const { gameId = '' } = useParams()
 	const services = useAppServices()

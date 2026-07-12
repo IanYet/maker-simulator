@@ -9,6 +9,11 @@ import { GamePackageLoadError, packageError } from './errors'
 import { deepFreeze, linkConfig, validateRegistries } from './linker'
 import { parseConfig, parseManifest } from './schemas'
 
+/**
+ * 负责发现、校验、链接并缓存外部游戏包。
+ *
+ * 缓存键使用 `id@version`，失败的加载不会留在缓存中，便于开发时修复包后重试。
+ */
 export class GamePackageLoader {
 	readonly #cache = new Map<string, Promise<LoadedGamePackage>>()
 	private readonly source: GamePackageSource
@@ -17,10 +22,17 @@ export class GamePackageLoader {
 		this.source = source
 	}
 
+	/** 返回当前 catalog 解析后的包位置和默认版本映射。 */
 	list(): Promise<LocatedGameCatalog> {
 		return this.source.list()
 	}
 
+	/**
+	 * 加载一个 catalog 已定位的包，并复用同一版本的并发加载请求。
+	 *
+	 * @param location 包的 manifest、资源位置和 catalog 描述。
+	 * @returns 通过 schema/linking 校验并深度冻结的游戏包。
+	 */
 	load(location: LocatedGamePackage): Promise<LoadedGamePackage> {
 		const key = `${location.descriptor.id}@${location.descriptor.version}`
 		const cached = this.#cache.get(key)
@@ -33,6 +45,13 @@ export class GamePackageLoader {
 		return loading
 	}
 
+	/**
+	 * 按稳定的包 id 与版本加载精确内容。
+	 *
+	 * @param id catalog 中的游戏包 id。
+	 * @param version 存档或调用方要求的精确版本。
+	 * @throws {GamePackageLoadError} catalog 中没有对应版本时抛出。
+	 */
 	async loadExact(id: string, version: string): Promise<LoadedGamePackage> {
 		const catalog = await this.list()
 		const location = catalog.packages.find(
@@ -47,6 +66,7 @@ export class GamePackageLoader {
 		return this.load(location)
 	}
 
+	/** 执行一次不读缓存的 manifest、资源、schema 和 registry 校验流程。 */
 	private async loadUncached(location: LocatedGamePackage): Promise<LoadedGamePackage> {
 		const details = {
 			packageId: location.descriptor.id,

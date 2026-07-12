@@ -12,6 +12,10 @@ import {
 	type SaveRepository,
 } from '../persistence'
 
+/**
+ * 存档浏览器的命令门面。
+ * 先在内存副本上执行分支/截断/pin，再通过 SaveRepository 原子保存。
+ */
 export class SaveBrowserControllerImpl implements SaveBrowserController {
 	private readonly profileId: string
 	private readonly saves: SaveRepository
@@ -27,6 +31,7 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 		this.metadata = metadata
 	}
 
+	/** 执行一个存档操作，并把失败转换为 SessionCommandResult。 */
 	async dispatch(command: SaveCommand): Promise<SessionCommandResult> {
 		try {
 			const profile = await this.saves.get(this.profileId)
