@@ -1,8 +1,16 @@
 import type {
+	ChoiceState,
+	CommonConfig,
+	CommonState,
+	DeepReadonly,
+	EffectState,
+	EventNodeState,
 	GameState,
 	LoadedGamePackage,
+	MultipleChoice,
 	Profile,
 	RunData,
+	SingleChoice,
 	StateSnapshot,
 	TurnData,
 	TurnRef,
@@ -17,21 +25,109 @@ export function emptyGameState(): GameState {
 	return { characters: {}, effects: {}, events: {} }
 }
 
-/** 根据 Config 的直接初始值构造首个 RunState；Rule 派生值由 Runtime 后续计算。 */
+function commonState(config: DeepReadonly<CommonConfig>): CommonState {
+	return {
+		id: config.id,
+		weightValue: config.weightValue,
+		unlockedValue: config.unlockedValue,
+		enabledValue: config.enabledValue,
+	}
+}
+
+function choiceState(choice: DeepReadonly<SingleChoice | MultipleChoice>): ChoiceState {
+	return {
+		...commonState(choice),
+		...('maxCountValue' in choice && choice.maxCountValue !== undefined
+			? { maxCountValue: choice.maxCountValue }
+			: {}),
+	}
+}
+
+/** 根据 Config 的基础值构造首个 RunState；Rule 只在运行时计算有效值。 */
 function initialRunState(game: LoadedGamePackage): GameState {
 	const state = emptyGameState()
-	for (const effect of Object.values(game.config.effects)) {
-		const acquired = typeof effect.acquired === 'boolean' ? effect.acquired : effect.acquired.value
-		const actived = typeof effect.actived === 'boolean' ? effect.actived : effect.actived.value
-		if (acquired || actived) {
-			state.effects[effect.id] = {
-				id: effect.id,
-				...(acquired ? { acquired: true, acquiredTurn: 0 } : {}),
-				...(actived ? { actived: true, activedTurn: 0 } : {}),
-			}
+	for (const character of Object.values(game.config.characters)) {
+		state.characters[character.id] = {
+			...commonState(character),
+			attributes: Object.fromEntries(
+				Object.values(character.attributes).map((attribute) => [attribute.id, commonState(attribute)]),
+			),
 		}
 	}
+	for (const effect of Object.values(game.config.effects)) {
+		const effectState: EffectState = {
+			...commonState(effect),
+			acquiredValue: effect.acquiredValue,
+			activedValue: effect.activedValue,
+			...(effect.acquiredValue ? { acquiredTurn: 0 } : {}),
+			...(effect.activedValue ? { activedTurn: 0 } : {}),
+		}
+		state.effects[effect.id] = effectState
+	}
+	for (const event of Object.values(game.config.events)) {
+		const eventState = {
+			...commonState(event),
+			nodes: {} as Record<string, EventNodeState>,
+		}
+		for (const node of Object.values(event.nodes)) {
+			const nodeState: EventNodeState = {
+				...commonState(node),
+			}
+			if (node.type !== 'check') {
+				if (node.requiredValue !== undefined) nodeState.requiredValue = node.requiredValue
+				nodeState.choicesValue = Object.fromEntries(
+					Object.values(node.choicesValue).map((choice) => [choice.id, choiceState(choice)]),
+				)
+			}
+			if (node.type === 'multiple') {
+				nodeState.commands = Object.fromEntries(
+					Object.values(node.commands).map((command) => [command.id, commonState(command)]),
+				)
+			}
+			eventState.nodes[node.id] = nodeState
+		}
+		state.events[event.id] = eventState
+	}
 	return state
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function fillMissing(target: Record<string, unknown>, defaults: Record<string, unknown>): void {
+	for (const [key, value] of Object.entries(defaults)) {
+		if (!Object.prototype.hasOwnProperty.call(target, key)) {
+			target[key] = structuredClone(value)
+		} else if (isRecord(target[key]) && isRecord(value)) {
+			fillMissing(target[key], value)
+		}
+	}
+}
+
+/** 把 Config 基础值补入旧 Profile 的每条 RunState，保留已有 State 写入。 */
+export function materializeProfileState(
+	game: LoadedGamePackage,
+	input: Profile,
+): Profile {
+	const profile = structuredClone(input)
+	const defaults = initialRunState(game)
+	for (const run of Object.values(profile.runDatas)) {
+		for (const turn of Object.values(run.turnDatas)) {
+			fillMissing(
+				turn.snapshot.runState as unknown as Record<string, unknown>,
+				defaults as unknown as Record<string, unknown>,
+			)
+		}
+		const current = run.turnDatas[run.currentTurnId]
+		if (current) run.state = structuredClone(current.snapshot.runState)
+		else fillMissing(
+			run.state as unknown as Record<string, unknown>,
+			defaults as unknown as Record<string, unknown>,
+		)
+	}
+	profile.stateVersion = 2
+	return profile
 }
 
 /** 创建 initializing 阶段的空 TurnState。 */
@@ -88,7 +184,7 @@ export function createProfile(game: LoadedGamePackage): Profile {
 	const { run, ref } = makeInitialRun(game, profileState)
 	return {
 		profileId: createId('profile'),
-		stateVersion: 1,
+		stateVersion: 2,
 		configId: game.config.meta.id,
 		configVersion: game.config.meta.version,
 		createdAt,

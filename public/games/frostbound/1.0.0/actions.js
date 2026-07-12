@@ -48,8 +48,8 @@ export const actions = {
   'effect.acquire': {
     key: 'effect.acquire',
     exec: (context, effectId) => {
-      context.runState.effects[effectId].acquired = true
-      context.runState.effects[effectId].actived = true
+      context.runState.effects[effectId].acquiredValue = true
+      context.runState.effects[effectId].activedValue = true
     },
   },
   'event.goto': {

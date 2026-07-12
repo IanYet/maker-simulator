@@ -203,7 +203,7 @@ interface RuleContext {
 }
 ```
 
-`profileState`、`runState` 与 `turnState` 是将 Config 默认值与对应稀疏 State 合并后的解析视图，不是包含快照、时间线或恢复元数据的 Profile、RunData 与 TurnData 持久化容器。Rule 读取这些 State 视图时会建立依赖，但不能写入。
+`profileState`、`runState` 与 `turnState` 是将 Config 静态定义与对应 State 合并后的解析视图，不是包含快照、时间线或恢复元数据的 Profile、RunData 与 TurnData 持久化容器。Rule 读取这些 State 视图时会建立依赖，但不能写入。
 
 所有随机判定都必须在 Action 中通过 `context.random()` 执行。需要在 Rule 重算、快照恢复或读档后保持的随机结果，必须由 Action 写入 State，然后由 Rule 读取该事实。
 
@@ -301,7 +301,7 @@ interface LoadedGamePackage {
 4. 并行读取 Config JSON，并 import Rule 与 Action module。模块的顶层代码在这一步执行，但加载器尚未创建任何 Profile 或 RunData。
 5. 校验 GameConfig schema、所有 object key/id、枚举、数值范围、唯一性与 Config 内部引用，并确认 `config.meta` 与 manifest 身份一致。
 6. 校验模块的 `rules` / `actions` 导出、registry key、implementation.key 与 `calc` / `exec` 函数形状。
-7. 链接全部 Config 调用描述：递归遍历 ReactiveValue、Choice、Command、CheckNode 和 Reaction，确认每个 Rule key 存在于 RuleRegistry、每个 Action key 存在于 ActionRegistry，并校验 event/node/choice/character/effect 等稳定 id 引用；ValueRef 的非空路径必须从声明位置或指定 State 根解析到 Primitive 字段。`manuallyActivatable = true` 的 Effect 必须使用字面 `actived`，不能把手动激活入口绑定到 Rule 派生字段；省略 `manuallyActivatable` 时由 schema 补为 `false`。
+7. 链接全部 Config 调用描述：递归遍历 `xxxValue`/Rule 字段、Choice、Command、CheckNode 和 Reaction，确认每个 Rule key 存在于 RuleRegistry、每个 Action key 存在于 ActionRegistry，并校验 event/node/choice/character/effect 等稳定 id 引用；ValueRef 的非空路径必须从声明位置或指定 State 根定位到静态 Primitive 或派生字段，派生字段的返回值在运行时继续校验为 Primitive。`manuallyActivatable` 的 Effect 可以使用任意 `actived` Rule，RuntimeCommand 修改对应的 `activedValue`。
 8. 为 Reaction 声明生成稳定注册顺序，冻结 manifest、Config 与 registry 外壳，产出 `LoadedGamePackage`。
 
 链接阶段不执行任何 Rule 或 Action。JavaScript 函数的任意参数含义和 Rule 的业务返回类型无法只根据 JavaScript 函数形状完全证明；加载器校验 Config `args` 只包含 Primitive，具体返回值和 State 写入在 Rule 计算或 Action 事务执行时继续校验。
@@ -355,7 +355,7 @@ ActionRegistry 和 RuleRegistry 在包加载时建立一次，不为每个 Profi
 1. 接收已成功链接的 `LoadedGamePackage`。
 2. 创建 provisional Profile/RunData 容器、稀疏 ProfileState/RunState/TurnState 与 RandomState；Config 默认树通过 Runtime view 回退读取，不整份复制到 State。
 3. 创建处理单元管理器和 Config/State 合并 Proxy，再将 RuleRegistry 绑定为纯计算执行器，将 ActionRegistry 绑定为 Action 执行器。
-4. 编译 ReactiveValue 计算节点和依赖图。新局根据初始有效值物化必须存档的运行时事实，例如初始已获得 Effect 的回合字段。
+4. 编译派生字段 Rule 的计算节点和依赖图。新局把 Config 的 `xxxValue` 基础值物化到 RunState，再物化必须存档的运行时事实，例如初始已获得 Effect 的回合字段。
 5. 在 provisional 容器中校验初始 State 并构造 `initial` TurnData，尚不加入 Profile。
 6. 按 canonical key 注册配置级 Reaction 并建立基准；失败时丢弃 provisional 容器。
 7. baseline 成功后，原子把带 `initial` 的 RunData 加入 Profile 并持久化。

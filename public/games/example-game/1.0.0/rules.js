@@ -1,5 +1,16 @@
 /** 最小示例包的纯 Rule registry。 */
 export const rules = {
+  'state.value': {
+    key: 'state.value',
+    calc: (context, ...path) => {
+      let cursor = context.turnState
+      for (const segment of path) {
+        if (cursor === null || typeof cursor !== 'object' || !(segment in cursor)) return undefined
+        cursor = cursor[segment]
+      }
+      return cursor
+    },
+  },
   'turn.is-start': {
     key: 'turn.is-start',
     calc: (context) => context.turnState.phase === 'turn_start',

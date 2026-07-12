@@ -19,9 +19,6 @@ const primitiveSchema = z.union([z.string(), z.number().finite(), z.boolean(), z
 const ruleSchema = z.strictObject({ key: idSchema, args: z.array(primitiveSchema) })
 const actionSchema = z.strictObject({ key: idSchema, args: z.array(primitiveSchema) })
 
-const reactive = <T extends z.ZodType>(value: T) =>
-	z.union([value, z.strictObject({ value, rule: ruleSchema })])
-
 const valueRefSchema = z.strictObject({
 	source: z.enum(['self', 'profileState', 'runState', 'turnState']),
 	path: z.tuple([z.string().min(1)], z.string().min(1)),
@@ -42,10 +39,13 @@ const commonShape = {
 	}),
 	description: z.string().optional(),
 	order: z.number().finite(),
-	weight: reactive(z.number().finite().min(0).max(10)),
+	weightValue: z.number().finite().min(0).max(10),
+	weight: ruleSchema,
 	visible: z.boolean(),
-	unlocked: reactive(z.boolean()),
-	enabled: reactive(z.boolean()),
+	unlockedValue: z.boolean(),
+	unlocked: ruleSchema,
+	enabledValue: z.boolean(),
+	enabled: ruleSchema,
 }
 
 const numberAttributeSchema = z.strictObject({
@@ -70,8 +70,10 @@ const characterSchema = z.strictObject({
 
 const effectSchema = z.strictObject({
 	...commonShape,
-	acquired: reactive(z.boolean()),
-	actived: reactive(z.boolean()),
+	acquiredValue: z.boolean(),
+	acquired: ruleSchema,
+	activedValue: z.boolean(),
+	actived: ruleSchema,
 	manuallyActivatable: z.boolean().default(false),
 	bindCharacterId: idSchema.optional(),
 	reactionList: z.array(reactionSchema),
@@ -81,24 +83,28 @@ const singleChoiceSchema = z.strictObject({ ...commonShape, action: actionSchema
 const multipleChoiceSchema = z.strictObject({
 	...commonShape,
 	value: primitiveSchema,
-	maxCount: reactive(z.number().int().nonnegative()).optional(),
+	maxCountValue: z.number().int().nonnegative().optional(),
+	maxCount: ruleSchema.optional(),
 })
 const nodeCommandSchema = z.strictObject({ ...commonShape, action: actionSchema })
 const textNodeShape = {
 	...commonShape,
 	content: z.string(),
 	reactionList: z.array(reactionSchema).optional(),
-	required: reactive(z.boolean()).optional(),
+	requiredValue: z.boolean().optional(),
+	required: ruleSchema.optional(),
 }
 const singleNodeSchema = z.strictObject({
 	...textNodeShape,
 	type: z.literal('single'),
-	choices: reactive(z.record(idSchema, singleChoiceSchema)),
+	choicesValue: z.record(idSchema, singleChoiceSchema),
+	choices: ruleSchema,
 })
 const multipleNodeSchema = z.strictObject({
 	...textNodeShape,
 	type: z.literal('multiple'),
-	choices: reactive(z.record(idSchema, multipleChoiceSchema)),
+	choicesValue: z.record(idSchema, multipleChoiceSchema),
+	choices: ruleSchema,
 	commands: z.record(idSchema, nodeCommandSchema),
 })
 const checkNodeSchema = z.strictObject({
@@ -165,9 +171,12 @@ export const manifestSchema = z.strictObject({
 
 const commonStateShape = {
 	id: idSchema,
-	weight: z.number().finite().optional(),
+	weightValue: z.number().finite().min(0).max(10).optional(),
+	weight: z.number().finite().min(0).max(10).optional(),
 	visible: z.boolean().optional(),
+	unlockedValue: z.boolean().optional(),
 	unlocked: z.boolean().optional(),
+	enabledValue: z.boolean().optional(),
 	enabled: z.boolean().optional(),
 }
 const attributeStateSchema = z.strictObject({
@@ -180,7 +189,9 @@ const characterStateSchema = z.strictObject({
 })
 const effectStateSchema = z.strictObject({
 	...commonStateShape,
+	acquiredValue: z.boolean().optional(),
 	acquired: z.boolean().optional(),
+	activedValue: z.boolean().optional(),
 	actived: z.boolean().optional(),
 	bindCharacterId: idSchema.optional(),
 	acquiredTurn: z.number().int().nonnegative().optional(),
@@ -188,6 +199,7 @@ const effectStateSchema = z.strictObject({
 })
 const choiceStateSchema = z.strictObject({
 	...commonStateShape,
+	maxCountValue: z.number().int().nonnegative().optional(),
 	maxCount: z.number().int().nonnegative().optional(),
 })
 const selectionSchema = z.strictObject({
@@ -199,7 +211,9 @@ const selectionSchema = z.strictObject({
 })
 const nodeStateSchema = z.strictObject({
 	...commonStateShape,
+	requiredValue: z.boolean().optional(),
 	required: z.boolean().optional(),
+	choicesValue: z.record(idSchema, choiceStateSchema).optional(),
 	choices: z.record(idSchema, choiceStateSchema).optional(),
 	commands: z.record(idSchema, z.strictObject(commonStateShape)).optional(),
 	selections: z.record(idSchema, selectionSchema).optional(),
@@ -281,7 +295,7 @@ const runDataSchema = z.strictObject({
 export const profileSchema = z.strictObject({
 	profileId: idSchema,
 	label: z.string().min(1).optional(),
-	stateVersion: z.literal(1),
+	stateVersion: z.union([z.literal(1), z.literal(2)]),
 	configId: idSchema,
 	configVersion: z.string().min(1),
 	createdAt: z.string().datetime({ offset: true }),

@@ -3,6 +3,16 @@ function attribute(context, characterId, attributeId) {
   return context.turnState.characters[characterId].attributes[attributeId].value
 }
 
+/** 读取 Config 字面基础值对应的当前 State 值。 */
+function stateValue(context, ...path) {
+  let cursor = context.turnState
+  for (const segment of path) {
+    if (cursor === null || typeof cursor !== 'object' || !(segment in cursor)) return undefined
+    cursor = cursor[segment]
+  }
+  return cursor
+}
+
 /** 读取事件历史实例；不存在时由 State 视图提供空集合语义。 */
 function instances(context, eventId) {
   return Object.values(context.runState.events[eventId].instances)
@@ -25,6 +35,10 @@ function selectionTotal(context, eventId, nodeId) {
 
 /** Frostbound 的纯 Rule registry；不写 State、不推进随机游标。 */
 export const rules = {
+  'state.value': {
+    key: 'state.value',
+    calc: (context, ...path) => stateValue(context, ...path),
+  },
   'turn.is-start': {
     key: 'turn.is-start',
     calc: (context) => context.turnState.phase === 'turn_start',

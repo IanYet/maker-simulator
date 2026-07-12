@@ -38,6 +38,7 @@ import type {
 import type { SaveRepository } from '../persistence'
 import { deepFreeze, stableArgs } from '../package-loader/linker'
 import { nextRandom } from './random'
+import { materializeProfileState } from './profile-factory'
 import { createRuntimeView, readPath } from './state-view'
 import {
 	argsTraceDetail,
@@ -204,7 +205,9 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		saves: SaveRepository,
 		monitorFactory?: RuntimeMonitorFactory
 	): Promise<GameplayRuntimeImpl> {
-		const runtime = new GameplayRuntimeImpl(game, profile, saves, monitorFactory)
+		const hydrated = materializeProfileState(game, profile)
+		if (JSON.stringify(hydrated) !== JSON.stringify(profile)) await saves.put(hydrated)
+		const runtime = new GameplayRuntimeImpl(game, hydrated, saves, monitorFactory)
 		await runtime.beginFromCheckpoint()
 		return runtime
 	}
@@ -378,7 +381,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 
 		if (command.type === 'choose-single') {
 			if (node.type !== 'single') return detail
-			const authoredChoices = 'rule' in node.choices ? node.choices.value : node.choices
+			const authoredChoices = node.choicesValue
 			const choice = Object.values(authoredChoices).find(
 				(item) => item.id === command.choiceId
 			)
@@ -386,7 +389,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 		if (command.type === 'set-multiple-choice') {
 			if (node.type !== 'multiple') return detail
-			const authoredChoices = 'rule' in node.choices ? node.choices.value : node.choices
+			const authoredChoices = node.choicesValue
 			const choice = Object.values(authoredChoices).find(
 				(item) => item.id === command.choiceId
 			)
@@ -445,15 +448,13 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			if (!config || !effect) throw new RuntimeFailure('not-found', 'The Effect does not exist')
 			if (!config.manuallyActivatable)
 				throw new RuntimeFailure('not-enabled', 'The Effect cannot be activated manually')
-			if (typeof config.actived !== 'boolean')
-				throw new RuntimeFailure('not-enabled', 'The Effect activation is controlled by a Rule')
 			if (!effect.visible || !effect.unlocked || !effect.enabled)
 				throw new RuntimeFailure('not-enabled', 'The Effect is not currently available')
 			if (!effect.acquired)
 				throw new RuntimeFailure('not-enabled', 'The Effect has not been acquired')
 			if (effect.actived)
 				throw new RuntimeFailure('not-enabled', 'The Effect is already active')
-			this.runView(unit, true).effects[effectId].actived = true
+			this.runView(unit, true).effects[effectId].activedValue = true
 		})
 	}
 

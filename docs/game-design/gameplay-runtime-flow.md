@@ -193,7 +193,7 @@ GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最
 | UI 操作 | Runtime 调用 | 引擎行为 |
 | --- | --- | --- |
 | 点击可启动事件卡 | `dispatch({ type: 'start-event', eventId })` | 校验 phase、unlocked/enabled、`activeInstanceId` 与本回合启动记录，原子创建实例并设置 active id |
-| 点击手动激活 Effect | `dispatch({ type: 'activate-effect', effectId })` | 校验 Effect 能力和当前状态，在 RunState 中写入 `actived = true`，再稳定 Effect Reaction |
+| 点击手动激活 Effect | `dispatch({ type: 'activate-effect', effectId })` | 校验 Effect 能力和当前状态，在 RunState 中写入 `activedValue = true`，再稳定 Effect Reaction |
 | 点击进行中事件 | 无 gameplay command | 只改变 UI 聚焦状态 |
 | 点击单选项 | `dispatch({ type: 'choose-single', ... })` | 定位当前 Choice，通过执行器运行其 Action |
 | 增减多选数量 | `dispatch({ type: 'set-multiple-choice', ... })` | 校验 count/maxCount，写 TurnState 临时选择 |
@@ -234,9 +234,9 @@ type TurnPhase =
 ### 新游戏或 restart
 
 1. 要求游戏包已经完成 schema 校验、registry 校验与 linking；局级 runtime 不重复 import JavaScript。
-2. 生成 Profile/Run id、时间与 PRNG seed，创建空的稀疏 ProfileState、RunState、TurnState，设置 `turnNumber = 0`、`phase = 'initializing'`。Config 默认值通过 fallback 读取。
+2. 生成 Profile/Run id、时间与 PRNG seed，创建 ProfileState、RunState、TurnState，设置 `turnNumber = 0`、`phase = 'initializing'`。Config 的 `xxxValue` 基础值物化到新 Run 的 RunState。
 3. 创建处理单元管理器、PRNG draft、Config/State 合并 Proxy，以及绑定当前 Run 的纯 Rule executor 和事务 Action executor。
-4. 编译 ReactiveValue 计算节点与依赖图，不执行 Action。
+4. 编译派生字段 Rule 的计算节点与依赖图，不执行 Action。
 5. 物化初始 Effect 等必须保存的回合 `0` 生命周期事实。
 6. 在 provisional 容器中校验初始 State 并构造 `initial` snapshot，尚不加入 Profile。
 7. 按 canonical 顺序注册 EffectConfig、EventConfig Reaction；新局通常没有 active TextNode。注册只建立基准，失败时丢弃 provisional 容器。
@@ -276,7 +276,7 @@ flowchart TD
     E2 -- 否 --> F{发布事件面板并等待玩家操作}
     F -- 点击事件卡 --> G[StartEvent 命令<br/>创建实例并设置 activeInstanceId<br/>进入入口节点]
     F -- Choice/Command --> H[执行 Config Action]
-    F -- 手动激活 Effect --> H2[写入 actived=true<br/>稳定 Effect Reaction]
+    F -- 手动激活 Effect --> H2[写入 activedValue=true<br/>稳定 Effect Reaction]
     H2 --> F
     F -- 下一回合 --> I{required 门禁通过?}
     I -- 否 --> F

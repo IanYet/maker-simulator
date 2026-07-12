@@ -50,7 +50,7 @@ Action 写入哪个 State 视图，就决定状态的保存范围：写入 `cont
 
 ## Config
 
-Config 中所有可变字段均表示默认值。运行中的实际值、存档范围和合并方式由[运行时系统设计](./runtime-system.md#state)定义。
+Config 中的 `xxxValue` 字段是创建 State 时使用的基础初始值，`xxx` 字段始终是根据 State 基础值计算有效值的 Rule。运行中的实际值、存档范围和合并方式由[运行时系统设计](./runtime-system.md#state)定义。
 
 ### Meta
 
@@ -96,16 +96,22 @@ interface CommonConfig {
     description?: string;
     /** 随机判定、UI 展示与跨对象 Reaction 注册的稳定顺序。 */
     order: number;
-    /** 随机判定权重或独立判定概率。 */
-    weight: ReactiveValue<number>;
+    /** 创建 State 时物化的随机判定权重基础值。 */
+    weightValue: number;
+    /** 根据 State 基础值计算有效权重。 */
+    weight: Rule;
     /** 仅控制 UI 是否展示，不影响规则、动作或数据读取。 */
     visible: boolean;
 
-    /** 是否解锁或其计算规则。 */
-    unlocked: ReactiveValue<boolean>;
+    /** 创建 State 时物化的解锁基础值。 */
+    unlockedValue: boolean;
+    /** 根据 State 基础值计算有效解锁状态。 */
+    unlocked: Rule;
 
-    /** 是否启用或其计算规则。 */
-    enabled: ReactiveValue<boolean>;
+    /** 创建 State 时物化的启用基础值。 */
+    enabledValue: boolean;
+    /** 根据 State 基础值计算有效启用状态。 */
+    enabled: Rule;
 }
 ```
 
@@ -113,11 +119,11 @@ interface CommonConfig {
 
 `order` 是随机判定、UI 展示和跨对象 Reaction 注册的稳定顺序。同一所属集合内的同一具体类型不得使用相同的 `order`；不同具体类型之间可以重复。Action 对候选对象执行多次随机判定时必须先按 `order` 升序；修改 `order` 也可能改变多个 Reaction 同时匹配时的执行次序。
 
-`weight` 的有效值必须在 `[0, 10]` 内，初始默认值为 `5`，游戏中可由 State 覆盖或 Rule 计算。当 `0 <= weight < 1` 时，该值是一次独立随机判定的概率，Action 使用 `context.random() < weight` 判定是否通过；`weight = 0` 永不通过。当 `1 <= weight <= 10` 时，该值是同一候选集合中的相对权重，选中概率为自身权重除以候选集合的总权重。具体候选集合、是否执行独立判定以及选中后的行为由相应 Action 定义；Rule 只计算有效值，不执行随机判定。
+`weightValue` 必须在 `[0, 10]` 内，`weight` Rule 返回的有效值也必须满足同一范围。当 `0 <= weight < 1` 时，该值是一次独立随机判定的概率，Action 使用 `context.random() < weight` 判定是否通过；`weight = 0` 永不通过。当 `1 <= weight <= 10` 时，该值是同一候选集合中的相对权重，选中概率为自身权重除以候选集合的总权重。具体候选集合、是否执行独立判定以及选中后的行为由相应 Action 定义；Rule 只计算有效值，不执行随机判定。
 
 `visible` 控制对象是否在 UI 中显示。`unlocked` 控制对象是否可以从 Profile 进入 RunData，`enabled` 控制对象是否在游戏流程中可用。
 
-写入 ProfileState 的 `unlocked` 会跨 RunData 保留。玩家从历史检查点创建分支或截断恢复时，ProfileState 与其他 State 一样恢复为该检查点的 snapshot；此后创建的新 RunData 继承恢复游标对应的 ProfileState。
+写入 ProfileState 的 `unlockedValue` 会跨 RunData 保留。玩家从历史检查点创建分支或截断恢复时，ProfileState 与其他 State 一样恢复为该检查点的 snapshot；此后创建的新 RunData 继承恢复游标对应的 ProfileState。
 
 ### 属性 Attribute
 属性没有独立叙事或动作，是依托于 character 的状态。character 可以是具体人物，也可以是抽象对象，例如“玩家”“城镇”“世界”或“本局”。属性不能脱离其 character 单独存在。
@@ -161,10 +167,14 @@ interface CharacterConfig extends CommonConfig {
 
 ```ts
 interface EffectConfig extends CommonConfig {
-    /** 是否已获得或其计算规则。 */
-    acquired: ReactiveValue<boolean>;
-    /** 是否已生效或其计算规则。 */
-    actived: ReactiveValue<boolean>;
+    /** 创建 State 时物化的获得基础值。 */
+    acquiredValue: boolean;
+    /** 根据 State 基础值计算获得状态。 */
+    acquired: Rule;
+    /** 创建 State 时物化的激活基础值。 */
+    activedValue: boolean;
+    /** 根据 State 基础值计算激活状态。 */
+    actived: Rule;
     /** 是否允许玩家在事件处理阶段手动激活。 */
     manuallyActivatable: boolean;
     /** 绑定目标的 character id。 */
@@ -173,13 +183,13 @@ interface EffectConfig extends CommonConfig {
 }
 ```
 
-`acquired` 表示效果是否已经获得，`actived` 表示效果是否已生效。`manuallyActivatable` 为 `true` 时，已获得且尚未激活的 Effect 会在事件处理阶段提供手动激活入口；省略该字段等同于 `false`。这类 Effect 的 `actived` 必须使用字面值，不能使用 Rule 派生值。`reactionList` 响应效果字段或其他派生值的变化，例如获得、激活、失效以及激活后的每回合开始。`bindCharacterId` 存在时必须指向 Config 中的 character。
+`acquired` 表示效果是否已经获得，`actived` 表示效果是否已生效。`manuallyActivatable` 为 `true` 时，已获得且尚未激活的 Effect 会在事件处理阶段提供手动激活入口。`reactionList` 响应效果字段或其他派生值的变化，例如获得、激活、失效以及激活后的每回合开始。`bindCharacterId` 存在时必须指向 Config 中的 character。
 
-手动激活由宿主发送 `activate-effect` RuntimeCommand，Runtime 在事务中把 `actived` 写为 `true`，随后按正常流程稳定该 Effect 的 Reaction。Effect 的激活副作用、资源消耗和提示 Action 应声明在观察 `self.actived` 从 `false` 到 `true` 的 Reaction 中；Reaction Action 抛错时，激活状态和同一处理单元中的其它写入一起回滚。
+手动激活由宿主发送 `activate-effect` RuntimeCommand，Runtime 在事务中把 `activedValue` 写为 `true`，随后按正常流程稳定该 Effect 的 Reaction。Effect 的激活副作用、资源消耗和提示 Action 应声明在观察 `self.actived` 从 `false` 到 `true` 的 Reaction 中；Reaction Action 抛错时，基础值和同一处理单元中的其它写入一起回滚。
 
 策划默认约定：不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，优先声明在 Effect 上；Effect 的 `displayName` 与 `description` 应说明持续规则及其影响，让玩家能在效果面板看到这些规则。EventConfig Reaction 主要用于事件内容自身的持续响应。
 
-效果获得与激活的直接状态值和发生回合保存在 RunState 的 `effects` 对应 EffectState 中。所有 EffectConfig 的 Reaction 在创建、载入、分支或截断恢复 RunData 时注册，无需等待 EffectState 出现；注册时只建立基准值。依赖图、已解析值和上次值属于引擎内部运行时缓存，可由 State 重新构建。
+效果的 `acquiredValue`、`activedValue` 基础值和发生回合保存在 RunState 的 `effects` 对应 EffectState 中。所有 EffectConfig 的 Reaction 在创建、载入、分支或截断恢复 RunData 时注册，无需等待 EffectState 出现；注册时只建立基准值。依赖图、已解析值和上次值属于引擎内部运行时缓存，可由 State 重新构建。
 
 ### 事件 Event
 事件是叙事的对象。一个事件是一张有向图：节点负责展示叙事、执行动作或检查规则；边由动作或规则决定。事件可以是事件，区域，商店，科技树等等所有有剧情有分支节点的抽象
@@ -209,12 +219,14 @@ interface TextNodeBase extends CommonConfig {
     content: string;
     reactionList?: Reaction[];
     /** 未处理时，是否阻止进入下一回合。 */
-    required?: ReactiveValue<boolean>;
+    requiredValue?: boolean;
+    required?: Rule;
 }
 
 interface SingleTextNode extends TextNodeBase {
     type: 'single';
-    choices: ReactiveValue<Record<string, SingleChoice>>;
+    choicesValue: Record<string, SingleChoice>;
+    choices: Rule;
 }
 
 interface SingleChoice extends CommonConfig {
@@ -223,14 +235,16 @@ interface SingleChoice extends CommonConfig {
 
 interface MultipleTextNode extends TextNodeBase {
     type: 'multiple';
-    choices: ReactiveValue<Record<string, MultipleChoice>>;
+    choicesValue: Record<string, MultipleChoice>;
+    choices: Rule;
     commands: Record<string, NodeCommand>;
 }
 
 interface MultipleChoice extends CommonConfig {
     /** 写入本次选择结果的数据，例如商品 id。 */
     value: Primitive;
-    maxCount?: ReactiveValue<number>;
+    maxCountValue?: number;
+    maxCount?: Rule;
 }
 
 interface NodeCommand extends CommonConfig {
@@ -308,14 +322,26 @@ interface Rule {
     key: string;
     args: Primitive[];
 }
-
-type ReactiveValue<T> = T | {
-    value: T;
-    rule: Rule;
-};
 ```
 
-`args` 中只能使用基础数据类型。`ReactiveValue<T>` 可以直接配置写死值，也可以配置默认 `value` 与计算它的 `rule`。存在 `rule` 时，Rule 返回值必须是 `T`，并作为字段的有效值；Action 改写的是该 Rule 读取的基础 state，而不是 Rule 的有效值。
+`args` 中只能使用基础数据类型。Config 的 `xxxValue` 是创建 State 时物化的基础值，`xxx` 始终是 Rule。Rule 返回值必须是字段的有效类型；Action 改写对应 State 中的 `xxxValue`，而不是 Rule 的有效值。
+
+字面基础值通常使用游戏包自己的 `state.value` Rule 读取当前 State 路径：
+
+```js
+export const rules = {
+  'state.value': {
+    key: 'state.value',
+    calc: (context, ...path) => {
+      let cursor = context.turnState
+      for (const segment of path) cursor = cursor?.[segment]
+      return cursor
+    },
+  },
+}
+```
+
+例如 `weightValue: 5` 对应 `weight: { key: 'state.value', args: ['events', 'crossroads', 'weightValue'] }`。复杂条件 Rule 可以读取同一对象的 `xxxValue`，再与其它 State 条件组合。
 
 ### Action 与 Reaction
 
@@ -380,6 +406,6 @@ interface Reaction {
 
 Reaction 用于自动执行 Action。`watch` 可以直接引用一个已解析字段，也可以执行一个 Rule 并观察其返回值。观察结果发生变化且符合 `from`、`to` 时，引擎执行 `action`；该 Action 也可以调用 `context.endRun()`。未填写 `from` 或 `to` 表示匹配任意旧值或新值。Reaction 初次注册时只建立基准值，不执行 Action。
 
-`ValueRef.path` 逐段定位字段，不能使用点分隔字符串代替路径数组。`source = 'self'` 时路径相对声明 Reaction 的 Effect、EventConfig 或 TextNode 运行时对象；其余 source 从对应解析 State 视图的根开始。例如 `{ "source": "runState", "path": ["characters", "player", "attributes", "health", "value"] }` 观察本局生命值。路径必须解析到 Primitive；无效路径或非基础类型结果是 linking 错误。Rule 形式的 watch 也必须在运行时返回 Primitive，否则处理单元失败。
+`ValueRef.path` 逐段定位字段，不能使用点分隔字符串代替路径数组。`source = 'self'` 时路径相对声明 Reaction 的 Effect、EventConfig 或 TextNode 运行时对象；其余 source 从对应解析 State 视图的根开始。例如 `{ "source": "runState", "path": ["characters", "player", "attributes", "health", "value"] }` 观察本局生命值。路径必须定位到 Primitive 或返回 Primitive 的派生字段；静态无效路径是 linking 错误，派生字段的返回类型在运行时继续校验。Rule 形式的 watch 也必须在运行时返回 Primitive，否则处理单元失败。
 
 例如 Effect 的激活 Reaction 可以观察所属对象的 `actived`，匹配 `false` 到 `true`；每回合开始的效果可以观察一个 Rule，该 Rule 返回“Effect 已激活并且 `context.turnState.phase` 为 `turn_start`”的布尔值，并匹配 `false` 到 `true`。Reaction 复用已解析的 `actived`，不会重复黑暗事件数量等业务条件。

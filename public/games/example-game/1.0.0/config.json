@@ -10,322 +10,1326 @@
     "player": {
       "id": "player",
       "displayName": "旅人",
-      "tags": ["player"],
+      "tags": [
+        "player"
+      ],
       "description": "正在穿越事件网络的旅人。",
       "order": 1,
-      "weight": 5,
+      "weight": {
+        "key": "state.value",
+        "args": [
+          "characters",
+          "player",
+          "weightValue"
+        ]
+      },
       "visible": true,
-      "unlocked": true,
-      "enabled": true,
+      "unlocked": {
+        "key": "state.value",
+        "args": [
+          "characters",
+          "player",
+          "unlockedValue"
+        ]
+      },
+      "enabled": {
+        "key": "state.value",
+        "args": [
+          "characters",
+          "player",
+          "enabledValue"
+        ]
+      },
       "attributes": {
         "health": {
           "id": "health",
           "displayName": "体力",
-          "tags": ["survival"],
+          "tags": [
+            "survival"
+          ],
           "order": 1,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "health",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "health",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "health",
+              "enabledValue"
+            ]
+          },
           "type": "number",
           "value": 8,
           "min": 0,
-          "max": 10
+          "max": 10,
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true
         },
         "supplies": {
           "id": "supplies",
           "displayName": "物资",
-          "tags": ["resource"],
+          "tags": [
+            "resource"
+          ],
           "order": 2,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "supplies",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "supplies",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "supplies",
+              "enabledValue"
+            ]
+          },
           "type": "number",
           "value": 2,
           "min": 0,
-          "max": 20
+          "max": 20,
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true
         },
         "ending": {
           "id": "ending",
           "displayName": "旅途状态",
-          "tags": ["ending"],
+          "tags": [
+            "ending"
+          ],
           "order": 3,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "ending",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "ending",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "player",
+              "attributes",
+              "ending",
+              "enabledValue"
+            ]
+          },
           "type": "enum",
           "value": 0,
-          "valueDisplay": ["尚在旅途", "抵达彼岸"]
+          "valueDisplay": [
+            "尚在旅途",
+            "抵达彼岸"
+          ],
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true
         }
-      }
+      },
+      "weightValue": 5,
+      "unlockedValue": true,
+      "enabledValue": true
     }
   },
   "effects": {
     "road-fatigue": {
       "id": "road-fatigue",
       "displayName": "长路疲惫",
-      "tags": ["persistent"],
+      "tags": [
+        "persistent"
+      ],
       "description": "每个回合开始时消耗一点体力。",
       "order": 1,
-      "weight": 5,
+      "weight": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "road-fatigue",
+          "weightValue"
+        ]
+      },
       "visible": true,
-      "unlocked": true,
-      "enabled": true,
-      "acquired": true,
-      "actived": true,
+      "unlocked": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "road-fatigue",
+          "unlockedValue"
+        ]
+      },
+      "enabled": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "road-fatigue",
+          "enabledValue"
+        ]
+      },
+      "acquired": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "road-fatigue",
+          "acquiredValue"
+        ]
+      },
+      "actived": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "road-fatigue",
+          "activedValue"
+        ]
+      },
       "manuallyActivatable": false,
       "bindCharacterId": "player",
       "reactionList": [
         {
-          "watch": { "key": "turn.is-start", "args": [] },
+          "watch": {
+            "key": "turn.is-start",
+            "args": []
+          },
           "from": false,
           "to": true,
-          "action": { "key": "player.change-health", "args": [-1] }
+          "action": {
+            "key": "player.change-health",
+            "args": [
+              -1
+            ]
+          }
         }
-      ]
+      ],
+      "weightValue": 5,
+      "unlockedValue": true,
+      "enabledValue": true,
+      "acquiredValue": true,
+      "activedValue": true
     },
     "lucky-token": {
       "id": "lucky-token",
       "displayName": "幸运符",
-      "tags": ["reward"],
+      "tags": [
+        "reward"
+      ],
       "description": "一次成功探索留下的纪念，激活后恢复一点体力。",
       "order": 2,
-      "weight": 5,
+      "weight": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "lucky-token",
+          "weightValue"
+        ]
+      },
       "visible": true,
-      "unlocked": true,
-      "enabled": true,
-      "acquired": false,
-      "actived": false,
+      "unlocked": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "lucky-token",
+          "unlockedValue"
+        ]
+      },
+      "enabled": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "lucky-token",
+          "enabledValue"
+        ]
+      },
+      "acquired": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "lucky-token",
+          "acquiredValue"
+        ]
+      },
+      "actived": {
+        "key": "state.value",
+        "args": [
+          "effects",
+          "lucky-token",
+          "activedValue"
+        ]
+      },
       "manuallyActivatable": true,
       "reactionList": [
         {
-          "watch": { "source": "self", "path": ["actived"] },
+          "watch": {
+            "source": "self",
+            "path": [
+              "actived"
+            ]
+          },
           "from": false,
           "to": true,
-          "action": { "key": "player.change-health", "args": [1] }
+          "action": {
+            "key": "player.change-health",
+            "args": [
+              1
+            ]
+          }
         }
-      ]
+      ],
+      "weightValue": 5,
+      "unlockedValue": true,
+      "enabledValue": true,
+      "acquiredValue": false,
+      "activedValue": false
     }
   },
   "events": {
     "crossroads": {
       "id": "crossroads",
       "displayName": "雾中岔路",
-      "tags": ["repeatable"],
+      "tags": [
+        "repeatable"
+      ],
       "description": "一条可以探索、整理物资或结束旅途的岔路。",
       "order": 1,
-      "weight": 5,
+      "weight": {
+        "key": "state.value",
+        "args": [
+          "events",
+          "crossroads",
+          "weightValue"
+        ]
+      },
       "visible": true,
-      "unlocked": true,
-      "enabled": true,
+      "unlocked": {
+        "key": "state.value",
+        "args": [
+          "events",
+          "crossroads",
+          "unlockedValue"
+        ]
+      },
+      "enabled": {
+        "key": "state.value",
+        "args": [
+          "events",
+          "crossroads",
+          "enabledValue"
+        ]
+      },
       "entryNodeId": "entry",
       "reactionList": [],
       "nodes": {
         "entry": {
           "id": "entry",
           "displayName": "三条路",
-          "tags": ["entry"],
+          "tags": [
+            "entry"
+          ],
           "order": 1,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "entry",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "entry",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "entry",
+              "enabledValue"
+            ]
+          },
           "type": "single",
           "content": "雾在脚边分开。左侧传来铃声，右侧有一间废弃补给站，正前方则亮着终点的灯。",
-          "required": false,
+          "required": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "entry",
+              "requiredValue"
+            ]
+          },
           "choices": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "entry",
+              "choicesValue"
+            ]
+          },
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true,
+          "requiredValue": false,
+          "choicesValue": {
             "explore": {
               "id": "explore",
               "displayName": "走向铃声",
-              "tags": ["risk"],
+              "tags": [
+                "risk"
+              ],
               "order": 1,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "explore",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.goto", "args": ["crossroads", "fortune-check"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "explore",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "explore",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.goto",
+                "args": [
+                  "crossroads",
+                  "fortune-check"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             },
             "supplies": {
               "id": "supplies",
               "displayName": "整理补给站",
-              "tags": ["resource"],
+              "tags": [
+                "resource"
+              ],
               "order": 2,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "supplies",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.goto", "args": ["crossroads", "supply-room"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "supplies",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "supplies",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.goto",
+                "args": [
+                  "crossroads",
+                  "supply-room"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             },
             "ending": {
               "id": "ending",
               "displayName": "走向灯光",
-              "tags": ["ending"],
+              "tags": [
+                "ending"
+              ],
               "order": 3,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "ending",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.goto", "args": ["crossroads", "ending"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "ending",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "entry",
+                  "choicesValue",
+                  "ending",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.goto",
+                "args": [
+                  "crossroads",
+                  "ending"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             }
           }
         },
         "fortune-check": {
           "id": "fortune-check",
           "displayName": "雾中判定",
-          "tags": ["check"],
+          "tags": [
+            "check"
+          ],
           "order": 2,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortune-check",
+              "weightValue"
+            ]
+          },
           "visible": false,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortune-check",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortune-check",
+              "enabledValue"
+            ]
+          },
           "type": "check",
-          "candidateNodes": { "fortunate": true, "unfortunate": true },
-          "check": { "key": "event.random-path", "args": ["crossroads", "fortunate", "unfortunate"] }
+          "candidateNodes": {
+            "fortunate": true,
+            "unfortunate": true
+          },
+          "check": {
+            "key": "event.random-path",
+            "args": [
+              "crossroads",
+              "fortunate",
+              "unfortunate"
+            ]
+          },
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true
         },
         "fortunate": {
           "id": "fortunate",
           "displayName": "铃声的礼物",
-          "tags": ["success"],
+          "tags": [
+            "success"
+          ],
           "order": 3,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortunate",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortunate",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortunate",
+              "enabledValue"
+            ]
+          },
           "type": "single",
           "content": "铃声来自一枚挂在枯枝上的银色符牌。它温暖得像一小块太阳。",
-          "required": true,
+          "required": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortunate",
+              "requiredValue"
+            ]
+          },
           "choices": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "fortunate",
+              "choicesValue"
+            ]
+          },
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true,
+          "requiredValue": true,
+          "choicesValue": {
             "take": {
               "id": "take",
               "displayName": "收下幸运符",
-              "tags": ["reward"],
+              "tags": [
+                "reward"
+              ],
               "order": 1,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "fortunate",
+                  "choicesValue",
+                  "take",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.take-token", "args": ["crossroads"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "fortunate",
+                  "choicesValue",
+                  "take",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "fortunate",
+                  "choicesValue",
+                  "take",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.take-token",
+                "args": [
+                  "crossroads"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             }
           }
         },
         "unfortunate": {
           "id": "unfortunate",
           "displayName": "空响",
-          "tags": ["failure"],
+          "tags": [
+            "failure"
+          ],
           "order": 4,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "unfortunate",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "unfortunate",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "unfortunate",
+              "enabledValue"
+            ]
+          },
           "type": "single",
           "content": "你追上的只是风穿过铁环的声音，回程又耗掉了一点体力。",
-          "required": true,
+          "required": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "unfortunate",
+              "requiredValue"
+            ]
+          },
           "choices": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "unfortunate",
+              "choicesValue"
+            ]
+          },
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true,
+          "requiredValue": true,
+          "choicesValue": {
             "return": {
               "id": "return",
               "displayName": "回到岔路",
-              "tags": ["return"],
+              "tags": [
+                "return"
+              ],
               "order": 1,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "unfortunate",
+                  "choicesValue",
+                  "return",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.hurt-and-return", "args": ["crossroads", "entry"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "unfortunate",
+                  "choicesValue",
+                  "return",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "unfortunate",
+                  "choicesValue",
+                  "return",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.hurt-and-return",
+                "args": [
+                  "crossroads",
+                  "entry"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             }
           }
         },
         "supply-room": {
           "id": "supply-room",
           "displayName": "补给架",
-          "tags": ["multiple"],
+          "tags": [
+            "multiple"
+          ],
           "order": 5,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "supply-room",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "supply-room",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "supply-room",
+              "enabledValue"
+            ]
+          },
           "type": "multiple",
           "content": "架子上只剩下几件还能使用的东西。选择要带走的数量，然后确认。",
-          "required": true,
+          "required": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "supply-room",
+              "requiredValue"
+            ]
+          },
           "choices": {
-            "ration": {
-              "id": "ration",
-              "displayName": "压缩口粮",
-              "tags": ["supply"],
-              "order": 1,
-              "weight": 5,
-              "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "value": "ration",
-              "maxCount": 3
-            },
-            "water": {
-              "id": "water",
-              "displayName": "净水袋",
-              "tags": ["supply"],
-              "order": 2,
-              "weight": 5,
-              "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "value": "water",
-              "maxCount": 2
-            }
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "supply-room",
+              "choicesValue"
+            ]
           },
           "commands": {
             "take": {
               "id": "take",
               "displayName": "装入背包并离开",
-              "tags": ["confirm"],
+              "tags": [
+                "confirm"
+              ],
               "order": 1,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "commands",
+                  "take",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.collect-and-complete", "args": ["crossroads", "supply-room"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "commands",
+                  "take",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "commands",
+                  "take",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.collect-and-complete",
+                "args": [
+                  "crossroads",
+                  "supply-room"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             },
             "leave": {
               "id": "leave",
               "displayName": "空手离开",
-              "tags": ["cancel"],
+              "tags": [
+                "cancel"
+              ],
               "order": 2,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "commands",
+                  "leave",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "event.complete", "args": ["crossroads"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "commands",
+                  "leave",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "commands",
+                  "leave",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.complete",
+                "args": [
+                  "crossroads"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
+            }
+          },
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true,
+          "requiredValue": true,
+          "choicesValue": {
+            "ration": {
+              "id": "ration",
+              "displayName": "压缩口粮",
+              "tags": [
+                "supply"
+              ],
+              "order": 1,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "ration",
+                  "weightValue"
+                ]
+              },
+              "visible": true,
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "ration",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "ration",
+                  "enabledValue"
+                ]
+              },
+              "value": "ration",
+              "maxCount": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "ration",
+                  "maxCountValue"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true,
+              "maxCountValue": 3
+            },
+            "water": {
+              "id": "water",
+              "displayName": "净水袋",
+              "tags": [
+                "supply"
+              ],
+              "order": 2,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "water",
+                  "weightValue"
+                ]
+              },
+              "visible": true,
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "water",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "water",
+                  "enabledValue"
+                ]
+              },
+              "value": "water",
+              "maxCount": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "supply-room",
+                  "choicesValue",
+                  "water",
+                  "maxCountValue"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true,
+              "maxCountValue": 2
             }
           }
         },
         "ending": {
           "id": "ending",
           "displayName": "彼岸灯火",
-          "tags": ["ending"],
+          "tags": [
+            "ending"
+          ],
           "order": 6,
-          "weight": 5,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "ending",
+              "weightValue"
+            ]
+          },
           "visible": true,
-          "unlocked": true,
-          "enabled": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "ending",
+              "unlockedValue"
+            ]
+          },
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "ending",
+              "enabledValue"
+            ]
+          },
           "type": "single",
           "content": "雾忽然退到身后。你知道这条路已经完成，而所有岔路仍留在另一个检查点里。",
-          "required": true,
+          "required": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "ending",
+              "requiredValue"
+            ]
+          },
           "choices": {
+            "key": "state.value",
+            "args": [
+              "events",
+              "crossroads",
+              "nodes",
+              "ending",
+              "choicesValue"
+            ]
+          },
+          "weightValue": 5,
+          "unlockedValue": true,
+          "enabledValue": true,
+          "requiredValue": true,
+          "choicesValue": {
             "finish": {
               "id": "finish",
               "displayName": "结束旅途",
-              "tags": ["ending"],
+              "tags": [
+                "ending"
+              ],
               "order": 1,
-              "weight": 5,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "ending",
+                  "choicesValue",
+                  "finish",
+                  "weightValue"
+                ]
+              },
               "visible": true,
-              "unlocked": true,
-              "enabled": true,
-              "action": { "key": "run.finish", "args": ["crossroads"] }
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "ending",
+                  "choicesValue",
+                  "finish",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "crossroads",
+                  "nodes",
+                  "ending",
+                  "choicesValue",
+                  "finish",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "run.finish",
+                "args": [
+                  "crossroads"
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
             }
           }
         }
-      }
+      },
+      "weightValue": 5,
+      "unlockedValue": true,
+      "enabledValue": true
     }
   }
 }

@@ -120,7 +120,7 @@ export const actions = {
 ### 4.3 Effect、Event 与 Reaction 约定
 
 - Effect 表示持续物品、条件、增益、减益或世界状态；玩家能在效果面板看到已获得 Effect 的名称和说明。
-- `manuallyActivatable` 为 `true` 的已获得未激活 Effect 会在待激活区域提供按钮；点击后由 `GameSession` 发送 `activate-effect`，Runtime 写入 `actived` 并稳定 Effect Reaction。
+- `manuallyActivatable` 为 `true` 的已获得未激活 Effect 会在待激活区域提供按钮；点击后由 `GameSession` 发送 `activate-effect`，Runtime 写入 `activedValue` 并稳定 Effect Reaction。
 - 不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，按策划默认约定放在 Effect 上，并在 `description` 解释影响。
 - Event 用于叙事内容和玩家分支；EventConfig Reaction 主要响应事件内容自身的持续状态，TextNode Reaction 只在节点处于 active 时注册。
 - `required` 是回合门禁：待处理事件入口或当前 active 节点链上存在 required 节点时，`advance-turn` 会被阻止；不能只依赖玩家先点击事件后再判断。

@@ -8,8 +8,11 @@ const FINAL_TURN = 10
 const action = (key, ...args) => ({ key, args })
 /** 创建 Config 中可序列化的 Rule 调用描述。 */
 const rule = (key, ...args) => ({ key, args })
-/** 把字面默认值和 Rule 组合成 ReactiveValue。 */
+/** 仅供 authoring 过程组合字面基础值和派生 Rule。 */
 const reactive = (value, key, ...args) => ({ value, rule: rule(key, ...args) })
+
+/** 为字面基础值生成读取 State 基础字段的 Rule。 */
+const stateValueRule = (path) => rule('state.value', ...path)
 
 /** 生成带通用展示、排序和启用字段的 Config 对象。 */
 function common(id, displayName, order, options = {}) {
@@ -121,6 +124,66 @@ function gameEvent(id, name, order, minTurn, description, nodes, options = {}) {
     entryNodeId: options.entryNodeId ?? nodes[0].id,
     nodes: Object.fromEntries(nodes.map((node) => [node.id, node])),
     ...(options.reactionList ? { reactionList: options.reactionList } : {}),
+  }
+}
+
+function isReactiveValue(value) {
+  return value !== null && typeof value === 'object' && 'value' in value && 'rule' in value
+}
+
+/** 将旧 authoring 便利写法统一为 xxxValue + xxx Rule。 */
+function splitField(object, field, path, optional = false) {
+  const authored = object[field]
+  if (authored === undefined) {
+    if (optional) return
+    throw new Error(`Missing required derived field ${[...path, field].join('.')}`)
+  }
+  object[`${field}Value`] = isReactiveValue(authored)
+    ? authored.value
+    : authored
+  object[field] = isReactiveValue(authored)
+    ? authored.rule
+    : stateValueRule([...path, `${field}Value`])
+}
+
+function normalizeCommon(object, path) {
+  splitField(object, 'weight', path)
+  splitField(object, 'unlocked', path)
+  splitField(object, 'enabled', path)
+}
+
+/** 在写出 Config 前递归拆分 authoring 基础值，并为字面值接入 State Rule。 */
+function normalizeConfig(config) {
+  for (const character of Object.values(config.characters)) {
+    normalizeCommon(character, ['characters', character.id])
+    for (const attribute of Object.values(character.attributes)) {
+      normalizeCommon(attribute, ['characters', character.id, 'attributes', attribute.id])
+    }
+  }
+  for (const effect of Object.values(config.effects)) {
+    normalizeCommon(effect, ['effects', effect.id])
+    splitField(effect, 'acquired', ['effects', effect.id])
+    splitField(effect, 'actived', ['effects', effect.id])
+  }
+  for (const event of Object.values(config.events)) {
+    normalizeCommon(event, ['events', event.id])
+    for (const node of Object.values(event.nodes)) {
+      const nodePath = ['events', event.id, 'nodes', node.id]
+      normalizeCommon(node, nodePath)
+      if (node.type === 'check') continue
+      splitField(node, 'required', nodePath, true)
+      splitField(node, 'choices', nodePath)
+      for (const choice of Object.values(node.choicesValue)) {
+        const choicePath = [...nodePath, 'choicesValue', choice.id]
+        normalizeCommon(choice, choicePath)
+        if (node.type === 'multiple') splitField(choice, 'maxCount', choicePath, true)
+      }
+      if (node.type === 'multiple') {
+        for (const command of Object.values(node.commands)) {
+          normalizeCommon(command, [...nodePath, 'commands', command.id])
+        }
+      }
+    }
   }
 }
 
@@ -448,7 +511,7 @@ function authoredActions(node) {
   if (node.type === 'check') return [node.check]
   const calls = []
   if (node.type === 'single') {
-    const choices = 'rule' in node.choices ? node.choices.value : node.choices
+    const choices = node.choicesValue
     for (const item of Object.values(choices)) calls.push(item.action)
   }
   if (node.type === 'multiple') for (const item of Object.values(node.commands)) calls.push(item.action)
@@ -498,7 +561,7 @@ function assertPackage() {
   const reachableEvents = new Set()
   const reachableEffects = new Set(
     Object.values(config.effects)
-      .filter((effect) => effect.acquired === true)
+      .filter((effect) => effect.acquiredValue === true)
       .map((effect) => effect.id),
   )
   reachableEffects.add('frostbite')
@@ -508,7 +571,7 @@ function assertPackage() {
   while (changed) {
     changed = false
     for (const event of Object.values(config.events)) {
-      const requiredEffect = event.unlocked.rule.args[2]
+      const requiredEffect = event.unlocked.args[2]
       if (reachableEvents.has(event.id) || (requiredEffect !== null && !reachableEffects.has(requiredEffect))) continue
       reachableEvents.add(event.id)
       changed = true
@@ -523,6 +586,7 @@ function assertPackage() {
   if (unreachableEffects.length > 0) throw new Error(`Unreachable effects: ${unreachableEffects.join(', ')}`)
 }
 
+normalizeConfig(config)
 assertPackage()
 await writeFile(output, `${JSON.stringify(config, null, 2)}\n`)
 console.log(`wrote ${output}: ${Object.keys(effects).length} effects, ${Object.keys(events).length} events, 4 endings, final turn ${FINAL_TURN}`)

@@ -24,28 +24,57 @@ interface ViewEnvironment {
 const hasOwn = (value: object, key: PropertyKey): boolean =>
 	Object.prototype.hasOwnProperty.call(value, key)
 
-function isReactive(value: unknown): value is { value: unknown; rule: Rule } {
-	return value !== null && typeof value === 'object' && 'value' in value && 'rule' in value
+const derivedFields = new Set([
+	'weight',
+	'unlocked',
+	'enabled',
+	'acquired',
+	'actived',
+	'required',
+	'maxCount',
+	'choices',
+])
+
+function isDerivedFieldPath(path: readonly string[]): boolean {
+	return derivedFields.has(path.at(-1) ?? '')
 }
 
-function resolveReactive(value: unknown, environment: ViewEnvironment): unknown {
-	return isReactive(value) ? environment.evaluateRule(value.rule) : value
+function isRule(value: unknown): value is Rule {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		!Array.isArray(value) &&
+		'key' in value &&
+		'args' in value &&
+		typeof (value as { key?: unknown }).key === 'string' &&
+		Array.isArray((value as { args?: unknown }).args)
+	)
+}
+
+function resolveRule(
+	value: unknown,
+	environment: ViewEnvironment,
+	path: readonly string[],
+): unknown {
+	return isRule(value) && isDerivedFieldPath(path) ? environment.evaluateRule(value) : value
 }
 
 function configAt(environment: ViewEnvironment, path: readonly string[]): unknown {
 	let cursor: unknown = environment.config
-	for (const segment of path) {
-		cursor = resolveReactive(cursor, environment)
+	for (let index = 0; index < path.length; index += 1) {
+		const segment = path[index]
+		cursor = resolveRule(cursor, environment, path.slice(0, index))
 		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) return undefined
 		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
 	}
-	return resolveReactive(cursor, environment)
+	return resolveRule(cursor, environment, path)
 }
 
-function rawConfigAt(config: GameConfig, path: readonly string[]): unknown {
-	let cursor: unknown = config
-	for (const segment of path) {
-		if (isReactive(cursor)) cursor = cursor.value
+function rawConfigAt(environment: ViewEnvironment, path: readonly string[]): unknown {
+	let cursor: unknown = environment.config
+	for (let index = 0; index < path.length; index += 1) {
+		const segment = path[index]
+		cursor = resolveRule(cursor, environment, path.slice(0, index))
 		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) return undefined
 		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
 	}
@@ -65,8 +94,8 @@ function effectiveAt(environment: ViewEnvironment, path: readonly string[]): unk
 	if (path.length === 1 && environment.turnState && (path[0] === 'turnNumber' || path[0] === 'phase')) {
 		return environment.turnState[path[0]]
 	}
-	const rawConfig = rawConfigAt(environment.config, path)
-	if (isReactive(rawConfig)) return environment.evaluateRule(rawConfig.rule)
+	const rawConfig = rawConfigAt(environment, path)
+	if (isRule(rawConfig) && isDerivedFieldPath(path)) return environment.evaluateRule(rawConfig)
 	for (let index = environment.layers.length - 1; index >= 0; index -= 1) {
 		const value = stateAt(environment.layers[index], path)
 		if (value !== undefined) return value
@@ -98,7 +127,7 @@ function needsId(path: readonly string[]): boolean {
 		(path.length === 2 && ['characters', 'effects', 'events'].includes(path[0])) ||
 		(path.length === 4 && path[0] === 'characters' && path[2] === 'attributes') ||
 		(path.length === 4 && path[0] === 'events' && path[2] === 'nodes') ||
-		(path.length === 6 && path[0] === 'events' && path[2] === 'nodes' && ['choices', 'commands'].includes(path[4]))
+		(path.length === 6 && path[0] === 'events' && path[2] === 'nodes' && ['choices', 'choicesValue', 'commands'].includes(path[4]))
 	)
 }
 
@@ -138,20 +167,20 @@ function isSyntheticRecord(path: readonly string[]): boolean {
 function isWritableContentPath(path: readonly string[]): boolean {
 	const property = path.at(-1)
 	if (!property) return false
-	if (['weight', 'visible', 'unlocked', 'enabled'].includes(property)) return true
+	if (['weightValue', 'visible', 'unlockedValue', 'enabledValue'].includes(property)) return true
 	if (path.length === 5 && path[0] === 'characters' && path[2] === 'attributes' && property === 'value') return true
-	if (path.length === 3 && path[0] === 'effects' && ['acquired', 'actived', 'bindCharacterId'].includes(property)) return true
-	if (path.length === 5 && path[0] === 'events' && path[2] === 'nodes' && property === 'required') return true
-	if (path.length === 7 && path[0] === 'events' && path[2] === 'nodes' && path[4] === 'choices' && property === 'maxCount') return true
+	if (path.length === 3 && path[0] === 'effects' && ['acquiredValue', 'activedValue', 'bindCharacterId'].includes(property)) return true
+	if (path.length === 5 && path[0] === 'events' && path[2] === 'nodes' && property === 'requiredValue') return true
+	if (path.length === 7 && path[0] === 'events' && path[2] === 'nodes' && path[4] === 'choicesValue' && property === 'maxCountValue') return true
 	return false
 }
 
 function validateWrite(environment: ViewEnvironment, path: readonly string[], value: unknown): unknown {
 	const property = path.at(-1)
-	if (property === 'weight') {
+	if (property === 'weightValue') {
 		if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10) throw new Error('weight must be between 0 and 10')
 	}
-	if (property === 'maxCount') {
+	if (property === 'maxCountValue') {
 		if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) throw new Error('maxCount must be a non-negative integer')
 	}
 	if (property === 'value' && path[0] === 'characters') {
@@ -169,7 +198,7 @@ function validateWrite(environment: ViewEnvironment, path: readonly string[], va
 	if (property === 'bindCharacterId' && value !== undefined) {
 		if (typeof value !== 'string' || !environment.config.characters[value]) throw new Error('Unknown Effect character binding')
 	}
-	if (['visible', 'unlocked', 'enabled', 'acquired', 'actived', 'required'].includes(property ?? '') && typeof value !== 'boolean') {
+	if (['visible', 'unlockedValue', 'enabledValue', 'acquiredValue', 'activedValue', 'requiredValue'].includes(property ?? '') && typeof value !== 'boolean') {
 		throw new Error(`${String(property)} must be boolean`)
 	}
 	return value
@@ -194,8 +223,8 @@ function makeProxy(environment: ViewEnvironment, path: readonly string[]): objec
 			const lifecycle = isEventLifecycle(path, property)
 			if (lifecycle && environment.scope !== 'run') throw new Error('EventInstance lifecycle is writable only through runState')
 			if (!lifecycle && !isWritableContentPath(childPath)) throw new Error(`State path ${childPath.join('.')} is read-only`)
-			const rawConfig = rawConfigAt(environment.config, childPath)
-			if (isReactive(rawConfig)) throw new Error(`Rule-derived field ${childPath.join('.')} cannot be assigned`)
+			const rawConfig = rawConfigAt(environment, childPath)
+			if (isRule(rawConfig)) throw new Error(`Rule-derived field ${childPath.join('.')} cannot be assigned`)
 			const previous = effectiveAt(environment, childPath)
 			const value = lifecycle ? next : validateWrite(environment, childPath, next)
 			if (lifecycle) environment.onEventWrite?.(path, property, previous, value)

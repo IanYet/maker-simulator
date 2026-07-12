@@ -21,12 +21,6 @@ function fail(message: string, path: string): never {
 	throw new GamePackageLoadError('linking', message, { path })
 }
 
-function defaultReactive(value: unknown): unknown {
-	return value !== null && typeof value === 'object' && 'rule' in value && 'value' in value
-		? (value as { value: unknown }).value
-		: value
-}
-
 function assertRecordIdentity(
 	record: Readonly<Record<string, CommonConfig>>,
 	path: string,
@@ -48,24 +42,48 @@ function assertAction(call: Action, actions: ActionRegistry, path: string): void
 	if (!actions[call.key]) fail(`Unknown Action “${call.key}”`, `${path}/key`)
 }
 
-function visitReactive(
+function assertDerivedPair(
 	value: unknown,
+	rule: unknown,
 	rules: RuleRegistry,
 	path: string,
+	optional = false,
 ): void {
-	if (value !== null && typeof value === 'object' && 'rule' in value) {
-		assertRule((value as { rule: Rule }).rule, rules, `${path}/rule`)
+	if (value === undefined && rule === undefined) {
+		if (optional) return
+		fail('Derived field requires a base value and a Rule', path)
 	}
+	if (value === undefined || rule === undefined) {
+		fail('Derived field requires both a base value and a Rule', path)
+	}
+	if (rule === null || typeof rule !== 'object' || !('key' in rule)) {
+		fail('Derived field must contain a Rule', `${path}/rule`)
+	}
+	assertRule(rule as Rule, rules, `${path}/rule`)
 }
 
-function resolveStatic(root: unknown, path: readonly string[]): unknown {
+interface StaticResolution {
+	exists: boolean
+	derived: boolean
+	value?: unknown
+}
+
+function isRuleValue(value: unknown): value is Rule {
+	return value !== null && typeof value === 'object' && !Array.isArray(value) && 'key' in value && 'args' in value
+}
+
+function resolveStatic(root: unknown, path: readonly string[]): StaticResolution {
 	let cursor = root
 	for (const segment of path) {
-		cursor = defaultReactive(cursor)
-		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) return undefined
+		if (isRuleValue(cursor)) return { exists: true, derived: true }
+		if (cursor === null || typeof cursor !== 'object' || !hasOwn(cursor, segment)) {
+			return { exists: false, derived: false }
+		}
 		cursor = (cursor as Readonly<Record<string, unknown>>)[segment]
 	}
-	return defaultReactive(cursor)
+	return isRuleValue(cursor)
+		? { exists: true, derived: true }
+		: { exists: true, derived: false, value: cursor }
 }
 
 function assertValueRef(
@@ -78,8 +96,10 @@ function assertValueRef(
 	if (ref.source === 'turnState' && ['turnNumber', 'phase'].includes(ref.path[0])) {
 		return
 	}
-	const value = resolveStatic(root, ref.path)
-	if (value === undefined) fail(`ValueRef path cannot be resolved`, path)
+	const resolved = resolveStatic(root, ref.path)
+	if (!resolved || !resolved.exists) fail(`ValueRef path cannot be resolved`, path)
+	if (resolved.derived) return
+	const value = resolved.value
 	if (
 		value !== null &&
 		typeof value !== 'string' &&
@@ -107,9 +127,9 @@ function assertReaction(
 }
 
 function visitCommon(value: CommonConfig, rules: RuleRegistry, path: string): void {
-	visitReactive(value.weight, rules, `${path}/weight`)
-	visitReactive(value.unlocked, rules, `${path}/unlocked`)
-	visitReactive(value.enabled, rules, `${path}/enabled`)
+	assertDerivedPair(value.weightValue, value.weight, rules, `${path}/weight`)
+	assertDerivedPair(value.unlockedValue, value.unlocked, rules, `${path}/unlocked`)
+	assertDerivedPair(value.enabledValue, value.enabled, rules, `${path}/enabled`)
 }
 
 /**
@@ -165,19 +185,8 @@ export function linkConfig(
 	for (const [effectId, effect] of Object.entries(config.effects)) {
 		const base = `/effects/${effectId}`
 		visitCommon(effect, rules, base)
-		visitReactive(effect.acquired, rules, `${base}/acquired`)
-		visitReactive(effect.actived, rules, `${base}/actived`)
-		if (
-			effect.manuallyActivatable &&
-			typeof effect.actived === 'object' &&
-			effect.actived !== null &&
-			'rule' in effect.actived
-		) {
-			fail(
-				'Manually activatable Effect must use a literal actived value',
-				`${base}/actived`,
-			)
-		}
+		assertDerivedPair(effect.acquiredValue, effect.acquired, rules, `${base}/acquired`)
+		assertDerivedPair(effect.activedValue, effect.actived, rules, `${base}/actived`)
 		if (effect.bindCharacterId && !config.characters[effect.bindCharacterId]) {
 			fail(`Unknown Character “${effect.bindCharacterId}”`, `${base}/bindCharacterId`)
 		}
@@ -204,14 +213,14 @@ export function linkConfig(
 				}
 				continue
 			}
-			visitReactive(node.required, rules, `${nodePath}/required`)
+			assertDerivedPair(node.requiredValue, node.required, rules, `${nodePath}/required`, true)
 			node.reactionList?.forEach((reaction, index) =>
 				assertReaction(reaction, node, config, rules, actions, `${nodePath}/reactionList/${index}`),
 			)
-			visitReactive(node.choices, rules, `${nodePath}/choices`)
-			const choices = defaultReactive(node.choices) as Record<
+			assertDerivedPair(node.choicesValue, node.choices, rules, `${nodePath}/choices`)
+			const choices = node.choicesValue as Record<
 				string,
-				CommonConfig & { action?: Action; maxCount?: unknown }
+				CommonConfig & { action?: Action; maxCountValue?: unknown; maxCount?: unknown }
 			>
 			assertRecordIdentity(choices, `${nodePath}/choices`)
 			for (const [choiceId, choice] of Object.entries(choices)) {
@@ -221,7 +230,7 @@ export function linkConfig(
 					if (!choice.action) fail('Single choice requires an Action', `${choicePath}/action`)
 					assertAction(choice.action, actions, `${choicePath}/action`)
 				}
-				else visitReactive(choice.maxCount, rules, `${choicePath}/maxCount`)
+				else assertDerivedPair(choice.maxCountValue, choice.maxCount, rules, `${choicePath}/maxCount`, true)
 			}
 			if (node.type === 'multiple') {
 				assertRecordIdentity(node.commands, `${nodePath}/commands`)

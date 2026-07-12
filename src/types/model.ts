@@ -45,20 +45,6 @@ export interface Rule {
 }
 
 /**
- * 可以使用字面默认值或 Rule 计算结果的配置字段。
- *
- * @template T 字段解析后的值类型。
- */
-export type ReactiveValue<T> =
-	| T
-	| {
-			/** Rule 不可用前的配置默认值。 */
-			value: T
-			/** 用于计算字段有效值的 Rule。 */
-			rule: Rule
-	  }
-
-/**
  * Config 中的一次 Action 调用。
  */
 export interface Action {
@@ -127,14 +113,20 @@ export interface CommonConfig {
 	description?: string
 	/** 随机判定、UI 展示与跨对象 Reaction 注册的稳定顺序。 */
 	order: number
-	/** `[0, 1)` 的独立判定概率，或 `[1, 10]` 的相对权重。 */
-	weight: ReactiveValue<number>
+	/** `[0, 1)` 的独立判定概率，或 `[1, 10]` 的相对权重基础值。 */
+	weightValue: number
+	/** 根据 State 基础值计算有效权重的 Rule。 */
+	weight: Rule
 	/** 是否在界面中展示。 */
 	visible: boolean
-	/** 是否已解锁，或用于计算解锁状态的 Rule。 */
-	unlocked: ReactiveValue<boolean>
-	/** 是否可在当前流程中使用，或用于计算启用状态的 Rule。 */
-	enabled: ReactiveValue<boolean>
+	/** 解锁状态基础值。 */
+	unlockedValue: boolean
+	/** 根据 State 基础值计算有效解锁状态的 Rule。 */
+	unlocked: Rule
+	/** 启用状态基础值。 */
+	enabledValue: boolean
+	/** 根据 State 基础值计算有效启用状态的 Rule。 */
+	enabled: Rule
 }
 
 /**
@@ -186,10 +178,14 @@ export interface CharacterConfig extends CommonConfig {
  * Effect 配置。
  */
 export interface EffectConfig extends CommonConfig {
-	/** 是否已经获得，或用于计算获得状态的 Rule。 */
-	acquired: ReactiveValue<boolean>
-	/** 是否已经激活，或用于计算激活状态的 Rule。 */
-	actived: ReactiveValue<boolean>
+	/** 是否已经获得的基础值。 */
+	acquiredValue: boolean
+	/** 根据 State 基础值计算获得状态的 Rule。 */
+	acquired: Rule
+	/** 是否已经激活的基础值。 */
+	activedValue: boolean
+	/** 根据 State 基础值计算激活状态的 Rule。 */
+	actived: Rule
 	/** 是否允许玩家在事件处理阶段手动激活。 */
 	manuallyActivatable: boolean
 	/** 可选的绑定 CharacterConfig id。 */
@@ -211,8 +207,10 @@ export interface TextNodeBase extends CommonConfig {
 	content: string
 	/** 节点处于当前状态时注册的 Reaction。 */
 	reactionList?: Reaction[]
-	/** 未处理该节点时是否阻止进入下一回合。 */
-	required?: ReactiveValue<boolean>
+	/** 未处理该节点时是否阻止进入下一回合的基础值。 */
+	requiredValue?: boolean
+	/** 根据 State 基础值计算回合门禁的 Rule。 */
+	required?: Rule
 }
 
 /**
@@ -229,8 +227,10 @@ export interface SingleChoice extends CommonConfig {
 export interface MultipleChoice extends CommonConfig {
 	/** 提交选择时提供给 Action 的配置值。 */
 	value: Primitive
-	/** 单次允许选择的最大数量或计算 Rule。 */
-	maxCount?: ReactiveValue<number>
+	/** 单次允许选择的最大数量基础值。 */
+	maxCountValue?: number
+	/** 根据 State 基础值计算最大数量的 Rule。 */
+	maxCount?: Rule
 }
 
 /**
@@ -247,8 +247,10 @@ export interface NodeCommand extends CommonConfig {
 export interface SingleTextNode extends TextNodeBase {
 	/** 单选节点判别字段。 */
 	type: 'single'
-	/** 以 SingleChoice id 为 key 的选项对象或计算 Rule。 */
-	choices: ReactiveValue<Record<string, SingleChoice>>
+	/** 以 SingleChoice id 为 key 的选项基础定义。 */
+	choicesValue: Record<string, SingleChoice>
+	/** 根据 State/Config 基础定义计算有效选项的 Rule。 */
+	choices: Rule
 }
 
 /**
@@ -257,8 +259,10 @@ export interface SingleTextNode extends TextNodeBase {
 export interface MultipleTextNode extends TextNodeBase {
 	/** 多选节点判别字段。 */
 	type: 'multiple'
-	/** 以 MultipleChoice id 为 key 的选项对象或计算 Rule。 */
-	choices: ReactiveValue<Record<string, MultipleChoice>>
+	/** 以 MultipleChoice id 为 key 的选项基础定义。 */
+	choicesValue: Record<string, MultipleChoice>
+	/** 根据 State/Config 基础定义计算有效选项的 Rule。 */
+	choices: Rule
 	/** 以 NodeCommand id 为 key 的命令对象。 */
 	commands: Record<string, NodeCommand>
 }
@@ -354,19 +358,22 @@ export interface NodeSelection {
 }
 
 /**
- * Config 对象 State 共享的稀疏字段。
+ * Config 对象 State 共享的基础字段。
+ *
+ * `xxxValue` 在新 Run 初始化时由 Config 物化到 RunState；ProfileState
+ * 与 TurnState 仍可按既有层级规则覆盖对应字段。
  */
 export interface CommonState {
 	/** 对应同层 Config 对象的 id。 */
 	id: string
-	/** 对 weight 字面初始值的可选覆盖。 */
-	weight?: number
+	/** 对 weight 基础值的 State 值。 */
+	weightValue?: number
 	/** 对 visible 字面默认值的可选覆盖。 */
 	visible?: boolean
-	/** 对 unlocked 字面默认值的可选覆盖。 */
-	unlocked?: boolean
-	/** 对 enabled 字面默认值的可选覆盖。 */
-	enabled?: boolean
+	/** 对 unlocked 基础值的 State 值。 */
+	unlockedValue?: boolean
+	/** 对 enabled 基础值的 State 值。 */
+	enabledValue?: boolean
 }
 
 /**
@@ -389,10 +396,10 @@ export interface CharacterState extends CommonState {
  * EffectConfig 的稀疏状态及运行时字段。
  */
 export interface EffectState extends CommonState {
-	/** Effect 当前是否已获得。 */
-	acquired?: boolean
-	/** Effect 当前是否已激活。 */
-	actived?: boolean
+	/** Effect 是否已获得的基础 State 值。 */
+	acquiredValue?: boolean
+	/** Effect 是否已激活的基础 State 值。 */
+	activedValue?: boolean
 	/** Effect 当前绑定的 CharacterConfig id。 */
 	bindCharacterId?: string
 	/** Effect 最近一次获得时的逻辑回合数。 */
@@ -405,8 +412,8 @@ export interface EffectState extends CommonState {
  * Choice Config 的稀疏状态。
  */
 export interface ChoiceState extends CommonState {
-	/** MultipleChoice 当前允许选择的最大数量。 */
-	maxCount?: number
+	/** MultipleChoice 当前允许选择的最大数量基础值。 */
+	maxCountValue?: number
 }
 
 /**
@@ -418,10 +425,10 @@ export type NodeCommandState = CommonState
  * EventNode Config 的稀疏状态及回合选择字段。
  */
 export interface EventNodeState extends CommonState {
-	/** TextNode 当前是否阻止进入下一回合。 */
-	required?: boolean
-	/** 与 TextNode.choices 同构的 Choice 状态对象。 */
-	choices?: Record<string, ChoiceState>
+	/** TextNode 当前是否阻止进入下一回合的基础值。 */
+	requiredValue?: boolean
+	/** 与 TextNode.choicesValue 同构的 Choice 基础状态对象。 */
+	choicesValue?: Record<string, ChoiceState>
 	/** 与 MultipleTextNode.commands 同构的命令状态对象。 */
 	commands?: Record<string, NodeCommandState>
 	/** 仅 TurnState 使用、以 EventInstance id 为 key 的多选结果。 */
@@ -491,12 +498,18 @@ export interface CommonRuntime {
 	description?: string
 	/** 随机判定、UI 展示与跨对象 Reaction 注册的稳定顺序。 */
 	order: number
+	/** 当前有效值所使用的 weight 基础值。 */
+	weightValue: number
 	/** 当前有效的随机判定权重或独立概率。 */
 	weight: number
 	/** 当前是否展示。 */
 	visible: boolean
+	/** 当前有效值所使用的解锁基础值。 */
+	unlockedValue: boolean
 	/** 当前有效的解锁状态。 */
 	unlocked: boolean
+	/** 当前有效值所使用的启用基础值。 */
+	enabledValue: boolean
 	/** 当前有效的启用状态。 */
 	enabled: boolean
 }
@@ -544,8 +557,12 @@ export interface CharacterRuntime extends CommonRuntime {
  * EffectConfig 合并 State 后的完整运行时视图。
  */
 export interface EffectRuntime extends CommonRuntime {
+	/** 当前有效值所使用的获得基础值。 */
+	acquiredValue: boolean
 	/** 当前是否已获得。 */
 	acquired: boolean
+	/** 当前有效值所使用的激活基础值。 */
+	activedValue: boolean
 	/** 当前是否已激活。 */
 	actived: boolean
 	/** 是否允许玩家手动激活。 */
@@ -574,6 +591,8 @@ export interface SingleChoiceRuntime extends CommonRuntime {
 export interface MultipleChoiceRuntime extends CommonRuntime {
 	/** 提交给 Action 的配置值。 */
 	value: Primitive
+	/** 当前有效值所使用的最大数量基础值。 */
+	maxCountValue?: number
 	/** 当前允许选择的最大数量。 */
 	maxCount?: number
 }
@@ -594,6 +613,8 @@ export interface TextNodeRuntimeBase extends CommonRuntime {
 	content: string
 	/** 节点 Reaction 列表。 */
 	reactionList?: Reaction[]
+	/** 当前有效值所使用的回合门禁基础值。 */
+	requiredValue?: boolean
 	/** 当前是否阻止进入下一回合。 */
 	required?: boolean
 	/** 本回合以 EventInstance id 为 key 的多选结果。 */
@@ -606,6 +627,8 @@ export interface TextNodeRuntimeBase extends CommonRuntime {
 export interface SingleTextNodeRuntime extends TextNodeRuntimeBase {
 	/** 单选节点判别字段。 */
 	type: 'single'
+	/** 当前有效选项使用的基础定义。 */
+	choicesValue: Readonly<Record<string, SingleChoice>>
 	/** 以 SingleChoice id 为 key 的当前有效选项。 */
 	choices: Record<string, SingleChoiceRuntime>
 }
@@ -616,6 +639,8 @@ export interface SingleTextNodeRuntime extends TextNodeRuntimeBase {
 export interface MultipleTextNodeRuntime extends TextNodeRuntimeBase {
 	/** 多选节点判别字段。 */
 	type: 'multiple'
+	/** 当前有效选项使用的基础定义。 */
+	choicesValue: Readonly<Record<string, MultipleChoice>>
 	/** 以 MultipleChoice id 为 key 的当前有效选项。 */
 	choices: Record<string, MultipleChoiceRuntime>
 	/** 以 NodeCommand id 为 key 的当前有效命令。 */
@@ -698,10 +723,13 @@ export interface ActionCommonRuntime {
 	readonly tags: readonly string[]
 	readonly description?: string
 	readonly order: number
-	weight: number
+	weightValue: number
+	readonly weight: number
 	visible: boolean
-	unlocked: boolean
-	enabled: boolean
+	unlockedValue: boolean
+	readonly unlocked: boolean
+	enabledValue: boolean
+	readonly enabled: boolean
 }
 
 export interface ActionNumberAttributeRuntime extends ActionCommonRuntime {
@@ -724,8 +752,10 @@ export interface ActionCharacterRuntime extends ActionCommonRuntime {
 }
 
 export interface ActionEffectRuntime extends ActionCommonRuntime {
-	acquired: boolean
-	actived: boolean
+	acquiredValue: boolean
+	readonly acquired: boolean
+	activedValue: boolean
+	readonly actived: boolean
 	readonly manuallyActivatable: boolean
 	bindCharacterId?: string
 	readonly reactionList: DeepReadonly<Reaction[]>
@@ -739,7 +769,8 @@ export interface ActionSingleChoiceRuntime extends ActionCommonRuntime {
 
 export interface ActionMultipleChoiceRuntime extends ActionCommonRuntime {
 	readonly value: Primitive
-	maxCount?: number
+	maxCountValue?: number
+	readonly maxCount?: number
 }
 
 export interface ActionNodeCommandRuntime extends ActionCommonRuntime {
@@ -749,17 +780,20 @@ export interface ActionNodeCommandRuntime extends ActionCommonRuntime {
 export interface ActionTextNodeRuntimeBase extends ActionCommonRuntime {
 	readonly content: string
 	readonly reactionList?: DeepReadonly<Reaction[]>
-	required?: boolean
+	requiredValue?: boolean
+	readonly required?: boolean
 	readonly selections?: DeepReadonly<Record<string, NodeSelection>>
 }
 
 export interface ActionSingleTextNodeRuntime extends ActionTextNodeRuntimeBase {
 	readonly type: 'single'
+	readonly choicesValue: Readonly<Record<string, SingleChoice>>
 	readonly choices: Readonly<Record<string, ActionSingleChoiceRuntime>>
 }
 
 export interface ActionMultipleTextNodeRuntime extends ActionTextNodeRuntimeBase {
 	readonly type: 'multiple'
+	readonly choicesValue: Readonly<Record<string, MultipleChoice>>
 	readonly choices: Readonly<Record<string, ActionMultipleChoiceRuntime>>
 	readonly commands: Readonly<Record<string, ActionNodeCommandRuntime>>
 }
