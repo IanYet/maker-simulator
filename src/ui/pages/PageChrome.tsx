@@ -7,7 +7,21 @@ export function PageChrome({ children, action }: { children: ReactNode; action?:
 	return (
 		<main className={styles.page}>
 			<header className={styles.topbar}>
-				<Link className={styles.brand} to="/games">MAKER SIMULATOR</Link>
+				<div className={styles.brandGroup}>
+					<Link className={styles.brand} to="/games">MAKER SIMULATOR</Link>
+					<a
+						className={styles.githubLink}
+						href="https://github.com/IanYet/maker-simulator"
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label="在 GitHub 上查看 Maker Simulator 项目"
+						title="在 GitHub 上查看项目"
+					>
+						<svg aria-hidden="true" focusable="false" viewBox="0 0 19 19">
+							<use href="/icons.svg#github-icon" />
+						</svg>
+					</a>
+				</div>
 				{action}
 			</header>
 			{children}

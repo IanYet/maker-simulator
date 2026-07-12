@@ -21,6 +21,36 @@
 	text-decoration: none;
 }
 
+.brandGroup {
+	display: flex;
+	align-items: center;
+	gap: var(--space-sm);
+}
+
+.githubLink {
+	display: inline-flex;
+	width: 32px;
+	height: 32px;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-full);
+	transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.githubLink:hover {
+	background: var(--color-surface-soft);
+}
+
+.githubLink:active {
+	transform: scale(0.94);
+}
+
+.githubLink svg {
+	display: block;
+	width: 19px;
+	height: 19px;
+}
+
 .eyebrow {
 	margin-bottom: var(--space-md);
 	font-family: var(--font-mono);
