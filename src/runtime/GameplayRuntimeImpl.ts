@@ -1,9 +1,4 @@
-import {
-	createDraft,
-	current,
-	finishDraft,
-	type Draft,
-} from 'immer'
+import { createDraft, current, finishDraft, type Draft } from 'immer'
 import type {
 	Action,
 	ActionContext,
@@ -107,10 +102,7 @@ interface Unit {
 class RuntimeFailure extends Error {
 	readonly code: RuntimeCommandErrorCode
 
-	constructor(
-		code: RuntimeCommandErrorCode,
-		message: string,
-	) {
+	constructor(code: RuntimeCommandErrorCode, message: string) {
 		super(message)
 		this.name = 'RuntimeFailure'
 		this.code = code
@@ -119,7 +111,10 @@ class RuntimeFailure extends Error {
 
 const now = (): string => new Date().toISOString()
 const createId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`
-function compareOrdinal(left: readonly (number | string)[], right: readonly (number | string)[]): number {
+function compareOrdinal(
+	left: readonly (number | string)[],
+	right: readonly (number | string)[]
+): number {
 	for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
 		const a = left[index]
 		const b = right[index]
@@ -161,11 +156,14 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		game: LoadedGamePackage,
 		profile: Profile,
 		saves: SaveRepository,
-		monitorFactory?: RuntimeMonitorFactory,
+		monitorFactory?: RuntimeMonitorFactory
 	) {
 		this.game = game
 		this.saves = saves
-		if (profile.configId !== game.config.meta.id || profile.configVersion !== game.config.meta.version) {
+		if (
+			profile.configId !== game.config.meta.id ||
+			profile.configVersion !== game.config.meta.version
+		) {
 			throw new Error('The save and game package versions do not match')
 		}
 		this.#profile = structuredClone(profile)
@@ -178,7 +176,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		game: LoadedGamePackage,
 		profile: Profile,
 		saves: SaveRepository,
-		monitorFactory?: RuntimeMonitorFactory,
+		monitorFactory?: RuntimeMonitorFactory
 	): Promise<GameplayRuntimeImpl> {
 		const runtime = new GameplayRuntimeImpl(game, profile, saves, monitorFactory)
 		await saves.put(profile)
@@ -190,7 +188,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		game: LoadedGamePackage,
 		profile: Profile,
 		saves: SaveRepository,
-		monitorFactory?: RuntimeMonitorFactory,
+		monitorFactory?: RuntimeMonitorFactory
 	): Promise<GameplayRuntimeImpl> {
 		const runtime = new GameplayRuntimeImpl(game, profile, saves, monitorFactory)
 		await runtime.beginFromCheckpoint()
@@ -235,16 +233,30 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 
 	async abandon(): Promise<RuntimeCommandResult> {
 		if (this.currentRun().status !== 'active') {
-			return { ok: false, code: 'invalid-phase', message: 'Only an active run can be abandoned', revision: this.#revision }
+			return {
+				ok: false,
+				code: 'invalid-phase',
+				message: 'Only an active run can be abandoned',
+				revision: this.#revision,
+			}
 		}
 		try {
-			await this.runUnit('abandon', (unit) => {
-				this.appendCheckpoint(unit, 'abandoned')
-				unit.persist = true
-			}, true)
+			await this.runUnit(
+				'abandon',
+				(unit) => {
+					this.appendCheckpoint(unit, 'abandoned')
+					unit.persist = true
+				},
+				true
+			)
 			return { ok: true, revision: this.#revision }
 		} catch (error) {
-			return { ok: false, code: 'script-error', message: asMessage(error), revision: this.#revision }
+			return {
+				ok: false,
+				code: 'script-error',
+				message: asMessage(error),
+				revision: this.#revision,
+			}
 		}
 	}
 
@@ -264,21 +276,25 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					await this.startEvent(command.eventId)
 					break
 				case 'choose-single':
-					await this.chooseSingle(command.eventInstanceId, command.nodeId, command.choiceId)
+					await this.chooseSingle(
+						command.eventInstanceId,
+						command.nodeId,
+						command.choiceId
+					)
 					break
 				case 'set-multiple-choice':
 					await this.setMultipleChoice(
 						command.eventInstanceId,
 						command.nodeId,
 						command.choiceId,
-						command.count,
+						command.count
 					)
 					break
 				case 'execute-node-command':
 					await this.executeNodeCommand(
 						command.eventInstanceId,
 						command.nodeId,
-						command.commandId,
+						command.commandId
 					)
 					break
 				case 'advance-turn':
@@ -288,10 +304,16 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			return { ok: true, revision: this.#revision }
 		} catch (error) {
 			outcome = 'error'
-			const failure = error instanceof RuntimeFailure
-				? error
-				: new RuntimeFailure('script-error', asMessage(error))
-			return { ok: false, code: failure.code, message: failure.message, revision: this.#revision }
+			const failure =
+				error instanceof RuntimeFailure
+					? error
+					: new RuntimeFailure('script-error', asMessage(error))
+			return {
+				ok: false,
+				code: failure.code,
+				message: failure.message,
+				revision: this.#revision,
+			}
 		} finally {
 			this.trace('command', command.type, performance.now() - started, outcome, 0)
 		}
@@ -306,8 +328,13 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			if (!event.visible || !event.unlocked || !event.enabled) {
 				throw new RuntimeFailure('not-enabled', 'The event is not currently available')
 			}
-			if (event.activeInstanceId) throw new RuntimeFailure('not-enabled', 'The event is already active')
-			if (Object.values(event.instances).some((instance) => instance.startedTurn === unit.run.turnState.turnNumber)) {
+			if (event.activeInstanceId)
+				throw new RuntimeFailure('not-enabled', 'The event is already active')
+			if (
+				Object.values(event.instances).some(
+					(instance) => instance.startedTurn === unit.run.turnState.turnNumber
+				)
+			) {
 				throw new RuntimeFailure('not-enabled', 'This event has already started this turn')
 			}
 			const instanceId = createId('event')
@@ -327,15 +354,24 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		})
 	}
 
-	private async chooseSingle(instanceId: string, nodeId: string, choiceId: string): Promise<void> {
+	private async chooseSingle(
+		instanceId: string,
+		nodeId: string,
+		choiceId: string
+	): Promise<void> {
 		this.requireInputPhase()
 		await this.runUnit(`choose-single:${choiceId}`, (unit) => {
 			const { instance, eventId } = this.requireCurrentInstance(unit, instanceId, nodeId)
 			const node = this.turnView(unit).events[eventId].nodes[nodeId]
-			if (node.type !== 'single') throw new RuntimeFailure('stale-node', 'The current node is not a single-choice node')
+			if (node.type !== 'single')
+				throw new RuntimeFailure(
+					'stale-node',
+					'The current node is not a single-choice node'
+				)
 			const choice = node.choices[choiceId]
 			if (!choice) throw new RuntimeFailure('not-found', 'The choice does not exist')
-			if (!choice.visible || !choice.unlocked || !choice.enabled) throw new RuntimeFailure('not-enabled', 'The choice is disabled')
+			if (!choice.visible || !choice.unlocked || !choice.enabled)
+				throw new RuntimeFailure('not-enabled', 'The choice is disabled')
 			this.runAction(unit, choice.action, instance.instanceId)
 		})
 	}
@@ -344,18 +380,28 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		instanceId: string,
 		nodeId: string,
 		choiceId: string,
-		count: number,
+		count: number
 	): Promise<void> {
 		this.requireInputPhase()
-		if (!Number.isInteger(count) || count < 0) throw new RuntimeFailure('not-enabled', 'Selection count must be a non-negative integer')
+		if (!Number.isInteger(count) || count < 0)
+			throw new RuntimeFailure(
+				'not-enabled',
+				'Selection count must be a non-negative integer'
+			)
 		await this.runUnit(`set-multiple-choice:${choiceId}`, (unit) => {
 			const { instance, eventId } = this.requireCurrentInstance(unit, instanceId, nodeId)
 			const node = this.turnView(unit).events[eventId].nodes[nodeId]
-			if (node.type !== 'multiple') throw new RuntimeFailure('stale-node', 'The current node is not a multiple-choice node')
+			if (node.type !== 'multiple')
+				throw new RuntimeFailure(
+					'stale-node',
+					'The current node is not a multiple-choice node'
+				)
 			const choice = node.choices[choiceId]
 			if (!choice) throw new RuntimeFailure('not-found', 'The choice does not exist')
-			if (!choice.visible || !choice.unlocked || !choice.enabled) throw new RuntimeFailure('not-enabled', 'The choice is disabled')
-			if (choice.maxCount !== undefined && count > choice.maxCount) throw new RuntimeFailure('not-enabled', `The maximum count is ${choice.maxCount}`)
+			if (!choice.visible || !choice.unlocked || !choice.enabled)
+				throw new RuntimeFailure('not-enabled', 'The choice is disabled')
+			if (choice.maxCount !== undefined && count > choice.maxCount)
+				throw new RuntimeFailure('not-enabled', `The maximum count is ${choice.maxCount}`)
 			const eventState = (unit.run.turnState.events[eventId] ??= { id: eventId })
 			const nodeState = ((eventState.nodes ??= {})[nodeId] ??= { id: nodeId })
 			const selections = (nodeState.selections ??= {})
@@ -368,15 +414,21 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		})
 	}
 
-	private async executeNodeCommand(instanceId: string, nodeId: string, commandId: string): Promise<void> {
+	private async executeNodeCommand(
+		instanceId: string,
+		nodeId: string,
+		commandId: string
+	): Promise<void> {
 		this.requireInputPhase()
 		await this.runUnit(`execute-node-command:${commandId}`, (unit) => {
 			const { instance, eventId } = this.requireCurrentInstance(unit, instanceId, nodeId)
 			const node = this.turnView(unit).events[eventId].nodes[nodeId]
-			if (node.type !== 'multiple') throw new RuntimeFailure('stale-node', 'The current node has no commands')
+			if (node.type !== 'multiple')
+				throw new RuntimeFailure('stale-node', 'The current node has no commands')
 			const command = node.commands[commandId]
 			if (!command) throw new RuntimeFailure('not-found', 'The command does not exist')
-			if (!command.visible || !command.unlocked || !command.enabled) throw new RuntimeFailure('not-enabled', 'The command is disabled')
+			if (!command.visible || !command.unlocked || !command.enabled)
+				throw new RuntimeFailure('not-enabled', 'The command is disabled')
 			this.runAction(unit, command.action, instance.instanceId)
 			this.clearSelection(unit, eventId, nodeId, instance.instanceId)
 		})
@@ -398,7 +450,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				}
 			},
 			true,
-			false,
+			false
 		)
 		if (this.currentRun().status === 'active') await this.beginNextTurn()
 	}
@@ -429,19 +481,26 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private requireInputPhase(): void {
 		const run = this.currentRun()
 		if (run.status !== 'active' || run.turnState.phase !== 'event_handle') {
-			throw new RuntimeFailure('invalid-phase', 'This command is only available while handling events')
+			throw new RuntimeFailure(
+				'invalid-phase',
+				'This command is only available while handling events'
+			)
 		}
 	}
 
 	private requireCurrentInstance(
 		unit: Unit,
 		instanceId: string,
-		nodeId: string,
+		nodeId: string
 	): { eventId: string; instance: Draft<EventInstance> } {
 		for (const [eventId, eventState] of Object.entries(unit.run.state.events)) {
 			const instance = eventState.instances?.[instanceId]
 			if (!instance) continue
-			if (instance.status !== 'active' || eventState.activeInstanceId !== instanceId || instance.currentNodeId !== nodeId) {
+			if (
+				instance.status !== 'active' ||
+				eventState.activeInstanceId !== instanceId ||
+				instance.currentNodeId !== nodeId
+			) {
 				throw new RuntimeFailure('stale-node', 'The event node has changed')
 			}
 			return { eventId, instance }
@@ -481,7 +540,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		name: string,
 		operation: (unit: Unit) => void,
 		allowHostTerminal = true,
-		publish = true,
+		publish = true
 	): Promise<void> {
 		const unit = this.createUnit(name)
 		const started = performance.now()
@@ -491,7 +550,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			operation(unit)
 			this.stabilize(unit)
 			if (unit.pendingEnd) {
-				if (!allowHostTerminal) throw new Error('A terminal request is not allowed in this unit')
+				if (!allowHostTerminal)
+					throw new Error('A terminal request is not allowed in this unit')
 				this.appendCheckpoint(unit, 'terminal', unit.pendingEnd.sourceEventInstanceId)
 				unit.baselines.clear()
 				unit.persist = true
@@ -503,10 +563,27 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				const persistenceStarted = performance.now()
 				try {
 					await this.saves.put(candidate)
-					this.trace('persistence', name, performance.now() - persistenceStarted, 'ok', 0, unit)
+					this.trace(
+						'persistence',
+						name,
+						performance.now() - persistenceStarted,
+						'ok',
+						0,
+						unit
+					)
 				} catch (error) {
-					this.trace('persistence', name, performance.now() - persistenceStarted, 'error', 0, unit, { code: 'persistence-error' })
-					throw new Error(`Unable to save the checkpoint: ${asMessage(error)}`, { cause: error })
+					this.trace(
+						'persistence',
+						name,
+						performance.now() - persistenceStarted,
+						'error',
+						0,
+						unit,
+						{ code: 'persistence-error' }
+					)
+					throw new Error(`Unable to save the checkpoint: ${asMessage(error)}`, {
+						cause: error,
+					})
 				}
 			}
 			this.#profile = candidate
@@ -521,9 +598,17 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				finishDraft(unit.draft)
 				unit.finished = true
 			}
-			this.trace('transaction', 'rollback', performance.now() - started, 'rollback', 0, unit, {
-				code: error instanceof RuntimeFailure ? error.code : 'script-error',
-			})
+			this.trace(
+				'transaction',
+				'rollback',
+				performance.now() - started,
+				'rollback',
+				0,
+				unit,
+				{
+					code: error instanceof RuntimeFailure ? error.code : 'script-error',
+				}
+			)
 			this.traceRuleSummary(unit)
 			throw error
 		}
@@ -576,7 +661,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			Object.keys(this.game.rules).map((key) => [
 				key,
 				(...args: Primitive[]) => this.evaluateRule(unit, { key, args }),
-			]),
+			])
 		) as RuleFunctions
 	}
 
@@ -586,18 +671,25 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				key,
 				(...args: Primitive[]) => {
 					const parent = unit.actionStack.at(-1)
-					this.runAction(unit, { key, args }, parent?.sourceEventInstanceId, parent?.allowedCandidates)
+					this.runAction(
+						unit,
+						{ key, args },
+						parent?.sourceEventInstanceId,
+						parent?.allowedCandidates
+					)
 				},
-			]),
+			])
 		) as ActionFunctions
 	}
 
 	private evaluateRule(unit: Unit, call: DeepReadonly<Rule>): unknown {
 		const implementation = this.game.rules[call.key]
 		if (!implementation) throw new Error(`Unknown Rule “${call.key}”`)
-		if (++unit.ruleCount > RULE_LIMIT) throw new Error(`Rule execution limit (${RULE_LIMIT}) exceeded`)
+		if (++unit.ruleCount > RULE_LIMIT)
+			throw new Error(`Rule execution limit (${RULE_LIMIT}) exceeded`)
 		const identity = `${call.key}:${stableArgs(call.args)}`
-		if (unit.ruleStack.includes(identity)) throw new Error(`Recursive Rule cycle: ${[...unit.ruleStack, identity].join(' → ')}`)
+		if (unit.ruleStack.includes(identity))
+			throw new Error(`Recursive Rule cycle: ${[...unit.ruleStack, identity].join(' → ')}`)
 		const context: RuleContext = {
 			config: this.game.config as DeepReadonly<GameConfig>,
 			profileState: this.profileView(unit) as DeepReadonly<ProfileRuntime>,
@@ -617,7 +709,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			stat.durationMs += duration
 			stat.maxMs = Math.max(stat.maxMs, duration)
 			unit.ruleStats.set(call.key, stat)
-			if (this.#monitor.verbose) this.trace('rule-summary', call.key, duration, 'ok', unit.ruleStack.length, unit)
+			if (this.#monitor.verbose)
+				this.trace('rule-summary', call.key, duration, 'ok', unit.ruleStack.length, unit)
 		}
 	}
 
@@ -625,12 +718,18 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		unit: Unit,
 		call: DeepReadonly<Action>,
 		sourceEventInstanceId?: string,
-		allowedCandidates?: ReadonlySet<string>,
+		allowedCandidates?: ReadonlySet<string>
 	): void {
 		const implementation = this.game.actions[call.key]
 		if (!implementation) throw new Error(`Unknown Action “${call.key}”`)
-		if (++unit.actionCount > ACTION_LIMIT) throw new Error(`Action execution limit (${ACTION_LIMIT}) exceeded`)
-		const frame: ActionFrame = { key: call.key, sourceEventInstanceId, allowedCandidates, writes: [] }
+		if (++unit.actionCount > ACTION_LIMIT)
+			throw new Error(`Action execution limit (${ACTION_LIMIT}) exceeded`)
+		const frame: ActionFrame = {
+			key: call.key,
+			sourceEventInstanceId,
+			allowedCandidates,
+			writes: [],
+		}
 		unit.actionStack.push(frame)
 		const context: ActionContext = {
 			config: this.game.config as DeepReadonly<GameConfig>,
@@ -647,7 +746,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			endRun: () => {
 				if (unit.pendingEnd) return
 				unit.pendingEnd = {
-					...(sourceEventInstanceId && this.isTextNodeInstance(unit, sourceEventInstanceId)
+					...(sourceEventInstanceId &&
+					this.isTextNodeInstance(unit, sourceEventInstanceId)
 						? { sourceEventInstanceId }
 						: {}),
 				}
@@ -663,12 +763,20 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			throw new Error(`Action ${call.key} failed: ${asMessage(error)}`, { cause: error })
 		} finally {
 			unit.actionStack.pop()
-			this.trace('action', call.key, performance.now() - started, outcome, unit.actionStack.length + 1, unit)
+			this.trace(
+				'action',
+				call.key,
+				performance.now() - started,
+				outcome,
+				unit.actionStack.length + 1,
+				unit
+			)
 		}
 	}
 
 	private finalizeActionFrame(unit: Unit, frame: ActionFrame): void {
-		if (frame.writes.length > 1) throw new Error('An Action frame may perform only one event jump or termination')
+		if (frame.writes.length > 1)
+			throw new Error('An Action frame may perform only one event jump or termination')
 		const write = frame.writes[0]
 		if (!write) return
 		const eventId = write.path[1]
@@ -679,9 +787,12 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		if (!instance || !event) throw new Error('The Action targeted an unknown EventInstance')
 		if (write.property === 'currentNodeId') {
 			if (write.previous === write.next) return
-			if (typeof write.next !== 'string' || !event.nodes[write.next]) throw new Error(`Unknown target node “${String(write.next)}”`)
-			if (frame.allowedCandidates && !frame.allowedCandidates.has(write.next)) throw new Error(`Node “${write.next}” is not a declared CheckNode candidate`)
-			if (instance.status !== 'active' || eventState.activeInstanceId !== instanceId) throw new Error('Only an active EventInstance can navigate')
+			if (typeof write.next !== 'string' || !event.nodes[write.next])
+				throw new Error(`Unknown target node “${String(write.next)}”`)
+			if (frame.allowedCandidates && !frame.allowedCandidates.has(write.next))
+				throw new Error(`Node “${write.next}” is not a declared CheckNode candidate`)
+			if (instance.status !== 'active' || eventState.activeInstanceId !== instanceId)
+				throw new Error('Only an active EventInstance can navigate')
 			const previousNode = String(write.previous)
 			instance.nodePath.push(write.next)
 			this.clearSelection(unit, eventId, previousNode, instanceId)
@@ -690,8 +801,13 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			return
 		}
 		if (write.previous === write.next) return
-		if (write.previous !== 'active' || (write.next !== 'completed' && write.next !== 'abandoned')) {
-			throw new Error('EventInstance status can only transition from active to completed or abandoned')
+		if (
+			write.previous !== 'active' ||
+			(write.next !== 'completed' && write.next !== 'abandoned')
+		) {
+			throw new Error(
+				'EventInstance status can only transition from active to completed or abandoned'
+			)
 		}
 		instance.endedTurn = unit.run.turnState.turnNumber
 		delete eventState.activeInstanceId
@@ -699,7 +815,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	}
 
 	private runCheck(unit: Unit, instanceId: string, nodeId: string): void {
-		if (++unit.checkCount > CHECK_LIMIT) throw new Error(`Automatic CheckNode limit (${CHECK_LIMIT}) exceeded`)
+		if (++unit.checkCount > CHECK_LIMIT)
+			throw new Error(`Automatic CheckNode limit (${CHECK_LIMIT}) exceeded`)
 		let eventId: string | undefined
 		for (const [candidateEventId, state] of Object.entries(unit.run.state.events)) {
 			if (state.instances?.[instanceId]) {
@@ -710,10 +827,21 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		if (!eventId) throw new Error('CheckNode EventInstance is missing')
 		const node = this.game.config.events[eventId].nodes[nodeId]
 		if (node.type !== 'check') return
-		this.trace('transition', `check:${eventId}.${nodeId}`, 0, 'ok', unit.actionStack.length, unit)
+		this.trace(
+			'transition',
+			`check:${eventId}.${nodeId}`,
+			0,
+			'ok',
+			unit.actionStack.length,
+			unit
+		)
 		this.runAction(unit, node.check, instanceId, new Set(Object.keys(node.candidateNodes)))
 		const instance = unit.run.state.events[eventId].instances?.[instanceId]
-		if (instance?.status === 'active' && instance.currentNodeId === nodeId && !unit.pendingEnd) {
+		if (
+			instance?.status === 'active' &&
+			instance.currentNodeId === nodeId &&
+			!unit.pendingEnd
+		) {
 			throw new Error(`CheckNode ${eventId}.${nodeId} did not leave the node`)
 		}
 	}
@@ -721,25 +849,43 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private isTextNodeInstance(unit: Unit, instanceId: string): boolean {
 		for (const [eventId, state] of Object.entries(unit.run.state.events)) {
 			const instance = state.instances?.[instanceId]
-			if (instance && this.game.config.events[eventId].nodes[instance.currentNodeId]?.type !== 'check') return true
+			if (
+				instance &&
+				this.game.config.events[eventId].nodes[instance.currentNodeId]?.type !== 'check'
+			)
+				return true
 		}
 		return false
 	}
 
 	private reactionDefinitions(unit: Unit): ReactionDefinition[] {
 		const definitions: ReactionDefinition[] = []
-		const effects = Object.values(this.game.config.effects).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+		const effects = Object.values(this.game.config.effects).sort(
+			(a, b) => a.order - b.order || a.id.localeCompare(b.id)
+		)
 		for (const effect of effects) {
 			effect.reactionList.forEach((reaction, index) => {
 				const ordinal = [0, effect.order, effect.id, index] as const
-				definitions.push({ key: JSON.stringify(ordinal), ordinal, reaction, selfPath: ['effects', effect.id] })
+				definitions.push({
+					key: JSON.stringify(ordinal),
+					ordinal,
+					reaction,
+					selfPath: ['effects', effect.id],
+				})
 			})
 		}
-		const events = Object.values(this.game.config.events).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+		const events = Object.values(this.game.config.events).sort(
+			(a, b) => a.order - b.order || a.id.localeCompare(b.id)
+		)
 		for (const event of events) {
 			event.reactionList?.forEach((reaction, index) => {
 				const ordinal = [1, event.order, event.id, index] as const
-				definitions.push({ key: JSON.stringify(ordinal), ordinal, reaction, selfPath: ['events', event.id] })
+				definitions.push({
+					key: JSON.stringify(ordinal),
+					ordinal,
+					reaction,
+					selfPath: ['events', event.id],
+				})
 			})
 			const state = unit.run.state.events[event.id]
 			for (const instance of Object.values(state?.instances ?? {})) {
@@ -747,7 +893,16 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				const node = event.nodes[instance.currentNodeId]
 				if (!node || node.type === 'check') continue
 				node.reactionList?.forEach((reaction, index) => {
-					const ordinal = [2, event.order, event.id, instance.startedTurn, instance.instanceId, node.order, node.id, index] as const
+					const ordinal = [
+						2,
+						event.order,
+						event.id,
+						instance.startedTurn,
+						instance.instanceId,
+						node.order,
+						node.id,
+						index,
+					] as const
 					definitions.push({
 						key: JSON.stringify(ordinal),
 						ordinal,
@@ -765,24 +920,28 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		const watch = definition.reaction.watch
 		let value: unknown
 		if ('source' in watch) {
-			const root = watch.source === 'profileState'
-				? this.profileView(unit)
-				: watch.source === 'runState'
-					? this.runView(unit)
-					: this.turnView(unit)
-			const path = watch.source === 'self' ? [...definition.selfPath, ...watch.path] : watch.path
+			const root =
+				watch.source === 'profileState'
+					? this.profileView(unit)
+					: watch.source === 'runState'
+						? this.runView(unit)
+						: this.turnView(unit)
+			const path =
+				watch.source === 'self' ? [...definition.selfPath, ...watch.path] : watch.path
 			value = readPath(root, path)
 		} else {
 			value = this.evaluateRule(unit, watch)
 		}
-		if (!isPrimitive(value)) throw new Error(`Reaction ${definition.key} did not resolve to a Primitive`)
+		if (!isPrimitive(value))
+			throw new Error(`Reaction ${definition.key} did not resolve to a Primitive`)
 		return value
 	}
 
 	private scanReactions(unit: Unit, queue: ReactionTask[]): void {
 		const definitions = this.reactionDefinitions(unit)
 		const activeKeys = new Set(definitions.map((definition) => definition.key))
-		for (const key of unit.baselines.keys()) if (!activeKeys.has(key)) unit.baselines.delete(key)
+		for (const key of unit.baselines.keys())
+			if (!activeKeys.has(key)) unit.baselines.delete(key)
 		for (const definition of definitions) {
 			const value = this.evaluateReaction(unit, definition)
 			if (!unit.baselines.has(definition.key)) {
@@ -793,7 +952,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			if (Object.is(previous, value)) continue
 			unit.baselines.set(definition.key, value)
 			const { from, to } = definition.reaction
-			if ((from === undefined || Object.is(from, previous)) && (to === undefined || Object.is(to, value))) {
+			if (
+				(from === undefined || Object.is(from, previous)) &&
+				(to === undefined || Object.is(to, value))
+			) {
 				queue.push({ definition })
 			}
 		}
@@ -806,14 +968,15 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		while (queue.length > 0) {
 			const task = queue.shift()
 			if (!task) break
-			if (!this.reactionDefinitions(unit).some((item) => item.key === task.definition.key)) continue
+			if (!this.reactionDefinitions(unit).some((item) => item.key === task.definition.key))
+				continue
 			const started = performance.now()
 			let outcome: 'ok' | 'error' = 'ok'
 			try {
 				this.runAction(
 					unit,
 					task.definition.reaction.action,
-					task.definition.sourceEventInstanceId,
+					task.definition.sourceEventInstanceId
 				)
 				this.syncEffectLifecycle(unit)
 				this.scanReactions(unit, queue)
@@ -828,7 +991,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					outcome,
 					unit.actionStack.length,
 					unit,
-					{ action: task.definition.reaction.action.key },
+					{ action: task.definition.reaction.action.key }
 				)
 			}
 		}
@@ -844,10 +1007,15 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private syncEffectLifecycle(unit: Unit): void {
 		const view = this.turnView(unit)
 		for (const effect of Object.values(view.effects)) {
-			const previous = unit.effectValues.get(effect.id) ?? { acquired: effect.acquired, actived: effect.actived }
+			const previous = unit.effectValues.get(effect.id) ?? {
+				acquired: effect.acquired,
+				actived: effect.actived,
+			}
 			const state = (unit.run.state.effects[effect.id] ??= { id: effect.id })
-			if (!previous.acquired && effect.acquired) state.acquiredTurn = unit.run.turnState.turnNumber
-			if (!previous.actived && effect.actived) state.activedTurn = unit.run.turnState.turnNumber
+			if (!previous.acquired && effect.acquired)
+				state.acquiredTurn = unit.run.turnState.turnNumber
+			if (!previous.actived && effect.actived)
+				state.activedTurn = unit.run.turnState.turnNumber
 			unit.effectValues.set(effect.id, { acquired: effect.acquired, actived: effect.actived })
 		}
 	}
@@ -880,21 +1048,22 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private appendCheckpoint(
 		unit: Unit,
 		kind: CheckpointKind,
-		endingEventInstanceId?: string,
+		endingEventInstanceId?: string
 	): void {
 		const createdAt = now()
 		const turnId = createId('turn')
 		const snapshot = this.makeStateSnapshot(unit)
-		const turn: TurnData = kind === 'terminal'
-			? {
-				turnId,
-				kind,
-				createdAt,
-				pinned: false,
-				snapshot,
-				...(endingEventInstanceId ? { endingEventInstanceId } : {}),
-			}
-			: { turnId, kind, createdAt, pinned: false, snapshot }
+		const turn: TurnData =
+			kind === 'terminal'
+				? {
+						turnId,
+						kind,
+						createdAt,
+						pinned: false,
+						snapshot,
+						...(endingEventInstanceId ? { endingEventInstanceId } : {}),
+					}
+				: { turnId, kind, createdAt, pinned: false, snapshot }
 		unit.run.turnDatas[turnId] = turn
 		unit.run.turnOrder.push(turnId)
 		unit.run.currentTurnId = turnId
@@ -939,9 +1108,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	}
 
 	private computeBlockers(): string[] {
-		return this.#snapshot.activeEvents
-			.filter((event) => event.required)
-			.map((event) => `请先处理「${event.displayName}」`)
+		return [...this.#snapshot.advanceTurnBlockers]
 	}
 
 	private currentRun(): RunData {
@@ -965,17 +1132,26 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 						.flatMap((attributeConfig) => {
 							const attribute = character.attributes[attributeConfig.id]
 							if (!attribute.visible || !attribute.unlocked) return []
-							return [{
-								characterId: character.id,
-								characterDisplayName: character.displayName,
-								attributeId: attribute.id,
-								displayName: attribute.displayName,
-								type: attribute.type,
-								value: attribute.value,
-								displayValue: attribute.type === 'enum' ? attribute.valueDisplay[attribute.value] : String(attribute.value),
-								...(attribute.type === 'number' && attribute.min !== undefined ? { min: attribute.min } : {}),
-								...(attribute.type === 'number' && attribute.max !== undefined ? { max: attribute.max } : {}),
-							}]
+							return [
+								{
+									characterId: character.id,
+									characterDisplayName: character.displayName,
+									attributeId: attribute.id,
+									displayName: attribute.displayName,
+									type: attribute.type,
+									value: attribute.value,
+									displayValue:
+										attribute.type === 'enum'
+											? attribute.valueDisplay[attribute.value]
+											: String(attribute.value),
+									...(attribute.type === 'number' && attribute.min !== undefined
+										? { min: attribute.min }
+										: {}),
+									...(attribute.type === 'number' && attribute.max !== undefined
+										? { max: attribute.max }
+										: {}),
+								},
+							]
 						})
 				})
 			const effects: EffectView[] = Object.values(this.game.config.effects)
@@ -983,19 +1159,28 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				.flatMap((config) => {
 					const effect = runtime.effects[config.id]
 					if (!effect.visible || !effect.unlocked || !effect.acquired) return []
-					const bound = effect.bindCharacterId ? runtime.characters[effect.bindCharacterId] : undefined
-					return [{
-						effectId: effect.id,
-						displayName: effect.displayName,
-						...(effect.description ? { description: effect.description } : {}),
-						actived: effect.actived,
-						...(effect.bindCharacterId ? { bindCharacterId: effect.bindCharacterId } : {}),
-						...(bound ? { bindCharacterDisplayName: bound.displayName } : {}),
-					}]
+					const bound = effect.bindCharacterId
+						? runtime.characters[effect.bindCharacterId]
+						: undefined
+					return [
+						{
+							effectId: effect.id,
+							displayName: effect.displayName,
+							...(effect.description ? { description: effect.description } : {}),
+							actived: effect.actived,
+							...(effect.bindCharacterId
+								? { bindCharacterId: effect.bindCharacterId }
+								: {}),
+							...(bound ? { bindCharacterDisplayName: bound.displayName } : {}),
+						},
+					]
 				})
 			const eventCards = []
 			const activeEvents: ActiveEventView[] = []
-			for (const config of Object.values(this.game.config.events).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))) {
+			const pendingEventBlockers: string[] = []
+			for (const config of Object.values(this.game.config.events).sort(
+				(a, b) => a.order - b.order || a.id.localeCompare(b.id)
+			)) {
 				const event = runtime.events[config.id]
 				if (event.activeInstanceId) {
 					const instance = event.instances[event.activeInstanceId]
@@ -1017,17 +1202,24 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				} else if (
 					run.status === 'active' &&
 					run.turnState.phase === 'event_handle' &&
-					event.visible && event.unlocked && event.enabled &&
-					!Object.values(event.instances).some((instance) => instance.startedTurn === run.turnState.turnNumber)
+					event.visible &&
+					event.unlocked &&
+					event.enabled &&
+					!Object.values(event.instances).some(
+						(instance) => instance.startedTurn === run.turnState.turnNumber
+					)
 				) {
 					eventCards.push({
 						eventId: event.id,
 						displayName: event.displayName,
 						...(event.description ? { description: event.description } : {}),
 					})
+					if (this.pendingEventRequired(event)) {
+						pendingEventBlockers.push(`待处理事件「${event.displayName}」必须处理`)
+					}
 				}
 			}
-			const blockers = activeEvents.filter((event) => event.required).map((event) => `请先处理「${event.displayName}」`)
+			const blockers = [...pendingEventBlockers]
 			const base = {
 				revision: this.#revision,
 				runId: run.runId,
@@ -1037,18 +1229,23 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				effects,
 				eventCards,
 				activeEvents,
-				canAdvanceTurn: run.status === 'active' && run.turnState.phase === 'event_handle' && blockers.length === 0,
+				canAdvanceTurn:
+					run.status === 'active' &&
+					run.turnState.phase === 'event_handle' &&
+					blockers.length === 0,
 				advanceTurnBlockers: blockers,
 			}
 			let snapshot: RuntimeSnapshot
 			if (run.status === 'active') snapshot = { ...base, runStatus: 'active' }
-			else if (run.status === 'abandoned') snapshot = { ...base, runStatus: 'abandoned', endedAt: run.endedAt as string }
-			else snapshot = {
-				...base,
-				runStatus: 'ended',
-				endedAt: run.endedAt as string,
-				...this.endingEvent(unit, runtime),
-			}
+			else if (run.status === 'abandoned')
+				snapshot = { ...base, runStatus: 'abandoned', endedAt: run.endedAt as string }
+			else
+				snapshot = {
+					...base,
+					runStatus: 'ended',
+					endedAt: run.endedAt as string,
+					...this.endingEvent(unit, runtime),
+				}
 			finishDraft(unit.draft)
 			return freezeSnapshot(snapshot)
 		} catch (error) {
@@ -1057,7 +1254,25 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 	}
 
-	private nodeView(node: TurnRuntime['events'][string]['nodes'][string], instanceId: string): EventNodeView {
+	private pendingEventRequired(event: TurnRuntime['events'][string]): boolean {
+		const visited = new Set<string>()
+		const requiresHandling = (nodeId: string): boolean => {
+			if (visited.has(nodeId)) return false
+			visited.add(nodeId)
+			const node = event.nodes[nodeId]
+			if (!node) return false
+			if (node.type !== 'check') return node.required ?? false
+			return Object.keys(node.candidateNodes).some((candidateId) =>
+				requiresHandling(candidateId)
+			)
+		}
+		return requiresHandling(event.entryNodeId)
+	}
+
+	private nodeView(
+		node: TurnRuntime['events'][string]['nodes'][string],
+		instanceId: string
+	): EventNodeView {
 		const common = {
 			nodeId: node.id,
 			displayName: node.displayName,
@@ -1142,7 +1357,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		outcome: 'ok' | 'error' | 'rollback',
 		depth: number,
 		unit?: Unit,
-		detail?: Readonly<Record<string, Primitive>>,
+		detail?: Readonly<Record<string, Primitive>>
 	): void {
 		let runId: string
 		let turnNumber: number
@@ -1180,7 +1395,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private traceRuleSummary(unit: Unit): void {
 		if (unit.ruleStats.size === 0) return
 		const slowest = [...unit.ruleStats.entries()].sort((a, b) => b[1].maxMs - a[1].maxMs)[0]
-		const duration = [...unit.ruleStats.values()].reduce((sum, stat) => sum + stat.durationMs, 0)
+		const duration = [...unit.ruleStats.values()].reduce(
+			(sum, stat) => sum + stat.durationMs,
+			0
+		)
 		this.trace('rule-summary', slowest?.[0] ?? 'rules', duration, 'ok', 0, unit, {
 			count: unit.ruleCount,
 			slowest: slowest?.[0] ?? '',

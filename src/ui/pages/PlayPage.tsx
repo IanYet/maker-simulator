@@ -96,6 +96,11 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 	}
 
 	function eventButtons() {
+		const pendingRequired = new Set(
+			view.runtime.advanceTurnBlockers
+				.filter((blocker) => blocker.startsWith('待处理事件「'))
+				.map((blocker) => blocker.slice('待处理事件「'.length, -'」必须处理'.length)),
+		)
 		return (
 			<>
 				{view.runtime.activeEvents.map((event) => (
@@ -117,7 +122,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 						onClick={() => void execute(session.startEvent(event.eventId))}
 						type="button"
 					>
-						{event.displayName} · 开始
+						{event.displayName} · 开始{pendingRequired.has(event.displayName) ? ' · 必须处理' : ''}
 					</button>
 				))}
 			</>
@@ -181,7 +186,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 								<Surface tone="soft" className={styles.emptyNode}>
 									<p className={styles.eyebrow}>Event network</p>
 									<h2 className={styles.nodeTitle}>选择一个事件，或结束当前回合。</h2>
-									<p className={styles.nodeContent}>事件可以并行进行；带有“必须处理”标记的当前节点会阻止进入下一回合。</p>
+									<p className={styles.nodeContent}>事件可以并行进行；待处理区或进行中带有“必须处理”标记的事件会阻止进入下一回合。</p>
 								</Surface>
 							)}
 					</div>
