@@ -18,6 +18,7 @@
 - [游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)：定义 RuntimeCommand、状态机、局级初始化、UI 绑定与单回合流程。
 - [玩家流程与界面设计](./player-flow-and-ui.md)：定义游戏列表、存档分支、游戏布局、按钮语义与开发前建议。
 - [设计一致性审计](./design-audit.md)：记录跨文档与类型声明的审计结论、已修复问题和延期边界。
+- [MVP 技术规格](../technical-spec.md)：定义可直接进入开发的技术栈、目录、模块边界、开发顺序和人工验收要求。
 - [TypeScript 类型声明](../../src/types/index.ts)：领域模型、游戏包、RuntimeCommand 与 UI read model 的统一类型出口。
 
 ## 数据分层
