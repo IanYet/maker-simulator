@@ -313,9 +313,51 @@ button.profileCard {
 	font-size: 15px;
 }
 
+.attributeRowChanged {
+	border-radius: var(--radius-xs);
+	animation: attributeRowFlash 1200ms ease-out both;
+}
+
+.attributeValueWrap {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: var(--space-xs);
+	text-align: right;
+}
+
 .attributeValue {
 	font-family: var(--font-mono);
 	font-size: 13px;
+}
+
+.attributeChange {
+	display: inline-flex;
+	align-items: center;
+	padding: 3px 7px;
+	border: 1px solid currentcolor;
+	border-radius: var(--radius-pill);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 650;
+	white-space: nowrap;
+	animation: attributeChangePop 2200ms ease-out both;
+}
+
+.attributeChangePositive {
+	color: var(--color-success);
+	background: var(--color-mint);
+}
+
+.attributeChangeNegative {
+	color: var(--color-magenta);
+	background: var(--color-pink);
+}
+
+.attributeChangeNeutral {
+	color: var(--color-navy);
+	background: var(--color-cream);
 }
 
 .effectList {
@@ -524,6 +566,25 @@ button.profileCard {
 
 @keyframes pulse {
 	to { transform: scale(1.7); }
+}
+
+@keyframes attributeRowFlash {
+	0% { background: var(--color-lime); }
+	100% { background: transparent; }
+}
+
+@keyframes attributeChangePop {
+	0% { opacity: 0; transform: translateY(6px) scale(0.88); }
+	15% { opacity: 1; transform: translateY(0) scale(1); }
+	76% { opacity: 1; transform: translateY(0) scale(1); }
+	100% { opacity: 0; transform: translateY(-5px) scale(0.96); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.attributeRowChanged,
+	.attributeChange {
+		animation: none;
+	}
 }
 
 @media (max-width: 960px) {

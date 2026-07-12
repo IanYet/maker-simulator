@@ -7,7 +7,7 @@ import {
 	type RefObject,
 } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import type { ActiveEventView, SessionCommandResult } from '../../types'
+import type { ActiveEventView, AttributeView, SessionCommandResult } from '../../types'
 import { useAppServices } from '../../app/useAppServices'
 import type { GameSessionImpl } from '../../session'
 import { Button, ConfirmDialog, LiveRegion, StatusBanner, Surface } from '../components'
@@ -17,6 +17,15 @@ type SessionState =
 	| { status: 'loading' }
 	| { status: 'error'; message: string }
 	| { status: 'ready'; session: GameSessionImpl }
+
+interface AttributeChange {
+	from: string
+	to: string
+	delta: number
+	token: string
+}
+
+const attributeKey = (characterId: string, attributeId: string): string => `${characterId}.${attributeId}`
 
 export function PlayPage() {
 	const { profileId = '' } = useParams()
@@ -57,6 +66,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 	const view = useSyncExternalStore(subscribe, getSnapshot)
 	const [message, setMessage] = useState<string>()
 	const [dialog, setDialog] = useState<'exit' | 'saves' | 'abandon'>()
+	const [attributeChanges, setAttributeChanges] = useState<Record<string, AttributeChange>>({})
 	const nodeHeading = useRef<HTMLHeadingElement>(null)
 	const focused = view.runtime.activeEvents.find(
 		(event) => event.eventInstanceId === view.focusedEventInstanceId,
@@ -65,6 +75,40 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 	useEffect(() => {
 		if (focused) nodeHeading.current?.focus()
 	}, [focused])
+
+	useEffect(() => {
+		const changes = Object.entries(attributeChanges)
+		if (changes.length === 0) return
+		const timer = setTimeout(() => {
+			setAttributeChanges((active) => {
+				const next = { ...active }
+				for (const [key, change] of changes) {
+					if (active[key]?.token === change.token) delete next[key]
+				}
+				return next
+			})
+		}, 2200)
+		return () => clearTimeout(timer)
+	}, [attributeChanges])
+
+	function showAttributeChanges(previous: readonly AttributeView[], current: readonly AttributeView[], revision: number): void {
+		const previousByKey = new Map(previous.map((attribute) => [attributeKey(attribute.characterId, attribute.attributeId), attribute]))
+		const changes: Record<string, AttributeChange> = {}
+
+		for (const attribute of current) {
+			const key = attributeKey(attribute.characterId, attribute.attributeId)
+			const prior = previousByKey.get(key)
+			if (!prior || (prior.value === attribute.value && prior.displayValue === attribute.displayValue)) continue
+			changes[key] = {
+				from: prior.displayValue,
+				to: attribute.displayValue,
+				delta: attribute.value - prior.value,
+				token: `${revision}:${key}`,
+			}
+		}
+
+		if (Object.keys(changes).length > 0) setAttributeChanges((active) => ({ ...active, ...changes }))
+	}
 
 	const attributesByCharacter = useMemo(() => {
 		const groups = new Map<string, typeof view.runtime.attributes>()
@@ -76,6 +120,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 	}, [view])
 
 	async function execute(command: Promise<SessionCommandResult>): Promise<void> {
+		const previousAttributes = view.runtime.attributes
 		setMessage(undefined)
 		const result = await command
 		if (!result.ok) {
@@ -83,6 +128,7 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 			return
 		}
 		const snapshot = session.runtime.getSnapshot()
+		showAttributeChanges(previousAttributes, snapshot.attributes, snapshot.revision)
 		if (snapshot.runStatus !== 'active') {
 			const profile = session.runtime.getProfile()
 			navigate(`/result/${encodeURIComponent(profile.profileId)}/${encodeURIComponent(profile.current.runId)}/${encodeURIComponent(profile.current.turnId)}`, { replace: true })
@@ -139,12 +185,36 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 						{[...attributesByCharacter.entries()].map(([character, attributes]) => (
 							<div className={styles.attributeGroup} key={character}>
 								<h3>{character}</h3>
-								{attributes.map((attribute) => (
-									<div className={styles.attributeRow} key={`${attribute.characterId}.${attribute.attributeId}`}>
-										<span>{attribute.displayName}</span>
-										<span className={styles.attributeValue}>{attribute.displayValue}{attribute.min !== undefined || attribute.max !== undefined ? ` / ${attribute.min ?? '−∞'}–${attribute.max ?? '∞'}` : ''}</span>
-									</div>
-								))}
+								{attributes.map((attribute) => {
+									const change = attributeChanges[attributeKey(attribute.characterId, attribute.attributeId)]
+									const direction = change
+										? change.delta > 0
+											? styles.attributeChangePositive
+											: change.delta < 0
+												? styles.attributeChangeNegative
+												: styles.attributeChangeNeutral
+										: undefined
+									return (
+										<div
+											className={`${styles.attributeRow} ${change ? styles.attributeRowChanged : ''}`}
+											key={attributeKey(attribute.characterId, attribute.attributeId)}
+										>
+											<span>{attribute.displayName}</span>
+											<span className={styles.attributeValueWrap}>
+												<span className={styles.attributeValue}>{attribute.displayValue}{attribute.min !== undefined || attribute.max !== undefined ? ` / ${attribute.min ?? '−∞'}–${attribute.max ?? '∞'}` : ''}</span>
+												{change && (
+													<span
+														aria-live="polite"
+														className={`${styles.attributeChange} ${direction ?? ''}`}
+														key={change.token}
+													>
+														{change.from} → {change.to}
+													</span>
+												)}
+											</span>
+										</div>
+									)
+								})}
 							</div>
 						))}
 					</section>
