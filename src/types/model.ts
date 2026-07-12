@@ -72,7 +72,7 @@ export interface Action {
  * Reaction 直接观察的运行时字段引用。
  */
 export interface ValueRef {
-	/** 数据来源，例如 self、profile、runData 或 turnData。 */
+	/** 数据来源，例如 self、profileState、runState 或 turnState。 */
 	source: string
 	/** 来源对象中的字段名称。 */
 	field: string
@@ -125,7 +125,7 @@ export interface CommonConfig {
 	tags: string[]
 	/** 面向玩家的可选说明文本。 */
 	description?: string
-	/** 同类对象的随机判定顺序。 */
+	/** 随机判定、UI 展示与跨对象 Reaction 注册的稳定顺序。 */
 	order: number
 	/** `[0, 1)` 的独立判定概率，或 `[1, 10]` 的相对权重。 */
 	weight: ReactiveValue<number>
@@ -434,6 +434,8 @@ export interface EventState extends CommonState {
 	nodes?: Record<string, EventNodeState>
 	/** 仅 RunState 使用、以 EventInstance id 为 key 的事件实例对象。 */
 	instances?: Record<string, EventInstance>
+	/** 仅 RunState 使用、引擎维护的当前活动 EventInstance id；无活动实例时省略。 */
+	activeInstanceId?: string
 }
 
 /**
@@ -485,7 +487,7 @@ export interface CommonRuntime {
 	tags: string[]
 	/** 可选说明文本。 */
 	description?: string
-	/** 同类对象的随机判定顺序。 */
+	/** 随机判定、UI 展示与跨对象 Reaction 注册的稳定顺序。 */
 	order: number
 	/** 当前有效的随机判定权重或独立概率。 */
 	weight: number
@@ -645,6 +647,8 @@ export interface EventRuntime extends CommonRuntime {
 	reactionList?: Reaction[]
 	/** 以 EventInstance id 为 key 的当前事件实例。 */
 	instances: Record<string, EventInstance>
+	/** 当前活动 EventInstance id；无活动实例时省略。 */
+	activeInstanceId?: string
 }
 
 /**
@@ -679,6 +683,144 @@ export interface TurnRuntime extends GameRuntime {
 	turnNumber: number
 	/** 当前回合阶段。 */
 	phase: TurnPhase
+}
+
+/**
+ * Action 中可写的 CommonState 字段；Config 静态字段保持只读。
+ */
+export interface ActionCommonRuntime {
+	readonly id: string
+	readonly displayName: string
+	readonly tags: readonly string[]
+	readonly description?: string
+	readonly order: number
+	weight: number
+	visible: boolean
+	unlocked: boolean
+	enabled: boolean
+}
+
+export interface ActionNumberAttributeRuntime extends ActionCommonRuntime {
+	readonly type: 'number'
+	value: number
+	readonly min?: number
+	readonly max?: number
+}
+
+export interface ActionEnumAttributeRuntime extends ActionCommonRuntime {
+	readonly type: 'enum'
+	value: number
+	readonly valueDisplay: readonly string[]
+}
+
+export type ActionAttributeRuntime = ActionNumberAttributeRuntime | ActionEnumAttributeRuntime
+
+export interface ActionCharacterRuntime extends ActionCommonRuntime {
+	readonly attributes: Readonly<Record<string, ActionAttributeRuntime>>
+}
+
+export interface ActionEffectRuntime extends ActionCommonRuntime {
+	acquired: boolean
+	actived: boolean
+	bindCharacterId?: string
+	readonly reactionList: DeepReadonly<Reaction[]>
+	readonly acquiredTurn?: number
+	readonly activedTurn?: number
+}
+
+export interface ActionSingleChoiceRuntime extends ActionCommonRuntime {
+	readonly action: DeepReadonly<Action>
+}
+
+export interface ActionMultipleChoiceRuntime extends ActionCommonRuntime {
+	readonly value: Primitive
+	maxCount?: number
+}
+
+export interface ActionNodeCommandRuntime extends ActionCommonRuntime {
+	readonly action: DeepReadonly<Action>
+}
+
+export interface ActionTextNodeRuntimeBase extends ActionCommonRuntime {
+	readonly content: string
+	readonly reactionList?: DeepReadonly<Reaction[]>
+	required?: boolean
+	readonly selections?: DeepReadonly<Record<string, NodeSelection>>
+}
+
+export interface ActionSingleTextNodeRuntime extends ActionTextNodeRuntimeBase {
+	readonly type: 'single'
+	readonly choices: Readonly<Record<string, ActionSingleChoiceRuntime>>
+}
+
+export interface ActionMultipleTextNodeRuntime extends ActionTextNodeRuntimeBase {
+	readonly type: 'multiple'
+	readonly choices: Readonly<Record<string, ActionMultipleChoiceRuntime>>
+	readonly commands: Readonly<Record<string, ActionNodeCommandRuntime>>
+}
+
+export interface ActionCheckNodeRuntime extends ActionCommonRuntime {
+	readonly type: 'check'
+	readonly candidateNodes: Readonly<Record<NodeId, true>>
+	readonly check: DeepReadonly<Action>
+}
+
+export type ActionEventNodeRuntime =
+	| ActionSingleTextNodeRuntime
+	| ActionMultipleTextNodeRuntime
+	| ActionCheckNodeRuntime
+
+/**
+ * Action 可写的 EventInstance 视图。导航与终止状态可写，派生的历史和时间字段由引擎维护。
+ */
+export interface ActionEventInstanceRuntime {
+	readonly instanceId: string
+	readonly eventId: string
+	status: EventInstance['status']
+	currentNodeId: NodeId
+	readonly nodePath: readonly NodeId[]
+	readonly startedTurn: number
+	readonly endedTurn?: number
+}
+
+export interface ActionEventRuntime extends ActionCommonRuntime {
+	readonly entryNodeId: NodeId
+	readonly nodes: Readonly<Record<NodeId, ActionEventNodeRuntime>>
+	readonly reactionList?: DeepReadonly<Reaction[]>
+	/** 以 EventInstance id 为 key 的只读事件实例。 */
+	readonly instances: DeepReadonly<Record<string, EventInstance>>
+	/** 引擎维护的当前活动 EventInstance id。 */
+	readonly activeInstanceId?: string
+}
+
+/**
+ * Action 经 RunState 使用的 EventRuntime；实例导航与终止状态可写。
+ */
+export interface ActionRunEventRuntime extends ActionEventRuntime {
+	readonly instances: Readonly<Record<string, ActionEventInstanceRuntime>>
+}
+
+/**
+ * Action 可写的游戏内容视图。集合结构、Config 字段和引擎派生字段只读。
+ */
+export interface ActionGameRuntime<
+	TEventRuntime extends ActionEventRuntime = ActionEventRuntime,
+> {
+	readonly meta: DeepReadonly<ConfigMeta>
+	readonly characters: Readonly<Record<string, ActionCharacterRuntime>>
+	readonly effects: Readonly<Record<string, ActionEffectRuntime>>
+	readonly events: Readonly<Record<string, TEventRuntime>>
+}
+
+export type ActionProfileRuntime = ActionGameRuntime
+export type ActionRunRuntime = ActionGameRuntime<ActionRunEventRuntime>
+
+/**
+ * Action 使用的回合运行时视图。游戏内容字段可写，回合编号和阶段由引擎拥有。
+ */
+export interface ActionTurnRuntime extends ActionGameRuntime {
+	readonly turnNumber: number
+	readonly phase: TurnPhase
 }
 
 /**
@@ -718,7 +860,7 @@ export interface Profile {
 /**
  * RunData 生命周期状态。
  */
-export type RunStatus = 'active' | 'succeeded' | 'failed' | 'abandoned'
+export type RunStatus = 'active' | 'ended' | 'abandoned'
 
 /**
  * 新 RunData 的来源类型。
@@ -731,7 +873,7 @@ export type RunOriginKind = 'branch' | 'restart'
 export interface RunOrigin {
 	/** 分支继续或重新开始。 */
 	kind: RunOriginKind
-	/** 来源检查点；允许指向已经删除的 TurnData。 */
+	/** 来源检查点；branch 可来自 initial 或 turn_end，允许目标随后被删除。 */
 	source: TurnRef
 }
 
@@ -787,7 +929,7 @@ export interface StateSnapshot {
 export type CheckpointKind = 'initial' | 'turn_end' | 'terminal' | 'abandoned'
 
 /**
- * 稳定边界上的可恢复检查点。
+ * 稳定边界上的检查点。
  */
 export interface TurnData {
 	/** 所属 RunData 内唯一的检查点 id。 */
@@ -805,12 +947,14 @@ export interface TurnData {
 /**
  * 由注册名称索引的 Action 调用集合。
  */
-export type ActionFunctions = Record<string, (...args: Primitive[]) => void>
+export type ActionFunctions = Readonly<Record<string, (...args: Primitive[]) => void>>
 
 /**
  * 由注册名称索引的 Rule 调用集合。
  */
-export type RuleFunctions = Record<string, <TResult = unknown>(...args: Primitive[]) => TResult>
+export type RuleFunctions = Readonly<
+	Record<string, <TResult = unknown>(...args: Primitive[]) => TResult>
+>
 
 /**
  * 引擎注入 Rule 的只读脚本上下文。
@@ -819,15 +963,11 @@ export interface RuleContext {
 	/** 只读的原始内容配置。 */
 	readonly config: DeepReadonly<GameConfig>
 	/** 合并到 ProfileState 的只读运行时视图。 */
-	readonly profile: DeepReadonly<ProfileRuntime>
+	readonly profileState: DeepReadonly<ProfileRuntime>
 	/** 合并到 RunState 的只读运行时视图。 */
-	readonly runData: DeepReadonly<RunRuntime>
+	readonly runState: DeepReadonly<RunRuntime>
 	/** 合并到 TurnState 的只读运行时视图。 */
-	readonly turnData: DeepReadonly<TurnRuntime>
-	/** 绑定当前 RunData RandomState 的 PRNG 函数。 */
-	readonly random: Random
-	/** 可供当前 Rule 调用的所有 Action。 */
-	readonly action: ActionFunctions
+	readonly turnState: DeepReadonly<TurnRuntime>
 	/** 可供当前 Rule 调用的所有 Rule。 */
 	readonly rule: RuleFunctions
 }
@@ -839,21 +979,23 @@ export interface ActionContext {
 	/** 只读的原始内容配置。 */
 	readonly config: DeepReadonly<GameConfig>
 	/** 合并到 ProfileState 的事务内可写运行时视图。 */
-	readonly profile: ProfileRuntime
+	readonly profileState: ActionProfileRuntime
 	/** 合并到 RunState 的事务内可写运行时视图。 */
-	readonly runData: RunRuntime
-	/** 合并到 TurnState 的事务内可写运行时视图。 */
-	readonly turnData: TurnRuntime
+	readonly runState: ActionRunRuntime
+	/** 合并到 TurnState 的事务内视图；回合编号与阶段只读。 */
+	readonly turnState: ActionTurnRuntime
 	/** 绑定当前 RunData RandomState 的 PRNG 函数。 */
 	readonly random: Random
 	/** 可供当前 Action 调用的所有 Action。 */
 	readonly action: ActionFunctions
 	/** 可供当前 Action 调用的所有 Rule。 */
 	readonly rule: RuleFunctions
+	/** 请求在当前处理单元稳定后结束 RunData。 */
+	readonly endRun: () => void
 }
 
 /**
- * Rule JavaScript 实现的计算函数。
+ * Rule JavaScript 实现的纯计算函数。
  *
  * @template TResult Rule 返回值类型。
  */
@@ -872,12 +1014,12 @@ export interface RuleImplementation<TResult = unknown> {
 }
 
 /**
- * Rule 名称到 JavaScript 实现的注册表。
+ * Rule 名称到只读 JavaScript 实现的注册表。
  */
-export type RuleRegistry = Record<string, RuleImplementation>
+export type RuleRegistry = Readonly<Record<string, RuleImplementation>>
 
 /**
- * Action JavaScript 实现的执行函数。
+ * Action JavaScript 实现的执行函数；可以修改 State 或请求结束当前 RunData。
  */
 export type ActionExec = (context: ActionContext, ...args: Primitive[]) => void
 
@@ -892,6 +1034,6 @@ export interface ActionImplementation {
 }
 
 /**
- * Action 名称到 JavaScript 实现的注册表。
+ * Action 名称到只读 JavaScript 实现的注册表。
  */
-export type ActionRegistry = Record<string, ActionImplementation>
+export type ActionRegistry = Readonly<Record<string, ActionImplementation>>
