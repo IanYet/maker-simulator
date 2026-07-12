@@ -1,4 +1,12 @@
-import type { NodeId, RunStatus, Timestamp, TurnPhase, TurnRef } from './model'
+import type {
+	EventInstance,
+	NodeId,
+	Primitive,
+	RunStatus,
+	Timestamp,
+	TurnPhase,
+	TurnRef,
+} from './model'
 
 /** UI 到 GameplayRuntime 的权威命令协议。 */
 export type RuntimeCommand =
@@ -60,6 +68,7 @@ export type SessionCommandResult =
 
 export interface AttributeView {
 	readonly characterId: string
+	readonly characterDisplayName: string
 	readonly attributeId: string
 	readonly displayName: string
 	readonly type: 'number' | 'enum'
@@ -75,6 +84,7 @@ export interface EffectView {
 	readonly description?: string
 	readonly actived: boolean
 	readonly bindCharacterId?: string
+	readonly bindCharacterDisplayName?: string
 }
 
 export interface EventCardView {
@@ -83,12 +93,70 @@ export interface EventCardView {
 	readonly description?: string
 }
 
+export interface EventNodeViewBase {
+	readonly nodeId: NodeId
+	readonly displayName: string
+	readonly description?: string
+	readonly content: string
+	readonly required: boolean
+}
+
+export interface SingleChoiceView {
+	readonly choiceId: string
+	readonly displayName: string
+	readonly description?: string
+	readonly enabled: boolean
+}
+
+export interface MultipleChoiceView {
+	readonly choiceId: string
+	readonly displayName: string
+	readonly description?: string
+	readonly enabled: boolean
+	readonly value: Primitive
+	readonly count: number
+	readonly maxCount?: number
+}
+
+export interface NodeCommandView {
+	readonly commandId: string
+	readonly displayName: string
+	readonly description?: string
+	readonly enabled: boolean
+}
+
+export interface SingleEventNodeView extends EventNodeViewBase {
+	readonly type: 'single'
+	readonly choices: readonly SingleChoiceView[]
+}
+
+export interface MultipleEventNodeView extends EventNodeViewBase {
+	readonly type: 'multiple'
+	readonly choices: readonly MultipleChoiceView[]
+	readonly commands: readonly NodeCommandView[]
+}
+
+/** CheckNode 会在发布 snapshot 前自动处理，因此不会进入 UI read model。 */
+export type EventNodeView = SingleEventNodeView | MultipleEventNodeView
+
 export interface ActiveEventView {
 	readonly eventId: string
 	readonly eventInstanceId: string
 	readonly displayName: string
+	readonly status: Extract<EventInstance['status'], 'active'>
 	readonly currentNodeId: NodeId
 	readonly required: boolean
+	readonly currentNode: Readonly<EventNodeView>
+}
+
+/** 终局请求有关联事件节点时保留的只读结果视图。 */
+export interface EndingEventView {
+	readonly eventId: string
+	readonly eventInstanceId: string
+	readonly displayName: string
+	readonly status: EventInstance['status']
+	readonly currentNodeId: NodeId
+	readonly currentNode: Readonly<EventNodeView>
 }
 
 /** GameplayRuntime 只在稳定点发布的不可变 read model。 */
@@ -110,17 +178,17 @@ export type RuntimeSnapshot = RuntimeSnapshotBase &
 		| {
 				readonly runStatus: Extract<RunStatus, 'active'>
 				readonly endedAt?: never
-				readonly ending?: never
+				readonly endingEvent?: never
 		  }
 		| {
 				readonly runStatus: Extract<RunStatus, 'ended'>
 				readonly endedAt: Timestamp
-				readonly endingEvent: Readonly<ActiveEventView>
+				readonly endingEvent?: Readonly<EndingEventView>
 		  }
 		| {
 				readonly runStatus: Extract<RunStatus, 'abandoned'>
 				readonly endedAt: Timestamp
-				readonly ending?: never
+				readonly endingEvent?: never
 		  }
 	)
 
@@ -134,7 +202,9 @@ export interface GameplayRuntime {
 export interface SessionView {
 	readonly gameId: string
 	readonly gameVersion: string
+	readonly gameName: string
 	readonly profileId: string
+	readonly profileLabel?: string
 	readonly runtime: RuntimeSnapshot
 	readonly busy: boolean
 	readonly focusedEventInstanceId?: string
@@ -144,6 +214,8 @@ export interface SessionView {
 export interface GameSession {
 	subscribe(listener: () => void): () => void
 	getView(): SessionView
+	/** 只更新应用级 UI focus；省略参数表示清除聚焦。 */
+	focusEvent(eventInstanceId?: string): void
 	startEvent(eventId: string): Promise<SessionCommandResult>
 	chooseSingle(
 		eventInstanceId: string,

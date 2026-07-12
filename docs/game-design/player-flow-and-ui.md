@@ -24,7 +24,7 @@
 | TurnData | 可预览或恢复的检查点 | 显示回合、时间、种类和 pin 状态 |
 | branch | 从历史检查点保留原记录后形成的新时间线 | 从来源检查点绘制分支边 |
 | restart | 在同一 Profile 中再来一局 | 与时间回溯分支使用不同的边和标签 |
-| 结局字段 | 游戏包写入 RunState 的内容状态 | 交给游戏包的展示适配层，不参与引擎生命周期判断 |
+| 结局字段 | 游戏包写入 RunState 的内容状态 | 不参与引擎生命周期判断；结果页优先展示终局调用链关联的 EventNode |
 
 一次“新游戏”创建一个新的 Profile，并在其中创建首个 RunData。“再来一局”在当前 Profile 中创建新的 restart RunData，保留 ProfileState，但重新初始化 RunState、TurnState 和随机状态。
 
@@ -257,11 +257,11 @@ Effect 按 Config `order` 排序。绑定 Character 时可以显示所属 Charac
 | 增减多选数量 | `updateSelection(...)` | 校验并写入 TurnState 临时选择 | 否 |
 | 点击 NodeCommand | `executeNodeCommand(...)` | 读取完整选择并执行配置 Action | 是 |
 | 点击下一回合 | `advanceTurn()` | 校验门禁并驱动回合 phase | 否 |
-| 再来一局 | `restartRun()` | 仅在 Run ended 后创建 restart RunData | 否 |
+| 再来一局 | `restartRun()` | 仅在 Run ended 或 abandoned 后创建 restart RunData | 否 |
 
 `startEvent` 不从 Action 注册表中查找名为 `start_event` 的函数。游戏脚本可以自由命名 authored Action，宿主生命周期不会与脚本名称强耦合。
 
-`focusEvent` 是 UI 操作，不进入引擎处理单元，也不写入 TurnState。其他命令是否产生 State draft 由其宿主语义决定。
+`focusEvent` 是 `GameSession` 的同步 UI 操作，不进入引擎处理单元，也不写入 TurnState；省略实例 id 时清除聚焦。其他命令是否产生 State draft 由其宿主语义决定。
 
 ### 节点展示
 
@@ -322,7 +322,7 @@ UI 不直接写入 phase，也不通过某个脚本 Action 模拟阶段切换。
 | 再来一局 | 隐藏或禁用 | 创建 restart RunData | 无 |
 | 下一回合 | 调用 `advanceTurn()` | 隐藏或禁用 | 门禁不满足时说明原因 |
 
-`abandoned` 记录不显示“退出并放弃”“再来一局”或“下一回合”；它只允许选择存档或退出到游戏菜单。
+`abandoned` 记录不显示“退出并放弃”或“下一回合”；它允许选择存档、创建 restart RunData 或退出到游戏菜单。
 
 ### 退出与切换存档
 
@@ -332,7 +332,7 @@ UI 不直接写入 phase，也不通过某个脚本 Action 模拟阶段切换。
 
 “退出并放弃”表示放弃整条当前 Run，而不是只丢弃自上个检查点后的变化。宿主创建 `abandoned` 检查点，将生命周期改为 `abandoned` 并记录 `endedAt`。放弃属于宿主生命周期，不要求游戏脚本写入结局字段，也不能伪造一种游戏内容结局。
 
-“再来一局”只在 `endRun()` 完成并进入 ended Run 后显示。此时以 terminal 来源创建 restart RunData；restart 只保留 ProfileState，不复制上一局的 RunState、TurnState 或结局字段。
+“再来一局”在 Run 进入 `ended` 或 `abandoned` 后显示。宿主以对应的 terminal 或 abandoned 检查点作为历史来源创建 restart RunData；restart 只保留恢复游标当前的 ProfileState，不复制上一局的 RunState、TurnState 或结局字段。
 
 ## 任意结局展示
 
@@ -346,7 +346,7 @@ UI 不得：
 - 为未知结局自动赋予成功或失败样式；
 - 在 restart 时根据字段名称猜测需要清理的内容状态。
 
-结局内容由游戏包中的 EventNode 展示。该节点先呈现结局叙事与可用操作；只有节点内 Command 或 Choice 绑定的 Action 才能调用 `context.endRun()`。调用完成后 UI 将当前结局节点作为只读结果保留，并提供：
+游戏包通常先进入一个展示结局叙事的 EventNode，再由其中 Command 或 Choice 的 Action 调用 `context.endRun()`。这种情况下，调用完成后 UI 将调用链关联的当前节点作为只读 `endingEvent` 保留，并提供：
 
 - 游戏名称；
 - 结局 EventNode 的标题与内容；
@@ -355,7 +355,7 @@ UI 不得：
 - “再来一局”；
 - “退出”。
 
-引擎不额外调用结局展示适配器，也不根据 RunState 字段生成结局文案。结束 Action 必须从可展示的结局 EventNode 的 Command 或 Choice 触发；terminal snapshot 保留该节点和事件实例，供结果页只读展示。
+引擎不额外调用结局展示适配器，也不根据 RunState 字段生成结局文案。配置级 Reaction、节点 Reaction 或阶段变化引发的 Action 也可以请求终局；调用链没有关联当前 EventNode 时 `endingEvent` 省略，结果页显示游戏名称、当前逻辑回合、结束时间和通用终局状态。terminal snapshot 仍完整保留普通 RunState 结局字段，供历史检查和未来的包级展示扩展使用。
 
 ## UI 与数据边界
 
@@ -399,7 +399,7 @@ SessionView 至少应提供：
 - Reaction 循环或超过执行上限；
 - 保存空间不足或原子提交失败；
 - 分支来源检查点已经清理；
-- 结局字段缺少展示映射。
+- 终局没有关联可展示 EventNode，使用通用结果视图；
 
 运行时命令失败时保留最后一个稳定状态，不跳转到错误页面。存档原文件或原记录必须保留。错误提示包含游戏包 id、Profile id 和可定位的字段路径，但面向玩家的默认界面不展示完整脚本堆栈。
 
@@ -429,10 +429,10 @@ SessionView 至少应提供：
 | 事件列表刷新时机 | “每回合”可能被理解为冻结集合 | 每个稳定事务后实时刷新 | 同意 |
 | 玩家启动事件 | 旧设计可能依赖 `start_event` Action 名 | 统一使用宿主 `startEvent`，不设置魔法 Action 名 | 同意 |
 | 多个 active 事件 | 焦点和下一回合门禁 | 允许多个实例，只聚焦一个；required 只阻止下一回合 | 同意 |
-| 任意结局展示 | 结局内容与 `endRun()` 的触发位置 | 结局由 EventNode 展示，仅其 Command 或 Choice 的 Action 调用 `endRun()` | 已确认 |
+| 任意结局展示 | 结局内容与 `endRun()` 的触发位置 | 优先由 EventNode 展示；其他 Action 也可终局，此时使用通用结果视图 | 已确认 |
 | 终局检查时机 | `context.endRun()` 可以在任意 phase 调用 | 每条 Action 和 Reaction 队列稳定后检查生命周期 | 同意 |
 | 难度 | 没有配置与持久化模型 | MVP 使用默认值；以后由游戏包定义初始化参数 | 同意 |
-| active Run 再来一局 | 按钮出现时机 | 仅在 `endRun()` 完成后显示“再来一局” | 已确认 |
+| active Run 再来一局 | 按钮出现时机 | active 时隐藏；ended 或 abandoned 记录允许创建 restart RunData | 已确认 |
 | 移动端 | 目标布局是桌面两栏 | MVP 桌面优先，窄屏保证基本堆叠 | 同意 |
 | 命令并发 | 快速点击可能重复提交 | 前端按钮防抖，命令执行期间禁用重复操作 | 已确认 |
 | 不兼容存档 | 列表是否隐藏 | 保留显示、禁用载入并提供版本错误 | 同意 |

@@ -17,7 +17,7 @@
 - [终局与结局](./endings.md)：定义 Action 结束 RunData 的协议，以及与游戏包结局数据的边界。
 - [游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)：定义 RuntimeCommand、状态机、局级初始化、UI 绑定与单回合流程。
 - [玩家流程与界面设计](./player-flow-and-ui.md)：定义游戏列表、存档分支、游戏布局、按钮语义与开发前建议。
-- [本轮设计更新总结](../../design-update-summary.md)：总结新增与修订内容，并说明修改原有文档的原因。
+- [设计一致性审计](./design-audit.md)：记录跨文档与类型声明的审计结论、已修复问题和延期边界。
 - [TypeScript 类型声明](../../src/types/index.ts)：领域模型、游戏包、RuntimeCommand 与 UI read model 的统一类型出口。
 
 ## 数据分层

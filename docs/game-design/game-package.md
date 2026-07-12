@@ -301,7 +301,7 @@ interface LoadedGamePackage {
 4. 并行读取 Config JSON，并 import Rule 与 Action module。模块的顶层代码在这一步执行，但加载器尚未创建任何 Profile 或 RunData。
 5. 校验 GameConfig schema、所有 object key/id、枚举、数值范围、唯一性与 Config 内部引用，并确认 `config.meta` 与 manifest 身份一致。
 6. 校验模块的 `rules` / `actions` 导出、registry key、implementation.key 与 `calc` / `exec` 函数形状。
-7. 链接全部 Config 调用描述：递归遍历 ReactiveValue、Choice、Command、CheckNode 和 Reaction，确认每个 Rule key 存在于 RuleRegistry、每个 Action key 存在于 ActionRegistry，并校验 event/node/choice/character/effect 等稳定 id 引用。
+7. 链接全部 Config 调用描述：递归遍历 ReactiveValue、Choice、Command、CheckNode 和 Reaction，确认每个 Rule key 存在于 RuleRegistry、每个 Action key 存在于 ActionRegistry，并校验 event/node/choice/character/effect 等稳定 id 引用；ValueRef 的非空路径必须从声明位置或指定 State 根解析到 Primitive 字段。
 8. 为 Reaction 声明生成稳定注册顺序，冻结 manifest、Config 与 registry 外壳，产出 `LoadedGamePackage`。
 
 链接阶段不执行任何 Rule 或 Action。JavaScript 函数的任意参数含义和 Rule 的业务返回类型无法只根据 JavaScript 函数形状完全证明；加载器校验 Config `args` 只包含 Primitive，具体返回值和 State 写入在 Rule 计算或 Action 事务执行时继续校验。

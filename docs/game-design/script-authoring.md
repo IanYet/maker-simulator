@@ -117,7 +117,7 @@ interface CommonConfig {
 
 `visible` 控制对象是否在 UI 中显示。`unlocked` 控制对象是否可以从 Profile 进入 RunData，`enabled` 控制对象是否在游戏流程中可用。
 
-在一份Profile中，一旦某个对象`unlocked`了，那这份profile，从任何turn进入游戏，即使回退时间线，该对象仍然是unlocked的状态。
+写入 ProfileState 的 `unlocked` 会跨 RunData 保留。玩家从历史检查点创建分支或截断恢复时，ProfileState 与其他 State 一样恢复为该检查点的 snapshot；此后创建的新 RunData 继承恢复游标对应的 ProfileState。
 
 ### 属性 Attribute
 属性没有独立叙事或动作，是依托于 character 的状态。character 可以是具体人物，也可以是抽象对象，例如“玩家”“城镇”“世界”或“本局”。属性不能脱离其 character 单独存在。
@@ -356,9 +356,10 @@ function reachEnding(context, endingValue) {
 
 ```ts
 interface ValueRef {
-    /** self、profileState、runState、turnState 或 Config 对象 id。 */
-    source: string;
-    field: string;
+    /** self 表示 Reaction 所属对象；其余值表示对应的解析 State 根。 */
+    source: 'self' | 'profileState' | 'runState' | 'turnState';
+    /** 相对 source 的非空字段路径。 */
+    path: [string, ...string[]];
 }
 
 type ReactionSource = ValueRef | Rule;
@@ -371,6 +372,8 @@ interface Reaction {
 }
 ```
 
-Reaction 用于自动执行 Action。`watch` 可以直接引用一个已解析字段，也可以执行一个 Rule 并观察其返回值。观察结果发生变化且符合 `from`、`to` 时，引擎执行 `action`；该 Action 也可以调用 `context.endRun()`。未填写 `from` 或 `to` 表示匹配任意旧值或新值。Reaction 初次注册时只建立基准值，不执行 Action。`ValueRef.source` 为 `self` 时，引用 Reaction 所属对象的运行时字段。
+Reaction 用于自动执行 Action。`watch` 可以直接引用一个已解析字段，也可以执行一个 Rule 并观察其返回值。观察结果发生变化且符合 `from`、`to` 时，引擎执行 `action`；该 Action 也可以调用 `context.endRun()`。未填写 `from` 或 `to` 表示匹配任意旧值或新值。Reaction 初次注册时只建立基准值，不执行 Action。
+
+`ValueRef.path` 逐段定位字段，不能使用点分隔字符串代替路径数组。`source = 'self'` 时路径相对声明 Reaction 的 Effect、EventConfig 或 TextNode 运行时对象；其余 source 从对应解析 State 视图的根开始。例如 `{ "source": "runState", "path": ["characters", "player", "attributes", "health", "value"] }` 观察本局生命值。路径必须解析到 Primitive；无效路径或非基础类型结果是 linking 错误。Rule 形式的 watch 也必须在运行时返回 Primitive，否则处理单元失败。
 
 例如 Effect 的激活 Reaction 可以观察所属对象的 `actived`，匹配 `false` 到 `true`；每回合开始的效果可以观察一个 Rule，该 Rule 返回“Effect 已激活并且 `context.turnState.phase` 为 `turn_start`”的布尔值，并匹配 `false` 到 `true`。Reaction 复用已解析的 `actived`，不会重复黑暗事件数量等业务条件。

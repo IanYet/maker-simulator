@@ -1,0 +1,1 @@
+- [x] 读取所有 docs/game-design 下的文档与 types 下的类型声明，检查文档之间以及文档与类型定义之间的设计缺口和不一致。审计结论见 [设计一致性审计](./docs/game-design/design-audit.md)。

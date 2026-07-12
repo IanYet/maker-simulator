@@ -72,10 +72,10 @@ export interface Action {
  * Reaction 直接观察的运行时字段引用。
  */
 export interface ValueRef {
-	/** 数据来源，例如 self、profileState、runState 或 turnState。 */
-	source: string
-	/** 来源对象中的字段名称。 */
-	field: string
+	/** self 表示声明 Reaction 的对象；其余值表示对应的解析 State 根。 */
+	source: 'self' | 'profileState' | 'runState' | 'turnState'
+	/** 相对 source 的非空字段路径。 */
+	path: [string, ...string[]]
 }
 
 /**
@@ -839,6 +839,8 @@ export interface TurnRef {
 export interface Profile {
 	/** 存档 id。 */
 	profileId: string
+	/** 玩家设置的可选存档显示名。 */
+	label?: string
 	/** 存档数据结构版本。 */
 	stateVersion: number
 	/** 对应 ConfigMeta.id。 */
@@ -928,14 +930,9 @@ export interface StateSnapshot {
  */
 export type CheckpointKind = 'initial' | 'turn_end' | 'terminal' | 'abandoned'
 
-/**
- * 稳定边界上的检查点。
- */
-export interface TurnData {
+interface TurnDataBase {
 	/** 所属 RunData 内唯一的检查点 id。 */
 	turnId: string
-	/** 检查点类型。 */
-	kind: CheckpointKind
 	/** 检查点提交时间。 */
 	createdAt: Timestamp
 	/** 是否排除在自动清理之外。 */
@@ -943,6 +940,22 @@ export interface TurnData {
 	/** 该检查点保存的完整逻辑 State 与 PRNG 状态。 */
 	snapshot: StateSnapshot
 }
+
+/**
+ * 稳定边界上的检查点。
+ */
+export type TurnData = TurnDataBase &
+	(
+		| {
+				kind: Extract<CheckpointKind, 'terminal'>
+				/** 首次 endRun 请求有关联节点时记录其 EventInstance id。 */
+				endingEventInstanceId?: string
+		  }
+		| {
+				kind: Exclude<CheckpointKind, 'terminal'>
+				endingEventInstanceId?: never
+		  }
+	)
 
 /**
  * 由注册名称索引的 Action 调用集合。

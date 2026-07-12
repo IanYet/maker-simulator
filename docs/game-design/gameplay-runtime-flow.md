@@ -74,6 +74,7 @@ RuntimeCommand 串行执行。引擎在执行时根据最新 State 重新校验 
 ```ts
 interface AttributeView {
     characterId: string;
+    characterDisplayName: string;
     attributeId: string;
     displayName: string;
     type: 'number' | 'enum';
@@ -89,6 +90,7 @@ interface EffectView {
     description?: string;
     actived: boolean;
     bindCharacterId?: string;
+    bindCharacterDisplayName?: string;
 }
 
 interface EventCardView {
@@ -97,12 +99,68 @@ interface EventCardView {
     description?: string;
 }
 
+interface SingleChoiceView {
+    choiceId: string;
+    displayName: string;
+    description?: string;
+    enabled: boolean;
+}
+
+interface MultipleChoiceView {
+    choiceId: string;
+    displayName: string;
+    description?: string;
+    enabled: boolean;
+    value: Primitive;
+    count: number;
+    maxCount?: number;
+}
+
+interface NodeCommandView {
+    commandId: string;
+    displayName: string;
+    description?: string;
+    enabled: boolean;
+}
+
+type EventNodeView =
+    | {
+          type: 'single';
+          nodeId: NodeId;
+          displayName: string;
+          description?: string;
+          content: string;
+          required: boolean;
+          choices: readonly SingleChoiceView[];
+      }
+    | {
+          type: 'multiple';
+          nodeId: NodeId;
+          displayName: string;
+          description?: string;
+          content: string;
+          required: boolean;
+          choices: readonly MultipleChoiceView[];
+          commands: readonly NodeCommandView[];
+      };
+
 interface ActiveEventView {
     eventId: string;
     eventInstanceId: string;
     displayName: string;
+    status: 'active';
     currentNodeId: NodeId;
     required: boolean;
+    currentNode: EventNodeView;
+}
+
+interface EndingEventView {
+    eventId: string;
+    eventInstanceId: string;
+    displayName: string;
+    status: 'active' | 'completed' | 'abandoned';
+    currentNodeId: NodeId;
+    currentNode: EventNodeView;
 }
 
 interface RuntimeSnapshotBase {
@@ -119,13 +177,15 @@ interface RuntimeSnapshotBase {
 }
 
 type RuntimeSnapshot = RuntimeSnapshotBase & (
-    | { runStatus: 'active'; endedAt?: never; ending?: never }
-    | { runStatus: 'ended'; endedAt: Timestamp; endingEvent: ActiveEventView }
-    | { runStatus: 'abandoned'; endedAt: Timestamp; ending?: never }
+    | { runStatus: 'active'; endedAt?: never; endingEvent?: never }
+    | { runStatus: 'ended'; endedAt: Timestamp; endingEvent?: EndingEventView }
+    | { runStatus: 'abandoned'; endedAt: Timestamp; endingEvent?: never }
 );
 ```
 
-GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最后一个 snapshot 仍允许 `runStatus = 'abandoned'`，从而与领域 `RunStatus` 保持一致。`ended` snapshot 必须提供触发 `endRun()` 的结局 EventNode 所属事件只读视图。UI 不直接读取 Runtime Proxy 或猜测结局字段。
+GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最后一个 snapshot 仍允许 `runStatus = 'abandoned'`，从而与领域 `RunStatus` 保持一致。`ended` snapshot 根据 terminal TurnData 的可选 `endingEventInstanceId` 重建 `endingEvent`；由配置级 Reaction 或阶段 Action 请求终局时可以省略，UI 显示通用终局信息。UI 不直接读取 Runtime Proxy 或猜测结局字段。
+
+可启动事件和当前节点中的 Choice、Command 在 selector 中应用 `visible && unlocked` 过滤，并将有效 `enabled` 投影给 UI。CheckNode 会在 run-to-idle 过程中自动处理，不会出现在 `EventNodeView`。多选项的 `count` 来自当前 EventInstance 在 TurnState 中的选择结果。
 
 | UI 操作 | Runtime 调用 | 引擎行为 |
 | --- | --- | --- |
@@ -224,7 +284,9 @@ flowchart TD
     M -- 是 --> Z
     M -- 否 --> N[原子创建 turn_end 检查点<br/>更新 RunData.currentTurnId 与 Profile.current]
     N --> B
-    Z --> O[保留触发 endRun 的结局 EventNode<br/>生成 RuntimeSnapshot.endingEvent]
+    Z --> O{调用链有关联的当前 EventNode?}
+    O -- 是 --> P[保留只读节点视图<br/>生成 RuntimeSnapshot.endingEvent]
+    O -- 否 --> Q[生成通用 ended snapshot]
 ```
 
 顺序说明：
@@ -241,4 +303,4 @@ flowchart TD
 
 “退出”和从游戏内“选择存档”属于应用命令，不放进 ActionRegistry。退出当前游戏界面时丢弃自回合初始化以来的全部未提交工作状态；再次继续时从进入该回合前的 `initial` 或上一 `turn_end` 检查点重新开始。游戏状态只在 `turn_end` 原子持久化。
 
-“退出并放弃”确认后创建 `abandoned` 检查点并结束整条 active Run，不伪造游戏结局。“再来一局”只在 `endRun()` 完成后显示，并从 ended Run 创建 restart RunData。完整按钮、存档树与页面跳转见[玩家流程与界面设计](./player-flow-and-ui.md)。
+“退出并放弃”确认后创建 `abandoned` 检查点并结束整条 active Run，不伪造游戏结局。“再来一局”在 ended 或 abandoned 的只读结果中显示，并创建 restart RunData。完整按钮、存档树与页面跳转见[玩家流程与界面设计](./player-flow-and-ui.md)。
