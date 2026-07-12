@@ -37,10 +37,12 @@ export interface GamePackageManifest {
 	assets?: string
 }
 
+/** 游戏包规则脚本模块的 ESM 导出形状。 */
 export interface RuleModule {
 	rules: RuleRegistry
 }
 
+/** 游戏包动作脚本模块的 ESM 导出形状。 */
 export interface ActionModule {
 	actions: ActionRegistry
 }
@@ -69,9 +71,13 @@ export interface LoadedGamePackage {
 
 /** HTTP、本地目录或测试内存源共同实现的包 I/O 边界。 */
 export interface GamePackageSource {
+	/** 读取 catalog 并解析资源位置。 */
 	list(): Promise<LocatedGameCatalog>
+	/** 读取任意 JSON 资源；schema 校验由 loader 负责。 */
 	readJson<T>(location: string): Promise<T>
+	/** 导入可信 Rule/Action ESM 模块。 */
 	importTrustedModule(location: string): Promise<unknown>
+	/** 解析并限制包内资源 URL。 */
 	resolve(base: string, reference: string): string
 }
 
@@ -84,6 +90,7 @@ export type PackageLoadStage =
 	| 'registry-validation'
 	| 'linking'
 
+/** 对外展示的游戏包加载错误结构。 */
 export interface PackageLoadError {
 	stage: PackageLoadStage
 	packageId?: string

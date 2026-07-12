@@ -9,6 +9,7 @@ export type RuntimeTraceKind =
 	| 'persistence'
 	| 'rule-summary'
 
+/** RuntimeMonitor 输出的单条事件，detail 只允许基础类型。 */
 export interface RuntimeTrace {
 	at: string
 	runId: string
@@ -58,22 +59,26 @@ export function commandTraceDetail(command: RuntimeCommand): Readonly<Record<str
 	}
 }
 
+/** 将 Action/Reaction 参数序列化为控制台可读且不展开对象的字符串。 */
 export function argsTraceDetail(args: readonly Primitive[]): string {
 	return JSON.stringify(args)
 }
 
+/** Runtime 执行轨迹的输出边界；实现不应影响游戏结果。 */
 export interface RuntimeMonitor {
 	readonly verbose: boolean
 	trace(value: RuntimeTrace): void
 	finish(): void
 }
 
+/** 关闭监控时使用的空实现。 */
 export class NoopRuntimeMonitor implements RuntimeMonitor {
 	readonly verbose = false
 	trace(): void {}
 	finish(): void {}
 }
 
+/** 向浏览器控制台输出执行轨迹，并在结束时打印会话摘要。 */
 export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 	readonly #started = performance.now()
 	readonly #records: RuntimeTrace[] = []
@@ -103,7 +108,7 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 				value.detail ?? '',
 			)
 		} catch {
-			// Monitoring must never affect gameplay.
+			// 监控失败不能影响游戏结果。
 		}
 	}
 
@@ -133,13 +138,14 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 				slowest,
 			})
 		} catch {
-			// Monitoring must never affect gameplay.
+			// 监控失败不能影响游戏结果。
 		}
 	}
 }
 
 export type RuntimeMonitorFactory = (runId: string) => RuntimeMonitor
 
+/** 根据开发环境或 URL 查询参数创建监控工厂。 */
 export function createMonitorFactory(): RuntimeMonitorFactory {
 	const setting = new URLSearchParams(window.location.search).get('runtimeMonitor')
 	const enabled = import.meta.env.DEV || setting === '1' || setting === 'verbose'

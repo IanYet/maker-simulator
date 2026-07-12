@@ -2,6 +2,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { Button } from './Button'
 import styles from './primitives.module.css'
 
+/** 用于放弃、截断等不可逆操作的模态确认对话框。 */
 export function ConfirmDialog({
 	open,
 	title,

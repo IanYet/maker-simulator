@@ -1,6 +1,7 @@
 import type { Profile, TurnData } from '../types'
 import { parseProfile } from '../package-loader/schemas'
 
+/** 指出存档结构错误及其 JSON 路径，便于定位损坏或过期数据。 */
 export class SaveValidationError extends Error {
 	readonly path: string
 
@@ -24,6 +25,7 @@ function validateTurn(turn: TurnData, runId: string, turnId: string): void {
 	}
 }
 
+/** 解析并验证完整 Profile 的游标、检查点、RunData 和随机状态一致性。 */
 export function validateProfile(input: unknown): Profile {
 	const profile = parseProfile(input)
 	const currentRun = profile.runDatas[profile.current.runId]

@@ -6,6 +6,7 @@ import type {
 	Profile,
 } from '../types'
 
+/** 游戏包、Config 和 State 共享的安全标识符规则。 */
 export const idSchema = z
 	.string()
 	.min(1)
@@ -117,6 +118,7 @@ const eventSchema = z.strictObject({
 	reactionList: z.array(reactionSchema).optional(),
 })
 
+/** 游戏包 Config 的完整 JSON schema。 */
 export const gameConfigSchema = z.strictObject({
 	meta: z.strictObject({
 		id: idSchema,
@@ -130,6 +132,7 @@ export const gameConfigSchema = z.strictObject({
 	events: z.record(idSchema, eventSchema),
 })
 
+/** 宿主发现游戏包所使用的 catalog schema。 */
 export const catalogSchema = z.strictObject({
 	schemaVersion: z.literal(1),
 	games: z.array(
@@ -145,6 +148,7 @@ export const catalogSchema = z.strictObject({
 	defaultVersions: z.record(idSchema, z.string().min(1)),
 })
 
+/** 单个精确游戏包版本的 manifest schema。 */
 export const manifestSchema = z.strictObject({
 	schemaVersion: z.literal(1),
 	id: idSchema,
@@ -272,6 +276,7 @@ const runDataSchema = z.strictObject({
 	turnDatas: z.record(idSchema, turnDataSchema),
 })
 
+/** 浏览器 IndexedDB 中完整 Profile 的持久化 schema。 */
 export const profileSchema = z.strictObject({
 	profileId: idSchema,
 	label: z.string().min(1).optional(),
@@ -285,18 +290,22 @@ export const profileSchema = z.strictObject({
 	current: z.strictObject({ runId: idSchema, turnId: idSchema }),
 })
 
+/** 解析 catalog，并在返回前执行严格 schema 校验。 */
 export function parseCatalog(input: unknown): GameCatalog {
 	return catalogSchema.parse(input) as GameCatalog
 }
 
+/** 解析单个游戏包 manifest。 */
 export function parseManifest(input: unknown): GamePackageManifest {
 	return manifestSchema.parse(input) as GamePackageManifest
 }
 
+/** 解析游戏包 Config；Rule/Action 引用由 linker 继续校验。 */
 export function parseConfig(input: unknown): GameConfig {
 	return gameConfigSchema.parse(input) as GameConfig
 }
 
+/** 解析存档 Profile，并拒绝未知字段或不完整的检查点结构。 */
 export function parseProfile(input: unknown): Profile {
 	return profileSchema.parse(input) as Profile
 }

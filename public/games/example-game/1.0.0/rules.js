@@ -1,3 +1,4 @@
+/** 最小示例包的纯 Rule registry。 */
 export const rules = {
   'turn.is-start': {
     key: 'turn.is-start',

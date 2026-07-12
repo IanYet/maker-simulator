@@ -145,6 +145,12 @@ function freezeSnapshot(snapshot: RuntimeSnapshot): RuntimeSnapshot {
 	return deepFreeze(snapshot)
 }
 
+/**
+ * 游戏回合运行时的唯一状态变更入口。
+ *
+ * Runtime 以 Immer draft 执行一个完整处理单元，统一协调命令、Action、Rule、Reaction、
+ * CheckNode、随机游标、回合阶段和检查点；处理单元失败时不会发布部分 State。
+ */
 export class GameplayRuntimeImpl implements GameplayRuntime {
 	readonly #listeners = new Set<() => void>()
 	#profile: Profile
@@ -178,6 +184,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		this.#snapshot = this.selectSnapshot()
 	}
 
+	/** 创建新游戏 Runtime，保存初始 Profile 后自动启动首回合。 */
 	static async create(
 		game: LoadedGamePackage,
 		profile: Profile,
@@ -190,6 +197,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		return runtime
 	}
 
+	/** 从已有 Profile 的当前稳定检查点恢复 Runtime。 */
 	static async open(
 		game: LoadedGamePackage,
 		profile: Profile,
@@ -201,6 +209,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		return runtime
 	}
 
+	/** 串行执行一条 RuntimeCommand；并发命令会返回 busy。 */
 	dispatch(command: RuntimeCommand): Promise<RuntimeCommandResult> {
 		if (this.#disposed) {
 			return Promise.resolve({
@@ -224,19 +233,23 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		})
 	}
 
+	/** 订阅稳定 RuntimeSnapshot 发布；返回取消订阅函数。 */
 	subscribe(listener: () => void): () => void {
 		this.#listeners.add(listener)
 		return () => this.#listeners.delete(listener)
 	}
 
+	/** 返回当前不可变的 UI read model。 */
 	getSnapshot(): RuntimeSnapshot {
 		return this.#snapshot
 	}
 
+	/** 返回 Profile 的深拷贝，避免调用方修改 Runtime 内部状态。 */
 	getProfile(): Profile {
 		return structuredClone(this.#profile)
 	}
 
+	/** 将当前 active Run 写入 abandoned 检查点，并结束本条时间线。 */
 	async abandon(): Promise<RuntimeCommandResult> {
 		if (this.currentRun().status !== 'active') {
 			return {
@@ -266,6 +279,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 	}
 
+	/** 停止发布快照并输出监控摘要；不会删除 IndexedDB 中已有存档。 */
 	dispose(): void {
 		if (this.#disposed) return
 		this.#disposed = true
@@ -337,7 +351,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		try {
 			return this.commandTraceDetailUnsafe(command)
 		} catch {
-			// Monitoring must never change the command result.
+			// 监控详情失败时回退到基础字段，不能改变命令结果。
 			return commandTraceDetail(command)
 		}
 	}
@@ -596,6 +610,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 	}
 
+	/**
+	 * 在临时 draft 中执行一个处理单元，并按需要持久化/发布结果。
+	 * `allowHostTerminal` 控制终局请求是否允许在本次宿主操作中提交。
+	 */
 	private async runUnit(
 		name: string,
 		operation: (unit: Unit) => void,
@@ -939,6 +957,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		return false
 	}
 
+	/** 按 canonical ordinal 收集当前所有 Effect、Event 和 active TextNode Reaction。 */
 	private reactionDefinitions(unit: Unit): ReactionDefinition[] {
 		const definitions: ReactionDefinition[] = []
 		const effects = Object.values(this.game.config.effects).sort(
@@ -1042,6 +1061,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 	}
 
+	/** 反复扫描 Rule/ValueRef，按 FIFO 执行变化触发的 Reaction，直到状态稳定。 */
 	private stabilize(unit: Unit): void {
 		this.syncEffectLifecycle(unit)
 		const queue: ReactionTask[] = []
@@ -1204,6 +1224,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		return run
 	}
 
+	/** 将当前工作状态投影为 UI 使用的深度冻结 RuntimeSnapshot。 */
 	private selectSnapshot(): RuntimeSnapshot {
 		const unit = this.createUnit('selector')
 		try {
@@ -1432,7 +1453,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			try {
 				listener()
 			} catch {
-				// Subscribers cannot affect runtime state.
+				// 订阅者异常不能影响 Runtime 状态。
 			}
 		}
 	}

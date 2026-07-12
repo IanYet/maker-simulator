@@ -15,6 +15,7 @@ function formatDate(value: string): string {
 	return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(value))
 }
 
+/** 终局/放弃结果页：展示只读检查点，并提供 restart 入口。 */
 export function ResultPage() {
 	const { profileId = '', runId = '', turnId = '' } = useParams()
 	const services = useAppServices()

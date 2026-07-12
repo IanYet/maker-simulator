@@ -4,10 +4,14 @@ import { fileURLToPath } from 'node:url'
 const output = fileURLToPath(new URL('../public/games/frostbound/1.0.0/config.json', import.meta.url))
 const FINAL_TURN = 10
 
+/** 创建 Config 中可序列化的 Action 调用描述。 */
 const action = (key, ...args) => ({ key, args })
+/** 创建 Config 中可序列化的 Rule 调用描述。 */
 const rule = (key, ...args) => ({ key, args })
+/** 把字面默认值和 Rule 组合成 ReactiveValue。 */
 const reactive = (value, key, ...args) => ({ value, rule: rule(key, ...args) })
 
+/** 生成带通用展示、排序和启用字段的 Config 对象。 */
 function common(id, displayName, order, options = {}) {
   return {
     id,
@@ -22,6 +26,7 @@ function common(id, displayName, order, options = {}) {
   }
 }
 
+/** 生成数值属性定义。 */
 const numberAttribute = (id, name, order, value, min, max, options = {}) => ({
   ...common(id, name, order, options),
   type: 'number',
@@ -30,6 +35,7 @@ const numberAttribute = (id, name, order, value, min, max, options = {}) => ({
   max,
 })
 
+/** 生成枚举属性定义。 */
 const enumAttribute = (id, name, order, value, valueDisplay, options = {}) => ({
   ...common(id, name, order, options),
   type: 'enum',
@@ -37,6 +43,7 @@ const enumAttribute = (id, name, order, value, valueDisplay, options = {}) => ({
   valueDisplay,
 })
 
+/** 生成带获得/激活状态和 Reaction 列表的 Effect 定义。 */
 function effect(id, name, order, description, options = {}) {
   return {
     ...common(id, name, order, { tags: options.tags ?? ['build'], description }),
@@ -47,22 +54,26 @@ function effect(id, name, order, description, options = {}) {
   }
 }
 
+/** 生成单选节点中的 Choice。 */
 const choice = (id, name, order, call, options = {}) => ({
   ...common(id, name, order, options),
   action: call,
 })
 
+/** 生成多选节点中的可计数 Choice。 */
 const multipleChoice = (id, name, order, value, maxCount, options = {}) => ({
   ...common(id, name, order, options),
   value,
   ...(maxCount !== undefined ? { maxCount } : {}),
 })
 
+/** 生成多选节点提交用的 NodeCommand。 */
 const command = (id, name, order, call, options = {}) => ({
   ...common(id, name, order, options),
   action: call,
 })
 
+/** 生成单选叙事节点，并把 Choice 数组转换为 id 索引对象。 */
 function singleNode(id, name, order, content, choices, options = {}) {
   return {
     ...common(id, name, order, options),
@@ -74,6 +85,7 @@ function singleNode(id, name, order, content, choices, options = {}) {
   }
 }
 
+/** 生成多选叙事节点及其提交命令。 */
 function multipleNode(id, name, order, content, choices, commands, options = {}) {
   return {
     ...common(id, name, order, options),
@@ -86,6 +98,7 @@ function multipleNode(id, name, order, content, choices, commands, options = {})
   }
 }
 
+/** 生成隐藏的自动检查节点。 */
 function checkNode(id, name, order, candidates, call) {
   return {
     ...common(id, name, order, { visible: false, tags: ['check'] }),
@@ -95,6 +108,7 @@ function checkNode(id, name, order, candidates, call) {
   }
 }
 
+/** 生成一个带回合解锁条件的 EventConfig。 */
 function gameEvent(id, name, order, minTurn, description, nodes, options = {}) {
   return {
     ...common(id, name, order, {
@@ -110,10 +124,12 @@ function gameEvent(id, name, order, minTurn, description, nodes, options = {}) {
 }
 
 const deltaKeys = ['health', 'warmth', 'food', 'fuel', 'medicine', 'parts', 'morale', 'survivors', 'knowledge', 'signal']
+/** 将稀疏属性变化转换为 event.resolve 的固定参数序列。 */
 function resolve(eventId, effectId, deltas = {}) {
   return action('event.resolve', eventId, effectId ?? null, ...deltaKeys.map((key) => deltas[key] ?? 0))
 }
 
+/** 将路线值和稀疏属性变化转换为 event.resolve-route 调用。 */
 function routeResolve(eventId, routeValue, effectId, deltas = {}) {
   return action('event.resolve-route', eventId, routeValue, effectId ?? null, ...deltaKeys.map((key) => deltas[key] ?? 0))
 }
@@ -438,6 +454,7 @@ function authoredActions(node) {
   return calls
 }
 
+/** 审计 Frostbound 的规模、节点可达性和跨事件前置依赖。 */
 function assertPackage() {
   if (Object.keys(config.effects).length < 10) throw new Error('Frostbound requires at least 10 Effects')
   if (Object.keys(config.events).length < 20) throw new Error('Frostbound requires at least 20 Events')

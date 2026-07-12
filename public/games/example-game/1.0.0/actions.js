@@ -1,3 +1,4 @@
+/** 读取当前事件实例，供示例 Action 修改生命周期。 */
 function activeInstance(context, eventId) {
   const event = context.runState.events[eventId]
   const instanceId = event.activeInstanceId
@@ -5,6 +6,7 @@ function activeInstance(context, eventId) {
   return event.instances[instanceId]
 }
 
+/** 最小示例包的 Action registry，用于验证运行时基本流程。 */
 export const actions = {
   'player.change-health': {
     key: 'player.change-health',
