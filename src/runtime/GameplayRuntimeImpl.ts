@@ -366,8 +366,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			return detail
 		}
 
-		const eventId = Object.entries(this.currentRun().state.events).find(([, state]) =>
-			state.instances?.[command.eventInstanceId]
+		const eventId = Object.entries(this.currentRun().state.events).find(
+			([, state]) => state.instances?.[command.eventInstanceId]
 		)?.[0]
 		const event = eventId ? this.game.config.events[eventId] : undefined
 		const node = event?.nodes[command.nodeId]
@@ -376,20 +376,21 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		if (command.type === 'choose-single') {
 			if (node.type !== 'single') return detail
 			const authoredChoices = 'rule' in node.choices ? node.choices.value : node.choices
-			const choice = Object.values(authoredChoices).find((item) => item.id === command.choiceId)
-			return choice
-				? { ...detail, actionKey: choice.action.key }
-				: detail
+			const choice = Object.values(authoredChoices).find(
+				(item) => item.id === command.choiceId
+			)
+			return choice ? { ...detail, actionKey: choice.action.key } : detail
 		}
 		if (command.type === 'set-multiple-choice') {
 			if (node.type !== 'multiple') return detail
 			const authoredChoices = 'rule' in node.choices ? node.choices.value : node.choices
-			const choice = Object.values(authoredChoices).find((item) => item.id === command.choiceId)
-			return choice
-				? { ...detail, value: choice.value }
-				: detail
+			const choice = Object.values(authoredChoices).find(
+				(item) => item.id === command.choiceId
+			)
+			return choice ? { ...detail, value: choice.value } : detail
 		}
-		const authoredCommand = node.type === 'multiple' ? node.commands[command.commandId] : undefined
+		const authoredCommand =
+			node.type === 'multiple' ? node.commands[command.commandId] : undefined
 		return authoredCommand ? { ...detail, actionKey: authoredCommand.action.key } : detail
 	}
 
@@ -788,15 +789,9 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			stat.maxMs = Math.max(stat.maxMs, duration)
 			unit.ruleStats.set(call.key, stat)
 			if (this.#monitor.verbose)
-				this.trace(
-					'rule-summary',
-					call.key,
-					duration,
-					'ok',
-					unit.ruleStack.length,
-					unit,
-					{ args: argsTraceDetail(call.args) }
-				)
+				this.trace('rule-summary', call.key, duration, 'ok', unit.ruleStack.length, unit, {
+					args: argsTraceDetail(call.args),
+				})
 		}
 	}
 
@@ -862,10 +857,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					...(sourceEventInstanceId ? { eventInstanceId: sourceEventInstanceId } : {}),
 					...(frame.writes[0]
 						? {
-							eventField: frame.writes[0].property,
-							previousValue: String(frame.writes[0].previous),
-							nextValue: String(frame.writes[0].next),
-						}
+								eventField: frame.writes[0].property,
+								previousValue: String(frame.writes[0].previous),
+								nextValue: String(frame.writes[0].next),
+							}
 						: {}),
 				}
 			)
@@ -1327,7 +1322,12 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					}
 				}
 			}
-			const blockers = [...pendingEventBlockers]
+			const blockers = [
+				...pendingEventBlockers,
+				...activeEvents
+					.filter((event) => event.required)
+					.map((event) => `进行中事件「${event.displayName}」必须处理`),
+			]
 			const base = {
 				revision: this.#revision,
 				runId: run.runId,
