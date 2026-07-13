@@ -41,6 +41,7 @@ export type RuntimeCommandErrorCode =
 	| 'not-enabled'
 	| 'stale-node'
 	| 'blocked'
+	| 'persistence-error'
 	| 'script-error'
 
 /** RuntimeCommand 的成功/失败结果及当前 Runtime revision。 */
@@ -51,12 +52,13 @@ export type RuntimeCommandResult =
 			code: RuntimeCommandErrorCode
 			message: string
 			revision: number
+			/** 失败前是否已经提交了一个稳定检查点。 */
+			committed: boolean
 	  }
 
 /** Session 门面额外包装的应用层错误原因。 */
 export type SessionCommandErrorCode =
 	| RuntimeCommandErrorCode
-	| 'persistence-error'
 	| 'confirmation-required'
 	| 'not-active'
 	| 'incompatible-save'
@@ -69,6 +71,7 @@ export type SessionCommandResult =
 			code: SessionCommandErrorCode
 			message: string
 			revision: number
+			committed: boolean
 	  }
 
 /** UI 属性面板使用的已解析属性。 */
@@ -227,6 +230,8 @@ export interface SessionView {
 	readonly runtime: RuntimeSnapshot
 	readonly busy: boolean
 	readonly focusedEventInstanceId?: string
+	/** Run 结束后结果页的应用路由；active 时省略。 */
+	readonly resultLocation?: string
 }
 
 /** React/UI 使用的 facade；camelCase 方法只转换为 RuntimeCommand 或应用命令。 */
@@ -270,6 +275,8 @@ export interface GameSession {
 	openSaveBrowser(): Promise<SessionCommandResult>
 	/** 从终局/放弃记录重新开始。 */
 	restartRun(): Promise<SessionCommandResult>
+	/** 释放 Runtime 订阅和会话资源。 */
+	dispose(): void
 }
 
 /** 存档树中会改变恢复游标或元数据的应用命令。 */

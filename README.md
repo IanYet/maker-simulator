@@ -100,9 +100,9 @@ node scripts/build-frostbound-package.mjs
 
 ## 存档与确定性
 
-完整 Profile 保存在浏览器 IndexedDB 的 `maker-simulator` 数据库中。普通事件操作保留在当前回合的内存工作状态；`advance-turn` 成功、终局、放弃、分支、截断、pin 与 restart 才会跨越对应的稳定持久化边界。
+稳定存档保存在浏览器 IndexedDB 的 `maker-simulator` 数据库中，只包含检查点历史、恢复游标和持久化元数据。普通事件操作保留在 Runtime 的当前回合工作状态；`advance-turn` 成功、终局、放弃、分支、截断、pin 与 restart 才会跨越对应的稳定持久化边界。
 
-每条 RunData 保存独立 seed 与 PRNG cursor。同一检查点、同一命令序列会得到相同的随机结果。退出游戏界面或切换存档会丢弃当前回合尚未提交的进度。
+每个检查点保存完整 State 以及该时间线的 seed 与 PRNG cursor。同一检查点、同一命令序列会得到相同的随机结果。退出游戏界面或切换存档会丢弃当前回合尚未提交的进度。
 
 ## 运行监控
 
@@ -126,16 +126,18 @@ node scripts/build-frostbound-package.mjs
 ## 架构
 
 ```text
-React UI → GameSession → GameplayRuntime
-                    ↘ SaveRepository → IndexedDB
+React UI → AppServices read models / GameSession
+AppServices → GamePackageLoader / SaveRepository / GameplayRuntime
+GameSession → GameplayRuntime → SaveRepository → IndexedDB
 GamePackageLoader → schema/linker → LoadedGamePackage
 ```
 
-- UI 只消费不可变的 SessionView 和 RuntimeSnapshot。
+- UI 只消费应用层 read model、GameSession 接口、SessionView 和 RuntimeSnapshot。
+- AppServices 隐藏游戏包、Repository 与具体 Runtime 实现，并组合页面查询和应用命令。
 - Session 管理 busy、事件焦点、导航与应用命令。
-- Runtime 管理 State 合并、事务、脚本执行、事件图和回合状态机。
+- Runtime 分开持有稳定存档和未提交工作状态，管理事务、脚本执行、事件图和回合状态机。
 - Package loader 负责外部输入校验与静态链接。
-- Persistence 只接收可序列化、已校验的完整 Profile。
+- Persistence 只接收可序列化、已校验的稳定存档，并用 `storageRevision` 拒绝并发覆盖。
 
 ## 计划
 
@@ -143,4 +145,4 @@ GamePackageLoader → schema/linker → LoadedGamePackage
 2. 实现游戏脚本的可视化编辑器。
 3. 接入 AI，提供游戏脚本生成 Agent App。
 
-后续还计划补充内容版本迁移、包级媒体字段、完整调试协议、自动化验证工具和更大规模的脚本性能分析。
+后续还计划补充包级媒体字段、完整调试协议、自动化验证工具和更大规模的脚本性能分析。

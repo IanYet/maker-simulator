@@ -35,7 +35,15 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 	async dispatch(command: SaveCommand): Promise<SessionCommandResult> {
 		try {
 			const profile = await this.saves.get(this.profileId)
-			if (!profile) return { ok: false, code: 'not-found', message: 'The save no longer exists', revision: 0 }
+			if (!profile) {
+				return {
+					ok: false,
+					code: 'not-found',
+					message: 'The save no longer exists',
+					revision: 0,
+					committed: false,
+				}
+			}
 			const next = command.type === 'continue-checkpoint'
 				? continueCheckpoint(profile, command.source)
 				: command.type === 'create-branch'
@@ -43,9 +51,9 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 					: command.type === 'truncate-and-continue'
 						? truncateAndContinue(profile, command.source)
 						: setCheckpointPinned(profile, command.source, command.pinned)
-			await this.saves.put(next)
+			const stored = await this.saves.put(next)
 			if (command.type !== 'set-checkpoint-pinned') {
-				await this.metadata.setRecentProfile(next.configId, next.profileId)
+				void this.metadata.setRecentProfile(stored.configId, stored.profileId).catch(() => undefined)
 			}
 			return { ok: true, revision: 0 }
 		} catch (error) {
@@ -54,6 +62,7 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 				code: 'persistence-error',
 				message: error instanceof Error ? error.message : String(error),
 				revision: 0,
+				committed: false,
 			}
 		}
 	}

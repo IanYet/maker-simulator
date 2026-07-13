@@ -34,7 +34,7 @@ src/
   types/          Config、State、RuntimeSnapshot、Action/Rule 上下文类型
   package-loader/ catalog/manifest/config/脚本加载、schema 校验与静态 linking
   runtime/        State 视图、事务、回合状态机、Action/Rule/Reaction、监控
-  persistence/    IndexedDB、Profile 校验、检查点/分支/截断操作
+  persistence/    IndexedDB、稳定存档校验、并发控制、检查点/分支/截断操作
   session/        面向 UI 的命令门面、busy 状态与存档控制器
   app/            服务组合、路由和全局依赖注入
   ui/             页面、可复用组件和 CSS Modules
@@ -46,13 +46,15 @@ docs/             技术规格、游戏设计和开发文档
 核心依赖方向如下：
 
 ```text
-React UI → GameSessionImpl → GameplayRuntimeImpl → SaveRepository
+React UI → AppServices read models / GameSession
+AppServices → GamePackageLoader / SaveRepository / GameplayRuntimeImpl
+GameSessionImpl → GameplayRuntimeImpl → SaveRepository
                                       ↓
                             LoadedGamePackage
 GamePackageLoader → schema → linker → Rule/Action registry
 ```
 
-UI 只读取不可变 `SessionView`/`RuntimeSnapshot`，不直接写 Profile 或 RunData。游戏脚本通过 `ActionContext` 和 `RuleContext` 访问运行时视图；持久化边界由 Runtime 与 Persistence 共同维护。
+UI 只读取页面专用 read model 或不可变 `SessionView`/`RuntimeSnapshot`，不取得 Profile、RunData、Repository、游戏包或具体 Runtime。游戏脚本通过 `ActionContext` 和 `RuleContext` 访问运行时视图；持久化边界由 Runtime 与 Persistence 共同维护。
 
 ## 3. 本地启动与页面流程
 
@@ -67,7 +69,7 @@ UI 只读取不可变 `SessionView`/`RuntimeSnapshot`，不直接写 Profile 或
 | `/play/:profileId` | 从稳定检查点恢复并游玩 |
 | `/result/:profileId/:runId/:turnId` | 查看终局/放弃检查点并重新开始 |
 
-`AppServices` 是应用层组合根，创建包加载器、IndexedDB Repository、RuntimeMonitor，并将这些服务注入 React Context。页面通过 `useAppServices()` 获取服务，不应自行创建数据库连接或 Runtime。
+`AppServices` 是应用层组合根，创建包加载器、IndexedDB Repository、RuntimeMonitor，并将服务门面注入 React Context。列表、菜单、存档和结果页只调用查询方法取得各自的 read model；游玩页只持有 `GameSession` 接口。页面不自行创建数据库连接、加载游戏包或取得具体 Runtime。
 
 ## 4. 游戏包开发
 
@@ -84,7 +86,7 @@ public/games/your-game/1.0.0/
   assets/
 ```
 
-`catalog.json` 注册包的 `id`、`version`、名称、manifest 路径和默认版本。`manifest.json` 的身份必须与 catalog、Config 的 `id`、`version`、`name` 一致。存档按 `(configId, configVersion)` 精确加载；内容不兼容时应提升版本并设计显式迁移。
+`catalog.json` 注册包的 `id`、`version`、名称、manifest 路径和默认版本。`manifest.json` 的身份必须与 catalog、Config 的 `id`、`version`、`name` 一致。存档按 `(configId, configVersion)` 精确加载；当前开发阶段不迁移到其它内容版本，所需精确包不可用时该存档不可继续。
 
 ### 4.2 Config、Rule 与 Action
 
@@ -132,26 +134,29 @@ export const actions = {
 
 1. `GamePackageLoader` 读取 catalog/manifest/config 和可信脚本模块。
 2. Zod schema 校验外部 JSON；linker 检查身份、对象 key/id、order、Rule/Action 引用、ValueRef、Reaction 和节点目标。
-3. `createProfile()` 创建 Profile、首个 RunData 和 `initial` 检查点；配置中直接为 `true` 的 Effect 会进入初始 RunState。
+3. `createProfile()` 创建稳定存档、首个 RunData 和 `initial` 检查点；配置中直接为 `true` 的 Effect 会进入初始 RunState。
 4. `GameplayRuntimeImpl` 建立 Reaction baseline，从检查点自动进入 `turn_start`，稳定后进入 `event_handle`。
 5. 每条 RuntimeCommand 创建一个 Immer draft 处理单元。Action、Rule、Reaction、CheckNode、随机游标和终局请求共享这个 draft。
-6. 处理单元稳定且校验成功后才提交 Profile；需要持久化的边界写入 IndexedDB，再发布不可变 RuntimeSnapshot。任意脚本错误、非法写入或执行上限错误都会整体回滚。
-7. `advance-turn` 先检查 required blocker，然后执行 `turn_end` 检查点，未终局时自动开始下一回合。
+6. 处理单元先完成脚本与状态稳定、生成候选存档和候选 RuntimeSnapshot；需要持久化时，必须等待 IndexedDB 事务完成，随后才一次性替换 Runtime 状态、revision 与 snapshot 并通知 Session。任意前置步骤失败都保留旧状态。
+7. `advance-turn` 先检查 required blocker，再持久化 `turn_end` 检查点，然后自动开始下一回合。下一回合启动失败时，已经提交的 `turn_end` 会成为当前可见状态，同一命令可以从该边界重试。
 
 Reaction 的注册顺序是 EffectConfig、EventConfig、当前 active TextNode；Reaction 初次注册只建立 baseline。新增自动规则时，先确认它属于哪个声明层级，再检查是否会因为状态变化形成循环。
 
 ## 6. 存档与 IndexedDB
 
-IndexedDB 数据库名为 `maker-simulator`。`profiles` 保存完整 Profile，并通过 `by-config-id`、`by-updated-at` 索引查询；`app-metadata` 保存最近访问的 Profile。
+IndexedDB 数据库名为 `maker-simulator`。`profiles` 保存 `StoredProfile`，只包含稳定检查点历史、恢复游标和 `storageRevision`；`app-metadata` 保存最近访问的存档 id。
 
 持久化操作必须经过 `validateProfile()`：
 
-- `run.state`、`run.turnState`、`run.randomState` 必须与当前检查点 snapshot 一致；
 - `turnOrder` 与 `turnDatas` 必须一一对应；
+- `currentTurnId` 必须是该时间线最后一个保留检查点，存档当前游标必须与对应 RunData 一致；
 - ended/abandoned RunData 必须以对应终态检查点结束；
+- 每个 snapshot 的随机游标必须是非负安全整数；
 - 写入前先 `structuredClone`，避免把外部引用或 Immer draft 交给 Repository。
 
-修改数据库结构时递增 `src/persistence/database.ts` 的 `DATABASE_VERSION`，并在 `upgrade` 中用 `objectStoreNames.contains()`、`indexNames.contains()` 兼容已有对象仓库和索引。不要在普通启动流程中删除数据库；测试坏数据时可通过浏览器 DevTools 的 Application → IndexedDB 手动清理。
+Repository 在一个读写事务中比较输入的 `storageRevision`，只接受数据库当前版本，并在成功写入时递增它。并发页面使用过期副本保存时会收到冲突，不会覆盖较新的检查点。
+
+项目仍处于开发阶段，不维护旧存档结构迁移。修改持久化结构时递增 `src/persistence/database.ts` 的 `DATABASE_VERSION`；upgrade 会保留对象仓库与索引定义，但清空旧结构的存档和应用元数据。需要保留的调试数据应在升级前自行导出。
 
 ## 7. 运行监控与问题排查
 

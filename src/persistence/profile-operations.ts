@@ -1,9 +1,9 @@
-import type { Profile, RunData, StateSnapshot, TurnData, TurnRef } from '../types'
+import type { RunData, StoredProfile, TurnData, TurnRef } from '../types'
 
 const now = (): string => new Date().toISOString()
 const createId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`
 
-function sourceTurn(profile: Profile, source: TurnRef): TurnData {
+function sourceTurn(profile: StoredProfile, source: TurnRef): TurnData {
 	const turn = profile.runDatas[source.runId]?.turnDatas[source.turnId]
 	if (!turn) throw new Error('The selected checkpoint no longer exists')
 	return turn
@@ -15,27 +15,19 @@ function requirePlayable(turn: TurnData): void {
 	}
 }
 
-function copySnapshotToWorking(profile: Profile, run: RunData, snapshot: StateSnapshot): void {
-	profile.state = structuredClone(snapshot.profileState)
-	run.state = structuredClone(snapshot.runState)
-	run.turnState = structuredClone(snapshot.turnState)
-	run.randomState = structuredClone(snapshot.randomState)
-}
-
 /** 从当前检查点继续游玩；历史检查点必须先创建分支或截断。 */
-export function continueCheckpoint(input: Profile, source: TurnRef): Profile {
+export function continueCheckpoint(input: StoredProfile, source: TurnRef): StoredProfile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
 	requirePlayable(turn)
 	const run = profile.runDatas[source.runId]
 	if (run.currentTurnId !== source.turnId) throw new Error('A historical checkpoint requires a branch or truncation')
-	copySnapshotToWorking(profile, run, turn.snapshot)
 	profile.current = { ...source }
 	return profile
 }
 
 /** 从可游玩的检查点复制一条独立 RunData 时间线。 */
-export function createBranch(input: Profile, source: TurnRef): Profile {
+export function createBranch(input: StoredProfile, source: TurnRef): StoredProfile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
 	requirePlayable(turn)
@@ -57,14 +49,10 @@ export function createBranch(input: Profile, source: TurnRef): Profile {
 		createdAt,
 		updatedAt: createdAt,
 		maxTurnCount: sourceRun.maxTurnCount,
-		randomState: structuredClone(turn.snapshot.randomState),
-		state: structuredClone(turn.snapshot.runState),
-		turnState: structuredClone(turn.snapshot.turnState),
 		currentTurnId: turnId,
 		turnOrder: [turnId],
 		turnDatas: { [turnId]: initial },
 	}
-	profile.state = structuredClone(turn.snapshot.profileState)
 	profile.runDatas[runId] = run
 	profile.current = { runId, turnId }
 	profile.updatedAt = createdAt
@@ -72,7 +60,7 @@ export function createBranch(input: Profile, source: TurnRef): Profile {
 }
 
 /** 删除目标检查点之后的历史，并把同一条时间线恢复到该检查点。 */
-export function truncateAndContinue(input: Profile, source: TurnRef): Profile {
+export function truncateAndContinue(input: StoredProfile, source: TurnRef): StoredProfile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
 	requirePlayable(turn)
@@ -84,7 +72,6 @@ export function truncateAndContinue(input: Profile, source: TurnRef): Profile {
 	run.currentTurnId = source.turnId
 	run.status = 'active'
 	delete run.endedAt
-	copySnapshotToWorking(profile, run, turn.snapshot)
 	const updatedAt = now()
 	run.updatedAt = updatedAt
 	profile.updatedAt = updatedAt
@@ -93,7 +80,7 @@ export function truncateAndContinue(input: Profile, source: TurnRef): Profile {
 }
 
 /** 修改检查点的 pin 状态，影响后续自动保留策略。 */
-export function setCheckpointPinned(input: Profile, source: TurnRef, pinned: boolean): Profile {
+export function setCheckpointPinned(input: StoredProfile, source: TurnRef, pinned: boolean): StoredProfile {
 	const profile = structuredClone(input)
 	const turn = sourceTurn(profile, source)
 	turn.pinned = pinned

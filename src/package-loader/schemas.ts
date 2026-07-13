@@ -3,7 +3,7 @@ import type {
 	GameCatalog,
 	GameConfig,
 	GamePackageManifest,
-	Profile,
+	StoredProfile,
 } from '../types'
 
 /** 游戏包、Config 和 State 共享的安全标识符规则。 */
@@ -172,12 +172,9 @@ export const manifestSchema = z.strictObject({
 const commonStateShape = {
 	id: idSchema,
 	weightValue: z.number().finite().min(0).max(10).optional(),
-	weight: z.number().finite().min(0).max(10).optional(),
 	visible: z.boolean().optional(),
 	unlockedValue: z.boolean().optional(),
-	unlocked: z.boolean().optional(),
 	enabledValue: z.boolean().optional(),
-	enabled: z.boolean().optional(),
 }
 const attributeStateSchema = z.strictObject({
 	...commonStateShape,
@@ -190,9 +187,7 @@ const characterStateSchema = z.strictObject({
 const effectStateSchema = z.strictObject({
 	...commonStateShape,
 	acquiredValue: z.boolean().optional(),
-	acquired: z.boolean().optional(),
 	activedValue: z.boolean().optional(),
-	actived: z.boolean().optional(),
 	bindCharacterId: idSchema.optional(),
 	acquiredTurn: z.number().int().nonnegative().optional(),
 	activedTurn: z.number().int().nonnegative().optional(),
@@ -200,7 +195,6 @@ const effectStateSchema = z.strictObject({
 const choiceStateSchema = z.strictObject({
 	...commonStateShape,
 	maxCountValue: z.number().int().nonnegative().optional(),
-	maxCount: z.number().int().nonnegative().optional(),
 })
 const selectionSchema = z.strictObject({
 	eventInstanceId: idSchema,
@@ -212,9 +206,7 @@ const selectionSchema = z.strictObject({
 const nodeStateSchema = z.strictObject({
 	...commonStateShape,
 	requiredValue: z.boolean().optional(),
-	required: z.boolean().optional(),
 	choicesValue: z.record(idSchema, choiceStateSchema).optional(),
-	choices: z.record(idSchema, choiceStateSchema).optional(),
 	commands: z.record(idSchema, z.strictObject(commonStateShape)).optional(),
 	selections: z.record(idSchema, selectionSchema).optional(),
 })
@@ -283,24 +275,20 @@ const runDataSchema = z.strictObject({
 	updatedAt: z.string().datetime({ offset: true }),
 	endedAt: z.string().datetime({ offset: true }).optional(),
 	maxTurnCount: z.number().int().positive(),
-	randomState: randomStateSchema,
-	state: gameStateSchema,
-	turnState: turnStateSchema,
 	currentTurnId: idSchema,
 	turnOrder: z.array(idSchema).min(1),
 	turnDatas: z.record(idSchema, turnDataSchema),
 })
 
-/** 浏览器 IndexedDB 中完整 Profile 的持久化 schema。 */
+/** 浏览器 IndexedDB 中稳定存档的持久化 schema。 */
 export const profileSchema = z.strictObject({
 	profileId: idSchema,
 	label: z.string().min(1).optional(),
-	stateVersion: z.union([z.literal(1), z.literal(2)]),
+	storageRevision: z.number().int().nonnegative().safe(),
 	configId: idSchema,
 	configVersion: z.string().min(1),
 	createdAt: z.string().datetime({ offset: true }),
 	updatedAt: z.string().datetime({ offset: true }),
-	state: gameStateSchema,
 	runDatas: z.record(idSchema, runDataSchema),
 	current: z.strictObject({ runId: idSchema, turnId: idSchema }),
 })
@@ -320,7 +308,7 @@ export function parseConfig(input: unknown): GameConfig {
 	return gameConfigSchema.parse(input) as GameConfig
 }
 
-/** 解析存档 Profile，并拒绝未知字段或不完整的检查点结构。 */
-export function parseProfile(input: unknown): Profile {
-	return profileSchema.parse(input) as Profile
+/** 解析稳定存档，并拒绝未知字段或不完整的检查点结构。 */
+export function parseProfile(input: unknown): StoredProfile {
+	return profileSchema.parse(input) as StoredProfile
 }

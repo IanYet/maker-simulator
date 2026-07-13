@@ -5,7 +5,7 @@ import { ButtonLink, StatusBanner } from '../components'
 import { PageChrome } from './PageChrome'
 import styles from './pages.module.css'
 
-/** 新游戏页：只负责触发 Profile 创建，成功后跳转到游玩页。 */
+/** 新游戏页：只负责触发稳定存档创建，成功后跳转到游玩页。 */
 export function NewGamePage() {
 	const { gameId = '' } = useParams()
 	const services = useAppServices()

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
-import type { LoadedGamePackage, Profile, TurnData } from '../../types'
+import type { GameMenuView } from '../../app/services'
 import { useAppServices } from '../../app/useAppServices'
 import { ButtonLink, StatusBanner, Surface } from '../components'
 import { PageChrome } from './PageChrome'
@@ -9,11 +9,7 @@ import styles from './pages.module.css'
 type MenuState =
 	| { status: 'loading' }
 	| { status: 'error'; message: string }
-	| { status: 'ready'; game: LoadedGamePackage; profiles: readonly Profile[]; recent?: Profile }
-
-function currentTurn(profile: Profile): TurnData {
-	return profile.runDatas[profile.current.runId].turnDatas[profile.current.turnId]
-}
+	| { status: 'ready'; view: GameMenuView }
 
 /** 游戏菜单页：展示版本、最近存档和新建/继续/存档入口。 */
 export function GameMenuPage() {
@@ -23,20 +19,8 @@ export function GameMenuPage() {
 
 	useEffect(() => {
 		let active = true
-		Promise.all([
-			services.getDefaultPackage(gameId),
-			services.saves.listByConfigId(gameId),
-			services.metadata.getRecentProfile(gameId),
-		]).then(
-			([game, profiles, recentId]) => {
-				if (!active) return
-				setState({
-					status: 'ready',
-					game,
-					profiles,
-					recent: profiles.find((profile) => profile.profileId === recentId) ?? profiles[0],
-				})
-			},
+		services.getGameMenu(gameId).then(
+			(view) => { if (active) setState({ status: 'ready', view }) },
 			(error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : String(error) }) },
 		)
 		return () => { active = false }
@@ -49,20 +33,15 @@ export function GameMenuPage() {
 			{state.status === 'ready' && (
 				<Surface tone="lilac" className={`${styles.menuHero} ${styles.fullBleed}`}>
 					<div>
-						<p className={styles.eyebrow}>Game menu · v{state.game.config.meta.version}</p>
-						<h1 className={styles.menuTitle}>{state.game.config.meta.name}</h1>
-						<p className={styles.menuCopy}>{state.game.config.meta.background}</p>
+						<p className={styles.eyebrow}>Game menu · v{state.view.version}</p>
+						<h1 className={styles.menuTitle}>{state.view.name}</h1>
+						<p className={styles.menuCopy}>{state.view.background}</p>
 					</div>
 					<div className={styles.pageActions}>
 						<ButtonLink to={`/games/${encodeURIComponent(gameId)}/new`}>新游戏</ButtonLink>
-						{state.recent && (() => {
-							const turn = currentTurn(state.recent)
-							const target = turn.kind === 'terminal' || turn.kind === 'abandoned'
-								? `/result/${encodeURIComponent(state.recent.profileId)}/${encodeURIComponent(state.recent.current.runId)}/${encodeURIComponent(state.recent.current.turnId)}`
-								: `/play/${encodeURIComponent(state.recent.profileId)}`
-							const label = turn.kind === 'terminal' ? '查看上次结局' : turn.kind === 'abandoned' ? '查看上次记录' : '继续游戏'
-							return <ButtonLink variant="secondary" to={target}>{label}</ButtonLink>
-						})()}
+						{state.view.recentLocation && state.view.recentLabel && (
+							<ButtonLink variant="secondary" to={state.view.recentLocation}>{state.view.recentLabel}</ButtonLink>
+						)}
 						<ButtonLink variant="secondary" to={`/games/${encodeURIComponent(gameId)}/saves`}>查看存档</ButtonLink>
 					</div>
 				</Surface>

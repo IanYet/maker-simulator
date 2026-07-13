@@ -65,10 +65,10 @@ Action 在请求终局的同时还可以直接改写 `context.runState.events[ev
 1. 使用已经稳定的 ProfileState、RunState、TurnState 与 RandomState 创建 `terminal` TurnData；
    首次终局请求有关联 EventInstance 时，同时记录 `endingEventInstanceId`；
 2. 将 `RunData.status` 从 `active` 改为 `ended`，并写入 `endedAt`；
-3. 更新 `RunData.currentTurnId`、`Profile.current`、各级工作状态和更新时间；
-4. 注销当前 RunData 的所有 Reaction 和其他可重建运行时资源。
+3. 更新 `RunData.currentTurnId`、`StoredProfile.current` 和时间戳，形成候选稳定存档；
+4. Repository 成功写入候选存档后，Runtime 一次性替换稳定存档、工作状态、revision 与 RuntimeSnapshot，并注销当前 RunData 的可重建运行时资源。
 
-`terminal` snapshot 保留请求终局时的 `turnNumber` 与 `phase`。引擎不会为了结束 RunData 而强制进入 `turn_end`。终局 snapshot、RunData 元数据与恢复游标必须原子提交，失败时不能留下只有部分终局数据的存档。
+`terminal` snapshot 保留请求终局时的 `turnNumber` 与 `phase`。引擎不会为了结束 RunData 而强制进入 `turn_end`。终局 snapshot、RunData 元数据与恢复游标必须原子提交；写入失败时保留原存档和原 Runtime 状态。
 
 ## 恢复、分支与重开
 

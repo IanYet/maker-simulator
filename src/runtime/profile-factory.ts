@@ -8,10 +8,10 @@ import type {
 	GameState,
 	LoadedGamePackage,
 	MultipleChoice,
-	Profile,
 	RunData,
 	SingleChoice,
 	StateSnapshot,
+	StoredProfile,
 	TurnData,
 	TurnRef,
 	TurnState,
@@ -91,45 +91,6 @@ function initialRunState(game: LoadedGamePackage): GameState {
 	return state
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function fillMissing(target: Record<string, unknown>, defaults: Record<string, unknown>): void {
-	for (const [key, value] of Object.entries(defaults)) {
-		if (!Object.prototype.hasOwnProperty.call(target, key)) {
-			target[key] = structuredClone(value)
-		} else if (isRecord(target[key]) && isRecord(value)) {
-			fillMissing(target[key], value)
-		}
-	}
-}
-
-/** 把 Config 基础值补入旧 Profile 的每条 RunState，保留已有 State 写入。 */
-export function materializeProfileState(
-	game: LoadedGamePackage,
-	input: Profile,
-): Profile {
-	const profile = structuredClone(input)
-	const defaults = initialRunState(game)
-	for (const run of Object.values(profile.runDatas)) {
-		for (const turn of Object.values(run.turnDatas)) {
-			fillMissing(
-				turn.snapshot.runState as unknown as Record<string, unknown>,
-				defaults as unknown as Record<string, unknown>,
-			)
-		}
-		const current = run.turnDatas[run.currentTurnId]
-		if (current) run.state = structuredClone(current.snapshot.runState)
-		else fillMissing(
-			run.state as unknown as Record<string, unknown>,
-			defaults as unknown as Record<string, unknown>,
-		)
-	}
-	profile.stateVersion = 2
-	return profile
-}
-
 /** 创建 initializing 阶段的空 TurnState。 */
 function initialTurnState(): TurnState {
 	return { ...emptyGameState(), turnNumber: 0, phase: 'initializing' }
@@ -167,9 +128,6 @@ function makeInitialRun(
 		createdAt,
 		updatedAt: createdAt,
 		maxTurnCount: game.config.meta.maxTurnCountPerRun,
-		randomState,
-		state: runState,
-		turnState,
 		currentTurnId: turnId,
 		turnOrder: [turnId],
 		turnDatas: { [turnId]: initial },
@@ -177,19 +135,18 @@ function makeInitialRun(
 	return { run, ref: { runId, turnId } }
 }
 
-/** 为指定游戏创建新的 Profile、RunData 和 initial 检查点。 */
-export function createProfile(game: LoadedGamePackage): Profile {
+/** 为指定游戏创建新的稳定存档和 initial 检查点。 */
+export function createProfile(game: LoadedGamePackage): StoredProfile {
 	const createdAt = timestamp()
 	const profileState = emptyGameState()
 	const { run, ref } = makeInitialRun(game, profileState)
 	return {
 		profileId: createId('profile'),
-		stateVersion: 2,
+		storageRevision: 0,
 		configId: game.config.meta.id,
 		configVersion: game.config.meta.version,
 		createdAt,
 		updatedAt: createdAt,
-		state: profileState,
 		runDatas: { [run.runId]: run },
 		current: ref,
 	}
@@ -197,10 +154,10 @@ export function createProfile(game: LoadedGamePackage): Profile {
 
 /** 从终局或放弃检查点创建一条新的 restart 时间线。 */
 export function addRestartRun(
-	input: Profile,
+	input: StoredProfile,
 	game: LoadedGamePackage,
 	source: TurnRef,
-): Profile {
+): StoredProfile {
 	const profile = structuredClone(input)
 	const sourceTurn = profile.runDatas[source.runId]?.turnDatas[source.turnId]
 	if (!sourceTurn || (sourceTurn.kind !== 'terminal' && sourceTurn.kind !== 'abandoned')) {
@@ -211,7 +168,6 @@ export function addRestartRun(
 		kind: 'restart',
 		source: { ...source },
 	})
-	profile.state = profileState
 	profile.runDatas[run.runId] = run
 	profile.current = ref
 	profile.updatedAt = timestamp()

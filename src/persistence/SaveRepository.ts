@@ -1,40 +1,95 @@
-import type { Profile } from '../types'
+import type { StoredProfile } from '../types'
 import { getDatabase } from './database'
 import { validateProfile } from './validation'
 
-/** Profile 持久化边界；实现可以是 IndexedDB、测试内存或其他存储。 */
-export interface SaveRepository {
-	listByConfigId(configId: string): Promise<readonly Profile[]>
-	get(profileId: string): Promise<Profile | undefined>
-	put(profile: Profile): Promise<void>
+/** 无法解析的单条存档记录；列表查询保留错误但不影响其它存档。 */
+export interface InvalidSaveRecord {
+	readonly profileId?: string
+	readonly message: string
 }
 
-/** 使用浏览器 IndexedDB 保存经过 schema 校验的完整 Profile。 */
+/** 按游戏读取存档时返回的逐条校验结果。 */
+export interface SaveListResult {
+	readonly profiles: readonly StoredProfile[]
+	readonly invalid: readonly InvalidSaveRecord[]
+}
+
+/** 存档已被另一个页面更新时抛出的并发冲突。 */
+export class SaveConflictError extends Error {
+	constructor(message = 'The save was updated elsewhere; reload it before trying again') {
+		super(message)
+		this.name = 'SaveConflictError'
+	}
+}
+
+/** 稳定存档持久化边界；实现可以是 IndexedDB、测试内存或其他存储。 */
+export interface SaveRepository {
+	listByConfigId(configId: string): Promise<SaveListResult>
+	get(profileId: string): Promise<StoredProfile | undefined>
+	put(profile: StoredProfile): Promise<StoredProfile>
+}
+
+function invalidRecord(record: unknown, error: unknown): InvalidSaveRecord {
+	const profileId = record !== null && typeof record === 'object' && 'profileId' in record
+		&& typeof record.profileId === 'string'
+		? record.profileId
+		: undefined
+	return {
+		...(profileId ? { profileId } : {}),
+		message: error instanceof Error ? error.message : String(error),
+	}
+}
+
+/** 使用浏览器 IndexedDB 保存经过 schema 校验的稳定存档。 */
 export class IndexedDbSaveRepository implements SaveRepository {
-	/** 按 Config id 查询并按更新时间倒序返回存档。 */
-	async listByConfigId(configId: string): Promise<readonly Profile[]> {
+	/** 按 Config id 查询；单条坏档单独返回，不中断其余记录。 */
+	async listByConfigId(configId: string): Promise<SaveListResult> {
 		const database = await getDatabase()
 		const records = await database.getAllFromIndex('profiles', 'by-config-id', configId)
-		return records
-			.map((record) => validateProfile(record))
-			.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+		const profiles: StoredProfile[] = []
+		const invalid: InvalidSaveRecord[] = []
+		for (const record of records) {
+			try {
+				profiles.push(validateProfile(record))
+			} catch (error) {
+				invalid.push(invalidRecord(record, error))
+			}
+		}
+		profiles.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+		return { profiles, invalid }
 	}
 
-	/** 读取单个 Profile；找不到时返回 undefined。 */
-	async get(profileId: string): Promise<Profile | undefined> {
+	/** 读取单个稳定存档；找不到时返回 undefined。 */
+	async get(profileId: string): Promise<StoredProfile | undefined> {
 		const record = await (await getDatabase()).get('profiles', profileId)
 		return record === undefined ? undefined : validateProfile(record)
 	}
 
-	/** 克隆、校验并原子写入 Profile。 */
-	async put(profile: Profile): Promise<void> {
-		const copy = structuredClone(profile)
-		validateProfile(copy)
+	/**
+	 * 克隆并校验存档，在同一事务中比较 storageRevision 后写入下一版本。
+	 *
+	 * @throws {SaveConflictError} 调用方使用的存档不是数据库中的最新版本。
+	 */
+	async put(profile: StoredProfile): Promise<StoredProfile> {
+		const candidate = validateProfile(structuredClone(profile))
 		const database = await getDatabase()
 		const transaction = database.transaction('profiles', 'readwrite')
-		await transaction.store.put(copy)
+		const existingRecord = await transaction.store.get(candidate.profileId)
+		if (existingRecord === undefined) {
+			if (candidate.storageRevision !== 0) throw new SaveConflictError()
+		} else {
+			const existing = validateProfile(existingRecord)
+			if (existing.storageRevision !== candidate.storageRevision) throw new SaveConflictError()
+		}
+		const stored = validateProfile({
+			...candidate,
+			storageRevision: candidate.storageRevision + 1,
+		})
+		await transaction.store.put(stored)
 		await transaction.done
+		return structuredClone(stored)
 	}
+
 }
 
 /** 保存每个游戏最近访问的 Profile id 等应用级元数据。 */

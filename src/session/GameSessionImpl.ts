@@ -2,11 +2,16 @@ import type {
 	GameSession,
 	SessionCommandResult,
 	SessionView,
+	TurnRef,
 } from '../types'
 import type { AppMetadataRepository, SaveRepository } from '../persistence'
 import { addRestartRun, type GameplayRuntimeImpl } from '../runtime'
 
 type Navigate = (path: string, options?: { replace?: boolean }) => void
+
+function resultLocation(profileId: string, source: TurnRef): string {
+	return `/result/${encodeURIComponent(profileId)}/${encodeURIComponent(source.runId)}/${encodeURIComponent(source.turnId)}`
+}
 
 /**
  * UI 与 GameplayRuntime 之间的会话门面。
@@ -19,7 +24,7 @@ export class GameSessionImpl implements GameSession {
 	#view: SessionView
 	#disposed = false
 	readonly #unsubscribeRuntime: () => void
-	readonly runtime: GameplayRuntimeImpl
+	private readonly runtime: GameplayRuntimeImpl
 	private readonly saves: SaveRepository
 	private readonly metadata: AppMetadataRepository
 	private readonly navigate: Navigate
@@ -34,16 +39,20 @@ export class GameSessionImpl implements GameSession {
 		this.saves = saves
 		this.metadata = metadata
 		this.navigate = navigate
-		const profile = runtime.getProfile()
+		const profile = runtime.getStoredProfile()
+		const runtimeSnapshot = runtime.getSnapshot()
 		this.#view = {
 			gameId: runtime.game.config.meta.id,
 			gameVersion: runtime.game.config.meta.version,
 			gameName: runtime.game.config.meta.name,
 			profileId: profile.profileId,
 			...(profile.label ? { profileLabel: profile.label } : {}),
-			runtime: runtime.getSnapshot(),
+			runtime: runtimeSnapshot,
 			busy: false,
-			focusedEventInstanceId: runtime.getSnapshot().activeEvents[0]?.eventInstanceId,
+			focusedEventInstanceId: runtimeSnapshot.activeEvents[0]?.eventInstanceId,
+			...(runtimeSnapshot.runStatus !== 'active'
+				? { resultLocation: resultLocation(profile.profileId, runtime.getCurrentCheckpoint()) }
+				: {}),
 		}
 		this.#unsubscribeRuntime = runtime.subscribe(() => this.refreshRuntime())
 	}
@@ -132,7 +141,7 @@ export class GameSessionImpl implements GameSession {
 		return this.appCommand(async () => {
 			const result = await this.runtime.abandon()
 			if (!result.ok) return result
-			await this.metadata.setRecentProfile(this.#view.gameId, this.#view.profileId)
+			this.rememberRecent(this.#view.gameId, this.#view.profileId)
 			this.dispose()
 			this.navigate(`/games/${encodeURIComponent(this.#view.gameId)}`)
 			return result
@@ -155,13 +164,14 @@ export class GameSessionImpl implements GameSession {
 				code: 'not-active',
 				message: 'The current run is still active',
 				revision: this.#view.runtime.revision,
+				committed: false,
 			}
 		}
 		return this.appCommand(async () => {
-			const profile = this.runtime.getProfile()
+			const profile = this.runtime.getStoredProfile()
 			const next = addRestartRun(profile, this.runtime.game, profile.current)
-			await this.saves.put(next)
-			await this.metadata.setRecentProfile(next.configId, next.profileId)
+			const stored = await this.saves.put(next)
+			this.rememberRecent(stored.configId, stored.profileId)
 			this.dispose()
 			this.navigate(`/play/${encodeURIComponent(next.profileId)}`)
 			return { ok: true, revision: this.#view.runtime.revision }
@@ -180,12 +190,19 @@ export class GameSessionImpl implements GameSession {
 		execute: () => Promise<SessionCommandResult>,
 	): Promise<SessionCommandResult> {
 		if (this.#view.busy) {
-			return { ok: false, code: 'busy', message: 'Another command is still running', revision: this.#view.runtime.revision }
+			return {
+				ok: false,
+				code: 'busy',
+				message: 'Another command is still running',
+				revision: this.#view.runtime.revision,
+				committed: false,
+			}
 		}
 		this.setBusy(true)
 		try {
 			return await execute()
 		} finally {
+			this.refreshRuntime()
 			this.setBusy(false)
 		}
 	}
@@ -201,6 +218,7 @@ export class GameSessionImpl implements GameSession {
 				code: 'persistence-error',
 				message: error instanceof Error ? error.message : String(error),
 				revision: this.#view.runtime.revision,
+				committed: false,
 			}
 		}
 	}
@@ -218,11 +236,29 @@ export class GameSessionImpl implements GameSession {
 		const focusedEventInstanceId = currentFocus && runtime.activeEvents.some((event) => event.eventInstanceId === currentFocus)
 			? currentFocus
 			: runtime.activeEvents[0]?.eventInstanceId
-		this.#view = { ...this.#view, runtime, focusedEventInstanceId }
+		this.#view = {
+			...this.#view,
+			runtime,
+			focusedEventInstanceId,
+			...(runtime.runStatus !== 'active'
+				? { resultLocation: resultLocation(this.#view.profileId, this.runtime.getCurrentCheckpoint()) }
+				: { resultLocation: undefined }),
+		}
 		this.notify()
 	}
 
+	/** 最近访问记录是便利元数据，失败不能推翻已经成功的领域命令。 */
+	private rememberRecent(configId: string, profileId: string): void {
+		void this.metadata.setRecentProfile(configId, profileId).catch(() => undefined)
+	}
+
 	private notify(): void {
-		for (const listener of this.#listeners) listener()
+		for (const listener of this.#listeners) {
+			try {
+				listener()
+			} catch {
+				// UI 订阅者异常不能改变命令结果或 Session 状态。
+			}
+		}
 	}
 }

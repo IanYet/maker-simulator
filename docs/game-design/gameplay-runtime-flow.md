@@ -50,9 +50,12 @@ type RuntimeCommandResult =
               | 'not-enabled'
               | 'stale-node'
               | 'blocked'
+              | 'persistence-error'
               | 'script-error';
           message: string;
           revision: number;
+          /** 本次失败前是否已经提交了新的稳定检查点。 */
+          committed: boolean;
       };
 
 interface GameplayRuntime {
@@ -64,9 +67,9 @@ interface GameplayRuntime {
 
 RuntimeCommand 串行执行。引擎在执行时根据最新 State 重新校验 phase、对象 id、有效 `enabled`、当前节点与 required 门禁，不信任 UI 渲染时的旧值。busy 时拒绝并发命令。
 
-一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft；每批写入都触发 Rule 失效与 Reaction 检查，队列稳定且校验成功后才提交。任一脚本异常、非法写入或循环上限错误都会回滚整个处理单元，并保留命令前的 UI snapshot。
+一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft；每批写入都触发 Rule 失效与 Reaction 检查。队列稳定后先完成 draft、验证并生成候选 snapshot；需要保存检查点时先等待 Repository 成功，再统一替换 Runtime 状态、revision 与 snapshot 并通知。任一前置步骤失败都会丢弃候选结果，并保留命令前的状态与 UI snapshot。
 
-`AdvanceTurn` 是唯一跨越持久化边界的 gameplay command：它先用一个处理单元完成 `turn_end` 并原子提交检查点，再以该检查点为回滚边界开启下一回合处理单元。UI 不观察两者之间的正常中间态；若下一 `turn_start` 失败，已经完成的 `turn_end` 保持有效，session 返回错误并从该检查点重试。新游戏也以持久化 `initial` 分隔构造与首回合处理。
+`AdvanceTurn` 是唯一跨越持久化边界的 gameplay command：它先用一个处理单元完成 `turn_end` 并原子提交检查点，再以该检查点为回滚边界开启下一回合处理单元。UI 不观察两者之间的正常中间态；若下一 `turn_start` 失败，已经完成的 `turn_end` 会被发布，结果返回 `committed: true`，再次执行 `advance-turn` 从该边界重试。持久化本身失败时返回 `committed: false`，内存和 UI 都保持命令前状态。新游戏也以持久化 `initial` 分隔构造与首回合处理。
 
 ## UI snapshot 与事件绑定
 
@@ -222,10 +225,10 @@ type TurnPhase =
 
 | 当前 phase | 进入原因 | 允许的 RuntimeCommand | 离开方式 |
 | --- | --- | --- | --- |
-| `initializing` | 新游戏或 restart 构造 runtime | 无 | Reaction baseline 建立后自动开始首回合 |
+| `initializing` | 新游戏或 restart 的 `initial` 恢复边界 | 无 | Reaction baseline 建立后自动开始首回合；失败时关闭本次 Runtime，重新打开仍从 initial 开始 |
 | `turn_start` | 首回合或上一回合提交完成 | 无 | 开始阶段稳定后自动进入 `event_handle` |
 | `event_handle` | 等待玩家处理零到多个事件或激活 Effect | 事件/节点命令、`activate-effect`、`advance-turn` | 事件交互保持本 phase；下一回合命令进入 `turn_end` |
-| `turn_end` | `advance-turn` 通过门禁 | 无 | 稳定后终局或创建回合检查点，再自动开始下一回合 |
+| `turn_end` | `advance-turn` 已提交检查点 | `advance-turn` 仅用于下一回合启动失败后的重试 | 自动开始下一回合 |
 
 状态机采用 run-to-idle：internal transition、Rule invalidation、Action 与 Reaction 持续执行，直到 `event_handle` 用户输入点或 RunData 结束才发布 snapshot。依赖 phase 的脚本是在观察公开生命周期状态，不具备推进状态机的权限。
 
@@ -238,19 +241,18 @@ type TurnPhase =
 3. 创建处理单元管理器、PRNG draft、Config/State 合并 Proxy，以及绑定当前 Run 的纯 Rule executor 和事务 Action executor。
 4. 编译派生字段 Rule 的计算节点与依赖图，不执行 Action。
 5. 物化初始 Effect 等必须保存的回合 `0` 生命周期事实。
-6. 在 provisional 容器中校验初始 State 并构造 `initial` snapshot，尚不加入 Profile。
-7. 按 canonical 顺序注册 EffectConfig、EventConfig Reaction；新局通常没有 active TextNode。注册只建立基准，失败时丢弃 provisional 容器。
-8. baseline 成功后，原子把带 `initial` 的 RunData 加入 Profile 并持久化。
-9. 以 `initial` 为回滚边界增加 `turnNumber`，进入 `turn_start`，自动运行到 `event_handle`，发布首个可交互 snapshot。首回合脚本失败时保留完整 initial 并报告错误。
+6. 校验初始 State，构造包含 `initial` snapshot 的 StoredProfile 并持久化；这是新建存档的稳定成功边界。
+7. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，并按 canonical 顺序为 EffectConfig、EventConfig Reaction 建立 baseline；新局通常没有 active TextNode。
+8. baseline 成功后，以 `initial` 为回滚边界增加 `turnNumber`，进入 `turn_start`，自动运行到 `event_handle`，发布首个可交互 snapshot。baseline 或首回合脚本失败时保留完整 initial 并报告错误。
 
 ### 继续、branch 或截断恢复
 
-1. 按 `Profile.configId/configVersion` 取得精确游戏包，执行迁移并校验所选 snapshot。
+1. 按 `StoredProfile.configId/configVersion` 取得精确游戏包，并校验稳定存档与所选 snapshot。
 2. 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本，重建处理单元、Proxy、executors、计算节点和依赖图。
 3. 校验每个 EventState 的 `activeInstanceId` 都指向唯一的 active EventInstance，注册全部配置级 Reaction，并恢复这些 active 实例当前 TextNode 的 Reaction；全部只建立基准。
 4. `initial` 与 `turn_end` 从下一回合运行到 `event_handle`；`terminal`/`abandoned` 只产生结果或历史视图。
 
-固定先后关系是：executor 先于计算节点，初始生命周期事实先于 `initial` snapshot，Reaction baseline 先于挂入 Profile，持久化 initial 先于首次 phase 变化。完整 State/Proxy 细节见[运行时系统设计](./runtime-system.md#运行时构造)。
+固定先后关系是：初始生命周期事实先于 `initial` snapshot，持久化 initial 先于 Runtime baseline，executor 先于计算节点，baseline 先于首次 phase 变化。完整 State/Proxy 细节见[运行时系统设计](./runtime-system.md#运行时构造)。
 
 ## Reaction 的确定顺序
 

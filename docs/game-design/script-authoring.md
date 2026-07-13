@@ -66,7 +66,7 @@ interface ConfigMeta {
 }
 ```
 
-`version` 用于选择存档迁移逻辑。`maxTurnCountPerRun` 必须是正整数，创建 RunData 时复制为该 RunData 的 `maxTurnCount`。
+`version` 与 `id` 一起精确定位存档恢复所需的游戏内容；当前开发阶段不执行跨内容版本迁移。`maxTurnCountPerRun` 必须是正整数，创建 RunData 时复制为该 RunData 的 `maxTurnCount`。
 
 Config、ProfileState、RunState 与运行时视图使用相同的顶层集合名称和对象层级：
 

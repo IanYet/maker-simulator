@@ -7,16 +7,21 @@ import {
 	type RefObject,
 } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import type { ActiveEventView, AttributeView, EffectView, SessionCommandResult } from '../../types'
+import type {
+	ActiveEventView,
+	AttributeView,
+	EffectView,
+	GameSession,
+	SessionCommandResult,
+} from '../../types'
 import { useAppServices } from '../../app/useAppServices'
-import type { GameSessionImpl } from '../../session'
 import { Button, ConfirmDialog, LiveRegion, StatusBanner, Surface } from '../components'
 import styles from './pages.module.css'
 
 type SessionState =
 	| { status: 'loading' }
 	| { status: 'error'; message: string }
-	| { status: 'ready'; session: GameSessionImpl }
+	| { status: 'ready'; session: GameSession }
 
 interface AttributeChange {
 	from: string
@@ -34,7 +39,7 @@ function EffectCard({
 	execute,
 }: {
 	effect: EffectView
-	session: GameSessionImpl
+	session: GameSession
 	busy: boolean
 	execute: (command: Promise<SessionCommandResult>) => Promise<void>
 }) {
@@ -73,7 +78,7 @@ export function PlayPage() {
 
 	useEffect(() => {
 		let active = true
-		let opened: GameSessionImpl | undefined
+		let opened: GameSession | undefined
 		services.openSession(profileId, navigate).then(
 			(session) => {
 				opened = session
@@ -97,7 +102,7 @@ export function PlayPage() {
 	return <GameScreen session={state.session} />
 }
 
-function GameScreen({ session }: { session: GameSessionImpl }) {
+function GameScreen({ session }: { session: GameSession }) {
 	const navigate = useNavigate()
 	const subscribe = useMemo(() => (listener: () => void) => session.subscribe(listener), [session])
 	const getSnapshot = useMemo(() => () => session.getView(), [session])
@@ -169,12 +174,9 @@ function GameScreen({ session }: { session: GameSessionImpl }) {
 			setMessage(result.message)
 			return
 		}
-		const snapshot = session.runtime.getSnapshot()
-		showAttributeChanges(previousAttributes, snapshot.attributes, snapshot.revision)
-		if (snapshot.runStatus !== 'active') {
-			const profile = session.runtime.getProfile()
-			navigate(`/result/${encodeURIComponent(profile.profileId)}/${encodeURIComponent(profile.current.runId)}/${encodeURIComponent(profile.current.turnId)}`, { replace: true })
-		}
+		const nextView = session.getView()
+		showAttributeChanges(previousAttributes, nextView.runtime.attributes, nextView.runtime.revision)
+		if (nextView.resultLocation) navigate(nextView.resultLocation, { replace: true })
 	}
 
 	async function abandonAndExit(): Promise<void> {
@@ -363,7 +365,7 @@ function EventNode({
 	execute,
 	headingRef,
 }: {
-	session: GameSessionImpl
+	session: GameSession
 	event: ActiveEventView
 	busy: boolean
 	execute: (command: Promise<SessionCommandResult>) => Promise<void>

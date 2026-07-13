@@ -37,24 +37,24 @@ export function GamesPage() {
 			{state.status === 'ready' && state.games.length > 0 && (
 				<section className={styles.gameGrid} aria-label="游戏列表">
 					{state.games.map((game, index) => (
-						<Surface className={styles.gameCard} tone={tones[index % tones.length]} key={`${game.descriptor.id}@${game.descriptor.version}`}>
-							<div>
-								{game.location.coverLocation && <img className={styles.cover} src={game.location.coverLocation} alt="" loading="lazy" />}
-								<div className={styles.metaLine}>
-									<span>v{game.descriptor.version}</span>
+							<Surface className={styles.gameCard} tone={tones[index % tones.length]} key={`${game.gameId}@${game.version}`}>
+								<div>
+									{game.coverLocation && <img className={styles.cover} src={game.coverLocation} alt="" loading="lazy" />}
+									<div className={styles.metaLine}>
+										<span>v{game.version}</span>
 									<span>·</span>
 									<span>{game.saveCount} 个存档</span>
 									<span>·</span>
 									<span>{game.error ? '加载失败' : '可游玩'}</span>
 								</div>
-								<h2 className={styles.cardTitle}>{game.descriptor.name}</h2>
-								<p className={styles.cardText}>{game.descriptor.background || '这个游戏包没有提供简介。'}</p>
+									<h2 className={styles.cardTitle}>{game.name}</h2>
+									<p className={styles.cardText}>{game.background || '这个游戏包没有提供简介。'}</p>
 								{game.error && <StatusBanner tone="error">{game.error}</StatusBanner>}
 							</div>
 							<div className={styles.inlineActions}>
 								{game.error
 									? <span className={styles.pill}>Package unavailable</span>
-									: <ButtonLink to={`/games/${encodeURIComponent(game.descriptor.id)}`}>进入游戏</ButtonLink>}
+										: <ButtonLink to={`/games/${encodeURIComponent(game.gameId)}`}>进入游戏</ButtonLink>}
 							</div>
 						</Surface>
 					))}

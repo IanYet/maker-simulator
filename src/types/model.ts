@@ -91,7 +91,7 @@ export interface ConfigMeta {
 	id: string
 	/** 游戏名称。 */
 	name: string
-	/** 用于内容迁移的版本号。 */
+	/** 用于精确定位游戏内容的版本号。 */
 	version: string
 	/** 游戏背景介绍。 */
 	background: string
@@ -863,7 +863,7 @@ export interface ActionTurnRuntime extends ActionGameRuntime {
 }
 
 /**
- * Profile 中一个可恢复 TurnData 的引用。
+ * 存档中一个可恢复 TurnData 的引用。
  */
 export interface TurnRef {
 	/** 所属 RunData id。 */
@@ -873,15 +873,18 @@ export interface TurnRef {
 }
 
 /**
- * 一份用户存档容器。
+ * IndexedDB 中保存的一份稳定存档。
+ *
+ * 存档只保存检查点历史和当前游标；当前回合的未提交工作状态由 Runtime
+ * 单独持有，不进入该对象。
  */
-export interface Profile {
+export interface StoredProfile {
 	/** 存档 id。 */
 	profileId: string
 	/** 玩家设置的可选存档显示名。 */
 	label?: string
-	/** 存档数据结构版本。 */
-	stateVersion: number
+	/** 持久化并发版本；每次成功写入后递增。 */
+	storageRevision: number
 	/** 对应 ConfigMeta.id。 */
 	configId: string
 	/** 对应 ConfigMeta.version。 */
@@ -890,9 +893,7 @@ export interface Profile {
 	createdAt: Timestamp
 	/** 存档最后更新时间。 */
 	updatedAt: Timestamp
-	/** 当前恢复游标对应的 ProfileState 工作状态。 */
-	state: ProfileState
-	/** 该存档包含的全部 RunData。 */
+	/** 该存档包含的全部稳定时间线。 */
 	runDatas: Record<string, RunData>
 	/** 最后提交或由玩家选择继续的检查点。 */
 	current: TurnRef
@@ -936,12 +937,6 @@ export interface RunData {
 	endedAt?: Timestamp
 	/** 当前 RunData 允许自动保留的 TurnData 数量。 */
 	maxTurnCount: number
-	/** 基于 currentTurnId 检查点创建的 PRNG 工作状态。 */
-	randomState: RandomState
-	/** 基于 currentTurnId 检查点创建的 RunState 工作状态。 */
-	state: RunState
-	/** 基于 currentTurnId 检查点创建的 TurnState 工作状态。 */
-	turnState: TurnState
 	/** 当前检查点 id。 */
 	currentTurnId: string
 	/** 按提交顺序排列的 TurnData id。 */

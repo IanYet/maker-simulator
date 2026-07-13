@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { Profile } from '../types'
+import type { StoredProfile } from '../types'
 
 interface AppMetadataRecord {
 	key: string
@@ -9,7 +9,7 @@ interface AppMetadataRecord {
 interface MakerSimulatorDatabase extends DBSchema {
 	profiles: {
 		key: string
-		value: Profile
+		value: StoredProfile
 		indexes: {
 			'by-config-id': string
 			'by-updated-at': string
@@ -22,16 +22,16 @@ interface MakerSimulatorDatabase extends DBSchema {
 }
 
 let databasePromise: Promise<IDBPDatabase<MakerSimulatorDatabase>> | undefined
-const DATABASE_VERSION = 2
+const DATABASE_VERSION = 3
 
 /**
  * 打开并缓存 Maker Simulator 的 IndexedDB 连接。
  *
- * 升级逻辑按对象仓库和索引是否存在进行幂等创建，兼容旧版本数据库。
+ * 当前仍处于开发期，不维护旧存档迁移；结构升级时清空旧 Profile 和应用元数据。
  */
 export function getDatabase(): Promise<IDBPDatabase<MakerSimulatorDatabase>> {
 	databasePromise ??= openDB<MakerSimulatorDatabase>('maker-simulator', DATABASE_VERSION, {
-		upgrade(database, _oldVersion, _newVersion, transaction) {
+		upgrade(database, oldVersion, _newVersion, transaction) {
 			const profiles = database.objectStoreNames.contains('profiles')
 				? transaction.objectStore('profiles')
 				: database.createObjectStore('profiles', { keyPath: 'profileId' })
@@ -42,8 +42,13 @@ export function getDatabase(): Promise<IDBPDatabase<MakerSimulatorDatabase>> {
 			if (!profiles.indexNames.contains('by-updated-at')) {
 				profiles.createIndex('by-updated-at', 'updatedAt')
 			}
-			if (!database.objectStoreNames.contains('app-metadata')) {
-				database.createObjectStore('app-metadata', { keyPath: 'key' })
+			const metadata = database.objectStoreNames.contains('app-metadata')
+				? transaction.objectStore('app-metadata')
+				: database.createObjectStore('app-metadata', { keyPath: 'key' })
+
+			if (oldVersion > 0 && oldVersion < DATABASE_VERSION) {
+				void profiles.clear()
+				void metadata.clear()
 			}
 		},
 		blocking() {

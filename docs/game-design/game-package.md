@@ -14,7 +14,7 @@
 | RuleRegistry | 保存由名称索引的纯计算 Rule JavaScript 实现 | 否 |
 | ActionRegistry | 保存由名称索引、在受控处理单元中执行的 Action JavaScript 实现 | 否 |
 | LoadedGamePackage | 封装经过完整校验和链接的 Config、registry 与资源位置 | 否 |
-| Profile / RunData / TurnData | 保存一次具体游玩的可序列化 State | 是 |
+| StoredProfile / RunData / TurnData | 保存一次具体游玩的稳定检查点与时间线 | 是 |
 
 GameConfig 中的 `Rule` 和 `Action` 是调用描述，只保存 registry key 与基础类型参数；RuleRegistry 和 ActionRegistry 中的函数才是 JavaScript 实现。存档只记录 `configId` 与 `configVersion`，不复制 manifest、Config 或函数。
 
@@ -63,7 +63,7 @@ Catalog 只包含绘制游戏列表所需的轻量信息，读取 catalog 不得
 
 用户选择新游戏时，加载选中 descriptor 的版本。恢复存档时，包解析器必须根据 `Profile.configId` 与 `Profile.configVersion` 定位精确版本，不得默认用 catalog 中的更新版本打开旧存档。
 
-普通继续游戏要求存档版本与已加载包版本完全一致。将存档升级到新内容版本是一个显式迁移操作：迁移系统先选定目标包和完整迁移链，在存档副本上执行并校验，成功后再原子替换 State 并更新 `configVersion`。没有迁移路径时保留原存档，不得把版本不匹配交给 GameplayRuntime。迁移脚本的发现和执行协议不属于本文定义的 Rule/Action registry。
+普通继续游戏要求存档版本与已加载包版本完全一致。当前开发阶段不提供内容升级或迁移路径；精确版本不在 catalog 中时，该存档保持不可游玩状态，不得交给 GameplayRuntime。内容或存档结构发生不兼容变化时，可以直接舍弃对应旧包和旧存档。
 
 ## 游戏包布局与 Manifest
 
@@ -122,7 +122,7 @@ interface GamePackageManifest {
 
 `entries` 与 `assets` 都相对 manifest 所在位置解析。`assets` 省略时使用 manifest 所在目录。引擎保留原始 Config 中的资源引用，由包资源解析器在读取时将它们相对 `assetsBaseLocation` 解析，不为了绝对路径而改写或复制 Config。
 
-Descriptor、manifest 和 `config.meta` 中的 `id`、`version` 与 `name` 必须分别相同；descriptor 提供 `background` 时还必须等于 `config.meta.background`。Manifest 的 `schemaVersion` 选择 manifest 解析器；`config.meta.version` 是内容版本；`Profile.stateVersion` 是存档结构版本，三者不得混用。
+Descriptor、manifest 和 `config.meta` 中的 `id`、`version` 与 `name` 必须分别相同；descriptor 提供 `background` 时还必须等于 `config.meta.background`。Manifest 的 `schemaVersion` 选择 manifest 解析器，`config.meta.version` 是精确内容版本。StoredProfile 不保存结构迁移版本，只保存 `configId`、`configVersion` 和用于并发写入的 `storageRevision`。
 
 ## Rule 与 Action Module
 
@@ -353,17 +353,16 @@ ActionRegistry 和 RuleRegistry 在包加载时建立一次，不为每个 Profi
 新游戏或 restart 的衔接顺序是：
 
 1. 接收已成功链接的 `LoadedGamePackage`。
-2. 创建 provisional Profile/RunData 容器、稀疏 ProfileState/RunState/TurnState 与 RandomState；Config 默认树通过 Runtime view 回退读取，不整份复制到 State。
-3. 创建处理单元管理器和 Config/State 合并 Proxy，再将 RuleRegistry 绑定为纯计算执行器，将 ActionRegistry 绑定为 Action 执行器。
-4. 编译派生字段 Rule 的计算节点和依赖图。新局把 Config 的 `xxxValue` 基础值物化到 RunState，再物化必须存档的运行时事实，例如初始已获得 Effect 的回合字段。
-5. 在 provisional 容器中校验初始 State 并构造 `initial` TurnData，尚不加入 Profile。
-6. 按 canonical key 注册配置级 Reaction 并建立基准；失败时丢弃 provisional 容器。
-7. baseline 成功后，原子把带 `initial` 的 RunData 加入 Profile 并持久化。
-8. 将已就绪的运行时交给回合状态机，由它以 initial 为回滚边界开始首回合；首回合脚本失败时保留完整 initial 并报告错误。
+2. 创建稀疏 ProfileState/RunState/TurnState 与 RandomState，把 Config 的 `xxxValue` 基础值和初始生命周期事实物化到 RunState。
+3. 校验初始 State，构造包含 `initial` TurnData 的 RunData 与 StoredProfile，并持久化。
+4. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，创建处理单元管理器和 Config/State 合并 Proxy，再绑定 RuleRegistry 与 ActionRegistry。
+5. 编译派生字段 Rule 的计算节点和依赖图。
+6. 按 canonical key 注册配置级 Reaction 并建立基准；失败时关闭 Runtime，已持久化的 `initial` 保持不变。
+7. 将已就绪的运行时交给回合状态机，由它以 initial 为回滚边界开始首回合；首回合脚本失败时同样保留完整 initial 并报告错误。
 
 继续、branch 或截断恢复的衔接顺序是：
 
-1. 根据存档的 Config id 与版本取得完全匹配的 `LoadedGamePackage`。如果 `stateVersion` 需要引擎 State schema 迁移，先在副本上迁移，再校验完整存档和稳定 id 引用；没有迁移路径时停止恢复并保留原存档。显式的 Config 内容版本升级必须在进入本流程前已按 Catalog 章节的迁移语义完成。
+1. 校验 StoredProfile，并根据其中的 Config id 与版本取得完全匹配的 `LoadedGamePackage`；精确版本不可用时停止恢复。
 2. 从选中 snapshot 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本。
 3. 创建处理单元管理器、合并 Proxy、context-bound Rule/Action 执行器、依赖图和计算缓存。
 4. 按 canonical key 注册所有配置级 Reaction，并为每个 active EventInstance 的当前 TextNode 恢复节点 Reaction；所有 Reaction 都只建立基准值。
