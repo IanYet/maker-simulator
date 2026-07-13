@@ -494,6 +494,8 @@ command trace 在整个命令完成后的 finally 才输出，且没有 parent c
 8. `[已解决]` 节点标题聚焦 effect 只依赖 eventInstanceId 与 currentNodeId。
 9. `[已解决]` 存档预览使用同一按钮展开和收起，收起时使在途请求失效，已加载结果可在当前页面会话内复用；按钮与面板通过 ARIA 关联。
 10. `[已解决]` 页面、局部内容、按钮、卡片和对话框使用统一 CSS motion token；`prefers-reduced-motion` 下移除非必要空间动画。
+11. `[已解决]` 检查点、时间线和存档均提供带影响范围说明的手动删除确认；pin 只参与自动保留，不阻止显式删除。删除当前项会原子修复恢复游标，空时间线和空 Profile 按层级级联删除，Profile 删除继续使用 `storageRevision` 防止并发误删。
+12. `[已解决]` 应用根节点使用不创建滚动容器的 `overflow: clip` 裁剪路由入场位移产生的绘制溢出，避免 `100vh` 页面在动画期间短暂触发纵向滚动条，同时保留长页面的文档滚动。
 
 ## 7. 推荐修复顺序
 
@@ -508,15 +510,15 @@ command trace 在整个命令完成后的 finally 才输出，且没有 parent c
 
 | 项目 | 结果 |
 | --- | --- |
-| `pnpm run test` | 通过；2 个测试文件、20 个非 UI 用例 |
-| `pnpm run build` | 通过；Vite 8.1.3，主 JS 496.77 kB，gzip 152.59 kB |
+| `pnpm run test` | 通过；2 个测试文件、22 个非 UI 用例 |
+| `pnpm run build` | 通过；Vite 8.1.3，主 JS 501.97 kB，gzip 153.97 kB |
 | `pnpm run lint` | 通过 |
 | `git diff --check` | 通过 |
 | P0-01 回归 | selector 失败时 terminal candidate、revision、snapshot 与持久化均保持未提交 |
 | P0-02 回归 | 下一回合失败时保留并发布已提交 `turn_end`，失败结果为 `committed: true` |
-| IndexedDB 回归 | `fake-indexeddb` 下通过开发期清理、CAS 冲突和坏记录隔离 |
-| UI 人工验收 | 待确认存档预览展开/收起、路由与节点过渡、Dialog 进出场及 reduced-motion 表现 |
+| IndexedDB 回归 | `fake-indexeddb` 下通过开发期清理、写入/删除 CAS 冲突和坏记录隔离 |
+| UI 人工验收 | 待确认存档预览展开/收起、三层删除与级联提示、路由与节点过渡、Dialog 进出场及 reduced-motion 表现 |
 | 现有游戏包生成器与剧情路线 | 未运行；按本次审计范围明确排除 |
 | 浏览器 UI、真实 IndexedDB 升级和多标签页 | 未执行；仍需按人工清单确认 |
 
-初始审计使用合成夹具复现了两个 P0；现在相应行为已转为自动回归测试。测试不读取现有游戏包，也没有编写 UI 测试。浏览器中的完整玩家流程、键盘与焦点、真实 IndexedDB upgrade、持久化失败注入和多标签页冲突提示仍需人工复核。
+初始审计使用合成夹具复现了两个 P0；现在相应行为已转为自动回归测试。测试不读取现有游戏包，也没有编写 UI 测试。浏览器中的完整玩家流程、三层删除确认与游标回退、键盘与焦点、真实 IndexedDB upgrade、持久化失败注入和多标签页冲突提示仍需人工复核。

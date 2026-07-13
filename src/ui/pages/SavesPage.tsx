@@ -24,6 +24,30 @@ interface TruncateTarget {
 	pinnedCount: number
 }
 
+type DeleteTarget =
+	| {
+			kind: 'checkpoint'
+			profileId: string
+			source: TurnRef
+			label: string
+			pinned: boolean
+	  }
+	| {
+			kind: 'run'
+			profileId: string
+			runId: string
+			checkpointCount: number
+			pinnedCount: number
+	  }
+	| {
+			kind: 'profile'
+			profileId: string
+			label: string
+			runCount: number
+			checkpointCount: number
+			pinnedCount: number
+	  }
+
 type PreviewState =
 	| { status: 'loading'; key: string }
 	| { status: 'error'; key: string; message: string }
@@ -142,6 +166,7 @@ export function SavesPage() {
 	const [selectedId, setSelectedId] = useState<string>()
 	const [message, setMessage] = useState<string>()
 	const [truncateTarget, setTruncateTarget] = useState<TruncateTarget>()
+	const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>()
 	const [previewState, setPreviewState] = useState<PreviewState>()
 	const [expandedPreviewKey, setExpandedPreviewKey] = useState<string>()
 	const previewRequest = useRef(0)
@@ -204,6 +229,28 @@ export function SavesPage() {
 				: '',
 		[truncateTarget],
 	)
+	const deleteDialog = useMemo(() => {
+		if (!deleteTarget) return { title: '', description: '', confirmLabel: '删除' }
+		if (deleteTarget.kind === 'checkpoint') {
+			return {
+				title: '删除检查点？',
+				description: `将永久删除“${deleteTarget.label}”。${deleteTarget.pinned ? '该检查点已固定，但固定状态不会阻止手动删除。' : '固定状态不会影响手动删除。'}若这是时间线的最后一个检查点，将同时删除该时间线；存档因此为空时也会一并删除。`,
+				confirmLabel: '删除检查点',
+			}
+		}
+		if (deleteTarget.kind === 'run') {
+			return {
+				title: '删除时间线？',
+				description: `将永久删除这条时间线及其 ${deleteTarget.checkpointCount} 个检查点，其中 ${deleteTarget.pinnedCount} 个已固定。固定状态不会阻止手动删除；若这是最后一条时间线，将同时删除整个存档。`,
+				confirmLabel: '删除时间线',
+			}
+		}
+		return {
+			title: '删除存档？',
+			description: `将永久删除“${deleteTarget.label}”中的 ${deleteTarget.runCount} 条时间线和 ${deleteTarget.checkpointCount} 个检查点，其中 ${deleteTarget.pinnedCount} 个已固定。固定状态不会阻止手动删除，此操作不可撤销。`,
+			confirmLabel: '删除存档',
+		}
+	}, [deleteTarget])
 
 	function selectProfile(profileId: string): void {
 		previewRequest.current += 1
@@ -246,21 +293,39 @@ export function SavesPage() {
 	function renderRun(run: SaveRunView, runIndex: number) {
 		if (!selected) return null
 		const missingOrigin = Boolean(run.origin && !run.origin.resolved)
+		const pinnedCount = run.checkpoints.filter((checkpoint) => checkpoint.pinned).length
 		return (
 			<div
 				className={`${styles.runGroup} ${run.origin ? styles.runGroupBranch : ''} ${run.origin?.kind === 'restart' ? styles.runGroupRestart : ''}`}
 				key={run.runId}
 			>
-				<h2 className={styles.runTitle}>
-					第 {runIndex + 1} 条时间线{' '}
-					<span className={styles.pill}>
-						{run.origin?.kind === 'restart'
-							? '再来一局'
-							: run.origin?.kind === 'branch'
-								? '分支'
-								: '起点'}
-					</span>
-				</h2>
+				<div className={styles.runHeader}>
+					<h2 className={styles.runTitle}>
+						第 {runIndex + 1} 条时间线{' '}
+						<span className={styles.pill}>
+							{run.origin?.kind === 'restart'
+								? '再来一局'
+								: run.origin?.kind === 'branch'
+									? '分支'
+									: '起点'}
+						</span>
+					</h2>
+					<Button
+						className={styles.smallButton}
+						variant="danger"
+						onClick={() =>
+							setDeleteTarget({
+								kind: 'run',
+								profileId: selected.profileId,
+								runId: run.runId,
+								checkpointCount: run.checkpoints.length,
+								pinnedCount,
+							})
+						}
+					>
+						删除时间线
+					</Button>
+				</div>
 				{run.origin?.resolved && (
 					<a
 						className={styles.originLink}
@@ -373,6 +438,21 @@ export function SavesPage() {
 									>
 										{turn.pinned ? '取消固定' : '固定'}
 									</Button>
+									<Button
+										className={styles.smallButton}
+										variant="danger"
+										onClick={() =>
+											setDeleteTarget({
+												kind: 'checkpoint',
+												profileId: selected.profileId,
+												source: turn.source,
+												label: kindLabel(turn),
+												pinned: turn.pinned,
+											})
+										}
+									>
+										删除检查点
+									</Button>
 								</div>
 								<div
 									aria-busy={preview?.status === 'loading'}
@@ -417,7 +497,7 @@ export function SavesPage() {
 			<p className={styles.eyebrow}>Save browser</p>
 			<h1 className={styles.title}>时间线与分支。</h1>
 			<p className={styles.subtitle}>
-				浏览检查点不会改变当前恢复位置。继续、创建分支或截断后，新的恢复游标才会被原子保存。
+				浏览检查点不会改变当前恢复位置。继续、创建分支、截断或手动删除后，新的恢复游标才会被原子保存。
 			</p>
 			{message && (
 				<div className={styles.statusWrap}>
@@ -469,9 +549,28 @@ export function SavesPage() {
 						key={selected?.profileId ?? 'empty'}
 					>
 						{selected && (
-							<p className={styles.metaLine}>
-								{selected.runs.length} 条时间线 · 更新于 {formatDate(selected.updatedAt)}
-							</p>
+							<div className={styles.profileToolbar}>
+								<p className={styles.metaLine}>
+									{selected.runs.length} 条时间线 · 更新于 {formatDate(selected.updatedAt)}
+								</p>
+								<Button
+									className={styles.smallButton}
+									variant="danger"
+									onClick={() => {
+										const checkpoints = selected.runs.flatMap((run) => run.checkpoints)
+										setDeleteTarget({
+											kind: 'profile',
+											profileId: selected.profileId,
+											label: selected.label || `存档 · ${formatDate(selected.createdAt)}`,
+											runCount: selected.runs.length,
+											checkpointCount: checkpoints.length,
+											pinnedCount: checkpoints.filter((checkpoint) => checkpoint.pinned).length,
+										})
+									}}
+								>
+									删除存档
+								</Button>
+							</div>
 						)}
 						{selected &&
 							selected.runs
@@ -507,6 +606,26 @@ export function SavesPage() {
 						true,
 					)
 					if (result.ok) setTruncateTarget(undefined)
+				}}
+			/>
+			<ConfirmDialog
+				open={Boolean(deleteTarget)}
+				title={deleteDialog.title}
+				description={deleteDialog.description}
+				confirmLabel={deleteDialog.confirmLabel}
+				danger
+				onClose={() => setDeleteTarget(undefined)}
+				onConfirm={async () => {
+					const target = deleteTarget
+					if (!target) return
+					const command: SaveCommand =
+						target.kind === 'checkpoint'
+							? { type: 'delete-checkpoint', source: target.source }
+							: target.kind === 'run'
+								? { type: 'delete-run', runId: target.runId }
+								: { type: 'delete-profile' }
+					const result = await runCommand(target.profileId, command)
+					if (result.ok) setDeleteTarget(undefined)
 				}}
 			/>
 		</PageChrome>

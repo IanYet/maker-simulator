@@ -429,9 +429,11 @@ Motion explains navigation, disclosure, asynchronous replacement, and direct man
 ### Interaction Rules
 
 - A route page enters once with opacity and at most `{motion.distance-md}` of upward travel. Route changes do not animate the outgoing page or delay navigation.
+- Route-level transforms are paint-clipped by the application root so entry motion never changes document scroll geometry or flashes a transient scrollbar; the root remains a non-scrolling container and long pages continue to use document scrolling.
 - Newly available local content, including event nodes, status banners, selected save timelines, and loaded grids, uses `{motion.standard}` or `{motion.page}` with no more than `{motion.distance-md}` of travel.
 - Hover feedback is limited to `{motion.distance-sm}` or less. Buttons, selectable cards, event pills, and timeline cards may lift slightly; ordinary text and static content do not move.
 - `{components.checkpoint-preview}` uses one toggle control for both states. The control exposes `aria-expanded` and names the panel with `aria-controls`; loading, error, and ready content occupy the same collapsible region. Collapsing an in-flight request prevents the late result from reopening the region.
+- Checkpoint, timeline, and save deletion use compact danger buttons at the hierarchy they affect. Every deletion opens a confirmation dialog that names the affected scope and pinned count; pin state never disables an explicit delete control.
 - Dialog backdrop opacity and dialog panel opacity/scale transition together on both entry and exit. Focus trapping and focus restoration remain authoritative over animation timing.
 - Busy feedback may loop while work is active. Page, card, disclosure, and result animations run once per state transition.
 

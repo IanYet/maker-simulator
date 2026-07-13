@@ -13,6 +13,7 @@
 - UI 按钮对快速重复点击做防抖。命令执行期间禁用会引发重复处理单元的操作，命令和其引发的 Reaction 队列稳定后再统一刷新界面。
 - 浏览或预览存档不改变 `Profile.current`；只有明确选择继续、创建分支或截断时才改变恢复游标。
 - 应用层的页面选择、展开的存档树、聚焦的事件卡片和确认框等 UI 状态不写入游戏存档。
+- 路由页入场动效不得扩大文档的滚动范围或造成瞬时滚动条；长页面继续使用文档滚动，游戏页内部面板维持各自的滚动边界。
 
 ## 核心概念
 
@@ -131,7 +132,7 @@ Profile 卡建议显示：
 - 当前结局摘要，如有；
 - Run 和分支数量。
 
-精确游戏包版本不可用的 Profile 仍显示在列表中，但禁止继续并显示原因。结构损坏的 IndexedDB 记录按条隔离并汇总提示；浏览其他有效 Profile 不受单条坏记录影响。
+精确游戏包版本不可用的 Profile 仍显示在列表中，但禁止继续并显示原因；手动删除只操作存档容器，不依赖游戏包，因此仍然可用。结构损坏的 IndexedDB 记录按条隔离并汇总提示；浏览其他有效 Profile 不受单条坏记录影响。
 
 ## 存档分支展示
 
@@ -156,12 +157,19 @@ Profile 卡建议显示：
 | `abandoned` 检查点 | 查看记录 | 只预览放弃时状态 |
 | 任意保留中的检查点 | pin 或 unpin | 控制自动清理策略 |
 | 任意检查点 | 预览 | 不修改 `Profile.current` |
+| 任意检查点 | 删除检查点 | 二次确认后删除；pin 不提供手动删除保护 |
+| 任意 RunData | 删除时间线 | 二次确认后删除该时间线的全部检查点 |
+| 任意 Profile | 删除存档 | 二次确认后删除整个存档 |
 
 检查点预览使用同一个按钮展开和收起，并通过 `aria-expanded`、`aria-controls` 关联只读区域。收起正在加载的预览时必须使该请求失效，迟到结果不能重新展开面板；已经成功加载的同一检查点可以在当前页面会话中直接再次展开。切换 Profile 或重新读取存档列表时清除预览选择，这些状态均不写入 Profile 或应用元数据。
 
 已经结束的 RunData 中，`terminal` 之前仍被保留的可恢复检查点可以创建分支或截断；`terminal` 本身不能作为继续起点。
 
-删除后续记录必须显示将删除的 TurnData 数量、受影响的 pin 数量以及不可撤销提示。“创建分支”应作为默认操作。预览历史检查点时，属性、Effect、事件和结局字段均读取该 TurnData 的 snapshot，生命周期按目标检查点的 `initial/turn_end/terminal/abandoned` kind 投影，不能混入当前工作状态。
+删除后续记录必须显示将删除的 TurnData 数量、受影响的 pin 数量以及不可撤销提示。“创建分支”应作为默认操作。手动删除检查点、时间线或存档同样使用危险操作确认框，显示影响范围和 pin 数量，并明确 pin 不会阻止手动删除。
+
+删除当前检查点时，恢复游标退回同一时间线最后一个剩余检查点，并由该检查点恢复 RunData 生命周期；删除时间线最后一个检查点会同时删除该时间线。删除当前时间线时，恢复游标转到最近更新的剩余时间线；删除最后一条时间线会删除整个 Profile。删除来源检查点或来源时间线不级联删除 branch/restart 后代，后代按来源缺失状态继续独立恢复。
+
+预览历史检查点时，属性、Effect、事件和结局字段均读取该 TurnData 的 snapshot，生命周期按目标检查点的 `initial/turn_end/terminal/abandoned` kind 投影，不能混入当前工作状态。
 
 ## 游戏界面
 
@@ -374,7 +382,7 @@ UI 通过宿主应用服务获取数据：
 
 React 组件不得持有 StoredProfile、RunData、LoadedGamePackage、Repository、具体 GameplayRuntime 或运行时 Proxy，不得在 render 中执行 Rule，也不得直接调用 Action 的 `exec`。React StrictMode 下的重复 render 不得产生引擎写入、Action 调用或 PRNG 推进。
 
-`GameSession`、`SessionView` 与 `SaveCommand` 公共类型定义在 [runtime.ts](../../src/types/runtime.ts)，页面 read model 定义在应用服务边界。分支、截断和 pin 通过 AppServices 的命令方法执行，组件不创建 controller，也不直接读取或改写 StoredProfile。
+`GameSession`、`SessionView` 与 `SaveCommand` 公共类型定义在 [runtime.ts](../../src/types/runtime.ts)，页面 read model 定义在应用服务边界。分支、截断、pin 和分层手动删除通过 AppServices 的命令方法执行，组件不创建 controller，也不直接读取或改写 StoredProfile。
 
 SessionView 至少应提供：
 

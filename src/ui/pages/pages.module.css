@@ -240,6 +240,23 @@ button.profileCard {
 	animation: contentEnter var(--motion-standard) var(--ease-emphasized) backwards;
 }
 
+.profileToolbar,
+.runHeader {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-md);
+}
+
+.profileToolbar {
+	margin-bottom: var(--space-lg);
+}
+
+.profileToolbar .metaLine {
+	margin-bottom: 0;
+}
+
 .profileName {
 	display: block;
 	margin-bottom: var(--space-xs);
@@ -272,8 +289,12 @@ button.profileCard {
 	border-left-color: var(--color-navy);
 }
 
-.runTitle {
+.runHeader {
 	margin-bottom: var(--space-md);
+}
+
+.runTitle {
+	margin: 0;
 	font-size: 22px;
 }
 

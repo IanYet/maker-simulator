@@ -15,6 +15,8 @@ import type {
 } from '../src/types'
 import {
 	createBranch,
+	deleteCheckpoint,
+	deleteRun,
 	IndexedDbSaveRepository,
 	SaveConflictError,
 	truncateAndContinue,
@@ -246,6 +248,14 @@ class MemorySaveRepository implements SaveRepository {
 		})
 		this.profiles.set(stored.profileId, stored)
 		return structuredClone(stored)
+	}
+
+	async delete(profileId: string, expectedStorageRevision: number): Promise<void> {
+		const existing = this.profiles.get(profileId)
+		if (!existing || existing.storageRevision !== expectedStorageRevision) {
+			throw new SaveConflictError()
+		}
+		this.profiles.delete(profileId)
 	}
 }
 
@@ -804,6 +814,64 @@ test('branch and truncate operate on independent checkpoint histories', () => {
 	assert.equal(profile.runDatas[run.runId].turnOrder.length, 2)
 })
 
+/** 手动删除当前检查点必须忽略 pin，并把结束时间线恢复到前一个可游玩检查点。 */
+test('manual checkpoint deletion ignores pin and repairs the current cursor', () => {
+	const game = makeGame()
+	const profile = createProfile(game)
+	const run = profile.runDatas[profile.current.runId]
+	const initialId = run.currentTurnId
+	const terminalId = 'turn-terminal-to-delete'
+	const endedAt = new Date().toISOString()
+	run.turnDatas[terminalId] = {
+		turnId: terminalId,
+		kind: 'terminal',
+		createdAt: endedAt,
+		pinned: true,
+		snapshot: structuredClone(run.turnDatas[initialId].snapshot),
+	}
+	run.turnOrder.push(terminalId)
+	run.currentTurnId = terminalId
+	run.status = 'ended'
+	run.endedAt = endedAt
+	profile.current = { runId: run.runId, turnId: terminalId }
+
+	const deleted = deleteCheckpoint(profile, profile.current)
+	assert.ok(deleted)
+	validateProfileAgainstConfig(deleted, game.config)
+	const repairedRun = deleted.runDatas[run.runId]
+	assert.deepEqual(repairedRun.turnOrder, [initialId])
+	assert.equal(repairedRun.currentTurnId, initialId)
+	assert.equal(repairedRun.status, 'active')
+	assert.equal(repairedRun.endedAt, undefined)
+	assert.deepEqual(deleted.current, { runId: run.runId, turnId: initialId })
+	assert.equal(profile.runDatas[run.runId].turnDatas[terminalId].pinned, true)
+})
+
+/** 删到空容器时逐级移除时间线和存档，任何层级都不能把 pin 当作手动删除保护。 */
+test('manual deletion cascades empty timelines and profiles regardless of pin', () => {
+	const game = makeGame()
+	const profile = createProfile(game)
+	const root = profile.current
+	const branched = createBranch(profile, root)
+	const branch = branched.current
+	branched.runDatas[branch.runId].turnDatas[branch.turnId].pinned = true
+
+	const afterCheckpoint = deleteCheckpoint(branched, branch)
+	assert.ok(afterCheckpoint)
+	assert.equal(afterCheckpoint.runDatas[branch.runId], undefined)
+	assert.deepEqual(afterCheckpoint.current, root)
+	validateProfileAgainstConfig(afterCheckpoint, game.config)
+
+	const secondBranch = createBranch(profile, root)
+	const secondBranchRef = secondBranch.current
+	secondBranch.runDatas[secondBranchRef.runId].turnDatas[secondBranchRef.turnId].pinned = true
+	const afterRun = deleteRun(secondBranch, secondBranchRef.runId)
+	assert.ok(afterRun)
+	assert.equal(afterRun.runDatas[secondBranchRef.runId], undefined)
+	assert.deepEqual(afterRun.current, root)
+	assert.equal(deleteRun(afterRun, root.runId), undefined)
+})
+
 /** 查看旧检查点时，生命周期应由目标检查点推导，而不是沿用当前终局状态。 */
 test('read-only projection derives lifecycle from the selected historical checkpoint', () => {
 	const game = makeGame()
@@ -941,5 +1009,10 @@ test.sequential(
 		const listed = await saves.listByConfigId(game.config.meta.id)
 		assert.equal(listed.profiles.length, 1)
 		assert.equal(listed.invalid.length, 1)
+		await expect(saves.delete(current.profileId, stale.storageRevision)).rejects.toBeInstanceOf(
+			SaveConflictError,
+		)
+		await saves.delete(current.profileId, current.storageRevision)
+		assert.equal(await saves.get(current.profileId), undefined)
 	},
 )

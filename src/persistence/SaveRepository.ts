@@ -27,13 +27,17 @@ export interface SaveRepository {
 	listByConfigId(configId: string): Promise<SaveListResult>
 	get(profileId: string): Promise<StoredProfile | undefined>
 	put(profile: StoredProfile): Promise<StoredProfile>
+	delete(profileId: string, expectedStorageRevision: number): Promise<void>
 }
 
 function invalidRecord(record: unknown, error: unknown): InvalidSaveRecord {
-	const profileId = record !== null && typeof record === 'object' && 'profileId' in record
-		&& typeof record.profileId === 'string'
-		? record.profileId
-		: undefined
+	const profileId =
+		record !== null &&
+		typeof record === 'object' &&
+		'profileId' in record &&
+		typeof record.profileId === 'string'
+			? record.profileId
+			: undefined
 	return {
 		...(profileId ? { profileId } : {}),
 		message: error instanceof Error ? error.message : String(error),
@@ -90,6 +94,21 @@ export class IndexedDbSaveRepository implements SaveRepository {
 		return structuredClone(stored)
 	}
 
+	/**
+	 * 在同一事务中比较 storageRevision 后删除存档。
+	 *
+	 * @throws {SaveConflictError} 存档已经被删除或调用方持有旧版本。
+	 */
+	async delete(profileId: string, expectedStorageRevision: number): Promise<void> {
+		const database = await getDatabase()
+		const transaction = database.transaction('profiles', 'readwrite')
+		const existingRecord = await transaction.store.get(profileId)
+		if (existingRecord === undefined) throw new SaveConflictError()
+		const existing = validateStoredProfile(existingRecord)
+		if (existing.storageRevision !== expectedStorageRevision) throw new SaveConflictError()
+		await transaction.store.delete(profileId)
+		await transaction.done
+	}
 }
 
 /** 保存每个游戏最近访问的 Profile id 等应用级元数据。 */

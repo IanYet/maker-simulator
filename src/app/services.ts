@@ -194,8 +194,9 @@ export class AppServices {
 		catalog: LocatedGameCatalog,
 	): Promise<string | undefined> {
 		const location = catalog.packages.find(
-			(item) => item.descriptor.id === profile.configId
-				&& item.descriptor.version === profile.configVersion,
+			(item) =>
+				item.descriptor.id === profile.configId &&
+				item.descriptor.version === profile.configVersion,
 		)
 		if (!location) return `游戏包 ${profile.configId}@${profile.configVersion} 当前不可用`
 		try {
@@ -211,30 +212,30 @@ export class AppServices {
 	async listGames(): Promise<readonly GameListItem[]> {
 		const catalog = await this.getCatalog()
 		const ids = [...new Set(catalog.packages.map((item) => item.descriptor.id))].sort()
-		return Promise.all(ids.map(async (gameId) => {
-			const version = catalog.defaultVersions[gameId]
-			const location = catalog.packages.find(
-				(item) => item.descriptor.id === gameId && item.descriptor.version === version,
-			)
-			if (!location) throw new Error(`Default package ${gameId}@${version} is unavailable`)
-			const saves = await this.#saves.listByConfigId(gameId)
-			const base = {
-				gameId,
-				version: location.descriptor.version,
-				name: location.descriptor.name,
-				...(location.descriptor.background
-					? { background: location.descriptor.background }
-					: {}),
-				...(location.coverLocation ? { coverLocation: location.coverLocation } : {}),
-				saveCount: saves.profiles.length + saves.invalid.length,
-			}
-			try {
-				await this.#packages.load(location)
-				return base
-			} catch (error) {
-				return { ...base, error: error instanceof Error ? error.message : String(error) }
-			}
-		}))
+		return Promise.all(
+			ids.map(async (gameId) => {
+				const version = catalog.defaultVersions[gameId]
+				const location = catalog.packages.find(
+					(item) => item.descriptor.id === gameId && item.descriptor.version === version,
+				)
+				if (!location) throw new Error(`Default package ${gameId}@${version} is unavailable`)
+				const saves = await this.#saves.listByConfigId(gameId)
+				const base = {
+					gameId,
+					version: location.descriptor.version,
+					name: location.descriptor.name,
+					...(location.descriptor.background ? { background: location.descriptor.background } : {}),
+					...(location.coverLocation ? { coverLocation: location.coverLocation } : {}),
+					saveCount: saves.profiles.length + saves.invalid.length,
+				}
+				try {
+					await this.#packages.load(location)
+					return base
+				} catch (error) {
+					return { ...base, error: error instanceof Error ? error.message : String(error) }
+				}
+			}),
+		)
 	}
 
 	/** 返回游戏菜单页所需信息，不向页面暴露游戏包或存档对象。 */
@@ -245,10 +246,16 @@ export class AppServices {
 			this.#saves.listByConfigId(gameId),
 			this.#metadata.getRecentProfile(gameId).catch(() => undefined),
 		])
-		const available = (await Promise.all(saves.profiles.map(async (profile) => ({
-			profile,
-			unavailableReason: await this.getProfileUnavailableReason(profile, catalog),
-		})))).filter((item) => !item.unavailableReason).map((item) => item.profile)
+		const available = (
+			await Promise.all(
+				saves.profiles.map(async (profile) => ({
+					profile,
+					unavailableReason: await this.getProfileUnavailableReason(profile, catalog),
+				})),
+			)
+		)
+			.filter((item) => !item.unavailableReason)
+			.map((item) => item.profile)
 		const recent = available.find((profile) => profile.profileId === recentId) ?? available[0]
 		const turn = recent ? currentTurn(recent) : undefined
 		return {
@@ -259,15 +266,17 @@ export class AppServices {
 			saveCount: saves.profiles.length + saves.invalid.length,
 			...(recent && turn
 				? {
-					recentLocation: turn.kind === 'terminal' || turn.kind === 'abandoned'
-						? resultLocation(recent.profileId, recent.current)
-						: playLocation(recent.profileId),
-					recentLabel: turn.kind === 'terminal'
-						? '查看上次结局'
-						: turn.kind === 'abandoned'
-							? '查看上次记录'
-							: '继续游戏',
-				}
+						recentLocation:
+							turn.kind === 'terminal' || turn.kind === 'abandoned'
+								? resultLocation(recent.profileId, recent.current)
+								: playLocation(recent.profileId),
+						recentLabel:
+							turn.kind === 'terminal'
+								? '查看上次结局'
+								: turn.kind === 'abandoned'
+									? '查看上次记录'
+									: '继续游戏',
+					}
 				: {}),
 		}
 	}
@@ -287,12 +296,7 @@ export class AppServices {
 		const profile = await this.#saves.get(profileId)
 		if (!profile) throw new Error('The requested save does not exist')
 		const game = await this.#packages.loadExact(profile.configId, profile.configVersion)
-		const runtime = await GameplayRuntimeImpl.open(
-			game,
-			profile,
-			this.#saves,
-			this.#monitorFactory,
-		)
+		const runtime = await GameplayRuntimeImpl.open(game, profile, this.#saves, this.#monitorFactory)
 		this.rememberRecent(profile.configId, profile.profileId)
 		return new GameSessionImpl(runtime, this.#saves, this.#metadata, navigate)
 	}
@@ -303,80 +307,79 @@ export class AppServices {
 			this.getCatalog(),
 			this.#saves.listByConfigId(gameId),
 		])
-		const profiles = await Promise.all(saves.profiles.map(async (profile): Promise<SaveProfileView> => {
-			const unavailableReason = await this.getProfileUnavailableReason(profile, catalog)
-			const available = unavailableReason === undefined
-			const currentRun = profile.runDatas[profile.current.runId]
-			const turn = currentTurn(profile)
-			if (!currentRun || !turn) throw new Error('The save cursor is invalid')
-			const runs = Object.values(profile.runDatas)
-				.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-				.map((run): SaveRunView => ({
-					runId: run.runId,
-					...(run.origin
-						? {
-							origin: (() => {
-								const sourceTurn = profile.runDatas[run.origin.source.runId]
-									?.turnDatas[run.origin.source.turnId]
-								return {
-									kind: run.origin.kind,
-									source: { ...run.origin.source },
-									resolved: Boolean(sourceTurn),
-									...(sourceTurn
-										? {
-											sourceTurnNumber: sourceTurn.snapshot.turnState.turnNumber,
-											sourceKind: sourceTurn.kind,
+		const profiles = await Promise.all(
+			saves.profiles.map(async (profile): Promise<SaveProfileView> => {
+				const unavailableReason = await this.getProfileUnavailableReason(profile, catalog)
+				const available = unavailableReason === undefined
+				const currentRun = profile.runDatas[profile.current.runId]
+				const turn = currentTurn(profile)
+				if (!currentRun || !turn) throw new Error('The save cursor is invalid')
+				const runs = Object.values(profile.runDatas)
+					.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+					.map((run): SaveRunView => ({
+						runId: run.runId,
+						...(run.origin
+							? {
+									origin: (() => {
+										const sourceTurn =
+											profile.runDatas[run.origin.source.runId]?.turnDatas[run.origin.source.turnId]
+										return {
+											kind: run.origin.kind,
+											source: { ...run.origin.source },
+											resolved: Boolean(sourceTurn),
+											...(sourceTurn
+												? {
+														sourceTurnNumber: sourceTurn.snapshot.turnState.turnNumber,
+														sourceKind: sourceTurn.kind,
+													}
+												: {}),
 										}
-										: {}),
+									})(),
 								}
-							})(),
-						}
-						: {}),
-					checkpoints: run.turnOrder.map((turnId, index): SaveCheckpointView => {
-						const checkpoint = run.turnDatas[turnId]
-						const source = { runId: run.runId, turnId }
-						const playable = checkpoint.kind === 'initial' || checkpoint.kind === 'turn_end'
-						const latest = run.currentTurnId === turnId
-						const removed = run.turnOrder.slice(index + 1)
-						return {
-							source,
-							kind: checkpoint.kind,
-							turnNumber: checkpoint.snapshot.turnState.turnNumber,
-							createdAt: checkpoint.createdAt,
-							pinned: checkpoint.pinned,
-							current: profile.current.runId === run.runId && profile.current.turnId === turnId,
-							canContinue: available && playable && latest,
-							canBranch: available && playable && !latest,
-							canTruncate: available && playable && !latest,
-							...(available && (checkpoint.kind === 'terminal' || checkpoint.kind === 'abandoned')
-								? { resultLocation: resultLocation(profile.profileId, source) }
-								: {}),
-							truncateRemovedCount: removed.length,
-							truncatePinnedCount: removed.filter((id) => run.turnDatas[id]?.pinned).length,
-						}
-					}),
-				}))
-			return {
-				profileId: profile.profileId,
-				...(profile.label ? { label: profile.label } : {}),
-				createdAt: profile.createdAt,
-				updatedAt: profile.updatedAt,
-				configVersion: profile.configVersion,
-				currentTurnNumber: turn.snapshot.turnState.turnNumber,
-				currentRunStatus: currentRun.status,
-				available,
-				...(unavailableReason ? { unavailableReason } : {}),
-				runs,
-			}
-		}))
+							: {}),
+						checkpoints: run.turnOrder.map((turnId, index): SaveCheckpointView => {
+							const checkpoint = run.turnDatas[turnId]
+							const source = { runId: run.runId, turnId }
+							const playable = checkpoint.kind === 'initial' || checkpoint.kind === 'turn_end'
+							const latest = run.currentTurnId === turnId
+							const removed = run.turnOrder.slice(index + 1)
+							return {
+								source,
+								kind: checkpoint.kind,
+								turnNumber: checkpoint.snapshot.turnState.turnNumber,
+								createdAt: checkpoint.createdAt,
+								pinned: checkpoint.pinned,
+								current: profile.current.runId === run.runId && profile.current.turnId === turnId,
+								canContinue: available && playable && latest,
+								canBranch: available && playable && !latest,
+								canTruncate: available && playable && !latest,
+								...(available && (checkpoint.kind === 'terminal' || checkpoint.kind === 'abandoned')
+									? { resultLocation: resultLocation(profile.profileId, source) }
+									: {}),
+								truncateRemovedCount: removed.length,
+								truncatePinnedCount: removed.filter((id) => run.turnDatas[id]?.pinned).length,
+							}
+						}),
+					}))
+				return {
+					profileId: profile.profileId,
+					...(profile.label ? { label: profile.label } : {}),
+					createdAt: profile.createdAt,
+					updatedAt: profile.updatedAt,
+					configVersion: profile.configVersion,
+					currentTurnNumber: turn.snapshot.turnState.turnNumber,
+					currentRunStatus: currentRun.status,
+					available,
+					...(unavailableReason ? { unavailableReason } : {}),
+					runs,
+				}
+			}),
+		)
 		return { profiles, invalidSaveCount: saves.invalid.length }
 	}
 
 	/** 按需投影任意保留检查点；不会修改 Profile.current 或写入存档。 */
-	async getCheckpointPreview(
-		profileId: string,
-		source: TurnRef,
-	): Promise<SaveCheckpointPreview> {
+	async getCheckpointPreview(profileId: string, source: TurnRef): Promise<SaveCheckpointPreview> {
 		const profile = await this.#saves.get(profileId)
 		if (!profile) throw new Error('The requested save does not exist')
 		if (!profile.runDatas[source.runId]?.turnDatas[source.turnId]) {
@@ -415,12 +418,12 @@ export class AppServices {
 			})),
 			...(snapshot.endingEvent
 				? {
-					ending: {
-						displayName: snapshot.endingEvent.displayName,
-						nodeDisplayName: snapshot.endingEvent.currentNode.displayName,
-						content: snapshot.endingEvent.currentNode.content,
-					},
-				}
+						ending: {
+							displayName: snapshot.endingEvent.displayName,
+							nodeDisplayName: snapshot.endingEvent.currentNode.displayName,
+							content: snapshot.endingEvent.currentNode.content,
+						},
+					}
 				: {}),
 		}
 	}
@@ -428,6 +431,16 @@ export class AppServices {
 	/** 执行一条存档命令；页面不接触 Profile 或 Repository。 */
 	async executeSaveCommand(profileId: string, command: SaveCommand): Promise<SessionCommandResult> {
 		try {
+			if (
+				command.type === 'delete-checkpoint' ||
+				command.type === 'delete-run' ||
+				command.type === 'delete-profile'
+			) {
+				// 显式删除只改变容器结构，即使精确游戏包不可用也应允许清理。
+				return new SaveBrowserControllerImpl(profileId, this.#saves, this.#metadata).dispatch(
+					command,
+				)
+			}
 			const profile = await this.#saves.get(profileId)
 			if (!profile) {
 				const diagnostic = publicDiagnostic('The save no longer exists', 'save')
@@ -477,11 +490,11 @@ export class AppServices {
 			abandoned,
 			title: abandoned
 				? '这条时间线已被放弃。'
-				: snapshot.endingEvent?.currentNode.displayName ?? '本局已经抵达终点。',
+				: (snapshot.endingEvent?.currentNode.displayName ?? '本局已经抵达终点。'),
 			content: abandoned
 				? '这是一条只读的放弃记录。它不是游戏脚本定义的结局，但仍保留放弃时的状态与随机游标。'
-				: snapshot.endingEvent?.currentNode.content
-					?? '终局由游戏脚本触发；本次调用链没有关联可展示的叙事节点。完整状态已经保存在 terminal 检查点中。',
+				: (snapshot.endingEvent?.currentNode.content ??
+					'终局由游戏脚本触发；本次调用链没有关联可展示的叙事节点。完整状态已经保存在 terminal 检查点中。'),
 			turnNumber: snapshot.turnNumber,
 			phase: snapshot.phase,
 			...(snapshot.endedAt ? { endedAt: snapshot.endedAt } : {}),

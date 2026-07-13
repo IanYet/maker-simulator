@@ -4,13 +4,17 @@ import type {
 	SaveBrowserController,
 	SaveCommand,
 	SessionCommandResult,
+	StoredProfile,
 } from '../types'
 import { publicDiagnostic } from '../diagnostics'
 import {
 	continueCheckpoint,
 	createBranch,
+	deleteCheckpoint,
+	deleteRun,
 	setCheckpointPinned,
 	truncateAndContinue,
+	validateStoredProfile,
 	validateProfileAgainstConfig,
 	type AppMetadataRepository,
 	type SaveRepository,
@@ -18,24 +22,29 @@ import {
 
 /**
  * 存档浏览器的命令门面。
- * 先在内存副本上执行分支/截断/pin，再通过 SaveRepository 原子保存。
+ * 先在内存副本上执行存档命令，再通过 SaveRepository 原子保存或删除。
  */
 export class SaveBrowserControllerImpl implements SaveBrowserController {
 	private readonly profileId: string
 	private readonly saves: SaveRepository
 	private readonly metadata: AppMetadataRepository
-	private readonly config: DeepReadonly<GameConfig>
+	private readonly config?: DeepReadonly<GameConfig>
 
 	constructor(
 		profileId: string,
 		saves: SaveRepository,
 		metadata: AppMetadataRepository,
-		config: DeepReadonly<GameConfig>,
+		config?: DeepReadonly<GameConfig>,
 	) {
 		this.profileId = profileId
 		this.saves = saves
 		this.metadata = metadata
 		this.config = config
+	}
+
+	private requireConfig(): DeepReadonly<GameConfig> {
+		if (!this.config) throw new Error('The game package is required for this save operation')
+		return this.config
 	}
 
 	/** 执行一个存档操作，并把失败转换为 SessionCommandResult。 */
@@ -53,17 +62,50 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 					committed: false,
 				}
 			}
-			const validated = validateProfileAgainstConfig(profile, this.config)
-			const next = command.type === 'continue-checkpoint'
-				? continueCheckpoint(validated, command.source)
-				: command.type === 'create-branch'
-					? createBranch(validated, command.source)
-					: command.type === 'truncate-and-continue'
-						? truncateAndContinue(validated, command.source)
-						: setCheckpointPinned(validated, command.source, command.pinned)
-			const stored = await this.saves.put(validateProfileAgainstConfig(next, this.config))
-			if (command.type !== 'set-checkpoint-pinned') {
-				void this.metadata.setRecentProfile(stored.configId, stored.profileId).catch(() => undefined)
+			if (command.type === 'delete-profile') {
+				await this.saves.delete(profile.profileId, profile.storageRevision)
+				return { ok: true, revision: 0 }
+			}
+
+			const deleting = command.type === 'delete-checkpoint' || command.type === 'delete-run'
+			const config = deleting ? undefined : this.requireConfig()
+			const validated = config ? validateProfileAgainstConfig(profile, config) : profile
+			let next: StoredProfile | undefined
+			switch (command.type) {
+				case 'continue-checkpoint':
+					next = continueCheckpoint(validated, command.source)
+					break
+				case 'create-branch':
+					next = createBranch(validated, command.source)
+					break
+				case 'truncate-and-continue':
+					next = truncateAndContinue(validated, command.source)
+					break
+				case 'set-checkpoint-pinned':
+					next = setCheckpointPinned(validated, command.source, command.pinned)
+					break
+				case 'delete-checkpoint':
+					next = deleteCheckpoint(validated, command.source)
+					break
+				case 'delete-run':
+					next = deleteRun(validated, command.runId)
+					break
+			}
+			if (!next) {
+				await this.saves.delete(profile.profileId, profile.storageRevision)
+				return { ok: true, revision: 0 }
+			}
+			const stored = await this.saves.put(
+				config ? validateProfileAgainstConfig(next, config) : validateStoredProfile(next),
+			)
+			if (
+				command.type === 'continue-checkpoint' ||
+				command.type === 'create-branch' ||
+				command.type === 'truncate-and-continue'
+			) {
+				void this.metadata
+					.setRecentProfile(stored.configId, stored.profileId)
+					.catch(() => undefined)
 			}
 			return { ok: true, revision: 0 }
 		} catch (error) {

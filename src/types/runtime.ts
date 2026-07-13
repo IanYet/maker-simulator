@@ -59,10 +59,7 @@ export type RuntimeCommandResult =
 
 /** Session 门面额外包装的应用层错误原因。 */
 export type SessionCommandErrorCode =
-	| RuntimeCommandErrorCode
-	| 'confirmation-required'
-	| 'not-active'
-	| 'incompatible-save'
+	RuntimeCommandErrorCode | 'confirmation-required' | 'not-active' | 'incompatible-save'
 
 /** Session 命令结果；revision 仅用于 UI 观察状态变化。 */
 export type SessionCommandResult =
@@ -113,15 +110,15 @@ export interface EventCardView {
 /** 阻止进入下一回合的结构化原因；message 仅用于展示。 */
 export type AdvanceTurnBlocker =
 	| {
-		readonly kind: 'pending-required-event'
-		readonly eventId: string
-		readonly message: string
+			readonly kind: 'pending-required-event'
+			readonly eventId: string
+			readonly message: string
 	  }
 	| {
-		readonly kind: 'active-required-event'
-		readonly eventId: string
-		readonly eventInstanceId: string
-		readonly message: string
+			readonly kind: 'active-required-event'
+			readonly eventId: string
+			readonly eventInstanceId: string
+			readonly message: string
 	  }
 
 /** active EventNode 的共同展示字段。 */
@@ -303,8 +300,11 @@ export type SaveCommand =
 	| { type: 'create-branch'; source: TurnRef }
 	| { type: 'truncate-and-continue'; source: TurnRef }
 	| { type: 'set-checkpoint-pinned'; source: TurnRef; pinned: boolean }
+	| { type: 'delete-checkpoint'; source: TurnRef }
+	| { type: 'delete-run'; runId: string }
+	| { type: 'delete-profile' }
 
 export interface SaveBrowserController {
-	/** 执行继续、分支、截断或 pin 操作。 */
+	/** 执行继续、分支、截断、pin 或显式删除操作。 */
 	dispatch(command: SaveCommand): Promise<SessionCommandResult>
 }
