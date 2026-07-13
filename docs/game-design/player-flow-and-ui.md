@@ -157,6 +157,8 @@ Profile 卡建议显示：
 | 任意保留中的检查点 | pin 或 unpin | 控制自动清理策略 |
 | 任意检查点 | 预览 | 不修改 `Profile.current` |
 
+检查点预览使用同一个按钮展开和收起，并通过 `aria-expanded`、`aria-controls` 关联只读区域。收起正在加载的预览时必须使该请求失效，迟到结果不能重新展开面板；已经成功加载的同一检查点可以在当前页面会话中直接再次展开。切换 Profile 或重新读取存档列表时清除预览选择，这些状态均不写入 Profile 或应用元数据。
+
 已经结束的 RunData 中，`terminal` 之前仍被保留的可恢复检查点可以创建分支或截断；`terminal` 本身不能作为继续起点。
 
 删除后续记录必须显示将删除的 TurnData 数量、受影响的 pin 数量以及不可撤销提示。“创建分支”应作为默认操作。预览历史检查点时，属性、Effect、事件和结局字段均读取该 TurnData 的 snapshot，生命周期按目标检查点的 `initial/turn_end/terminal/abandoned` kind 投影，不能混入当前工作状态。

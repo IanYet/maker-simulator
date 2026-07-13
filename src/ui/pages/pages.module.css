@@ -3,6 +3,7 @@
 	min-height: 100vh;
 	margin: 0 auto;
 	padding: var(--space-xl) var(--space-xxl) var(--space-section);
+	animation: pageEnter var(--motion-page) var(--ease-emphasized) backwards;
 }
 
 .topbar {
@@ -34,7 +35,9 @@
 	align-items: center;
 	justify-content: center;
 	border-radius: var(--radius-full);
-	transition: background-color 140ms ease, transform 140ms ease;
+	transition:
+		background-color var(--motion-fast) var(--ease-standard),
+		transform var(--motion-standard) var(--ease-emphasized);
 }
 
 .githubLink:hover {
@@ -100,6 +103,20 @@
 	justify-content: space-between;
 	padding: var(--space-xl);
 	border: 1px solid transparent;
+	animation: contentEnter var(--motion-page) var(--ease-emphasized) backwards;
+	transition:
+		border-color var(--motion-fast) var(--ease-standard),
+		transform var(--motion-standard) var(--ease-emphasized);
+}
+
+.gameCard:nth-child(2) {
+	animation-delay: 40ms;
+}
+.gameCard:nth-child(3) {
+	animation-delay: 80ms;
+}
+.gameCard:nth-child(4) {
+	animation-delay: 120ms;
 }
 
 .cover {
@@ -154,6 +171,7 @@
 	flex-direction: column;
 	justify-content: space-between;
 	padding: var(--space-xxl);
+	animation: contentEnter var(--motion-page) var(--ease-emphasized) backwards;
 }
 
 .menuTitle,
@@ -184,6 +202,7 @@
 	grid-template-columns: minmax(250px, 0.32fr) minmax(0, 0.68fr);
 	gap: var(--space-xl);
 	align-items: start;
+	animation: contentEnter var(--motion-page) var(--ease-emphasized) backwards;
 }
 
 .profileList,
@@ -201,6 +220,10 @@
 	color: var(--color-black);
 	background: var(--color-white);
 	text-align: left;
+	transition:
+		background-color var(--motion-standard) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard),
+		transform var(--motion-standard) var(--ease-emphasized);
 }
 
 button.profileCard {
@@ -211,6 +234,10 @@ button.profileCard {
 .profileCardActive {
 	border-color: var(--color-black);
 	background: var(--color-lime);
+}
+
+.timelineView {
+	animation: contentEnter var(--motion-standard) var(--ease-emphasized) backwards;
 }
 
 .profileName {
@@ -283,6 +310,7 @@ button.profileCard {
 
 .turnCard {
 	position: relative;
+	scroll-margin-top: var(--space-lg);
 }
 
 .turnCard::before {
@@ -295,6 +323,7 @@ button.profileCard {
 	border-radius: 50%;
 	background: var(--color-black);
 	content: '';
+	transition: transform var(--motion-standard) var(--ease-emphasized);
 }
 
 .turnCurrent {
@@ -317,9 +346,40 @@ button.profileCard {
 }
 
 .checkpointPreview {
+	min-width: 0;
+}
+
+.previewRegion {
+	display: grid;
+	grid-template-rows: 0fr;
+	opacity: 0;
+	visibility: hidden;
+	transition:
+		grid-template-rows var(--motion-standard) var(--ease-emphasized),
+		opacity var(--motion-fast) var(--ease-standard),
+		visibility 0s linear var(--motion-standard);
+}
+
+.previewRegionOpen {
+	grid-template-rows: 1fr;
+	opacity: 1;
+	visibility: visible;
+	transition-delay: 0s;
+}
+
+.previewRegionInner {
+	min-height: 0;
+	overflow: hidden;
+}
+
+.previewRegionContent {
 	margin-top: var(--space-lg);
 	padding-top: var(--space-lg);
 	border-top: 1px solid var(--color-hairline);
+}
+
+.previewRegionOpen .previewRegionContent {
+	animation: previewContentEnter var(--motion-standard) var(--ease-emphasized) backwards;
 }
 
 .previewHeading {
@@ -380,6 +440,7 @@ button.profileCard {
 .gamePage {
 	min-height: 100vh;
 	background: var(--color-white);
+	animation: pageEnter var(--motion-page) var(--ease-emphasized) backwards;
 }
 
 .gameLayout {
@@ -489,6 +550,10 @@ button.profileCard {
 	padding: var(--space-md);
 	border: 1px solid var(--color-hairline);
 	border-radius: var(--radius-md);
+	transition:
+		background-color var(--motion-standard) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard),
+		transform var(--motion-standard) var(--ease-emphasized);
 }
 
 .effectCardActive {
@@ -592,6 +657,10 @@ button.profileCard {
 	border-radius: var(--radius-pill);
 	background: var(--color-white);
 	cursor: pointer;
+	transition:
+		background-color var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard),
+		transform var(--motion-standard) var(--ease-emphasized);
 }
 
 .eventButtonActive {
@@ -612,6 +681,7 @@ button.profileCard {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
+	animation: contentEnter var(--motion-standard) var(--ease-emphasized) backwards;
 }
 
 .nodeTitle {
@@ -713,6 +783,7 @@ button.profileCard {
 	border-bottom: 1px solid var(--color-hairline);
 	background: var(--color-pink);
 	font-size: 14px;
+	animation: contentEnter var(--motion-standard) var(--ease-emphasized) backwards;
 }
 
 .resultMeta {
@@ -722,26 +793,133 @@ button.profileCard {
 	margin-top: var(--space-xl);
 }
 
+@media (hover: hover) {
+	.gameCard:hover {
+		border-color: var(--color-black);
+		transform: translateY(-3px);
+	}
+
+	button.profileCard:hover,
+	.turnCard:hover {
+		border-color: var(--color-black);
+		transform: translateY(-1px);
+	}
+
+	.turnCard:hover::before {
+		transform: scale(1.25);
+	}
+
+	.effectCard:hover {
+		border-color: var(--color-black);
+		transform: translateY(-1px);
+	}
+
+	.eventButton:hover:not(:disabled) {
+		border-color: var(--color-black);
+		background: var(--color-surface-soft);
+		transform: translateY(-1px);
+	}
+
+	.eventButtonActive:hover:not(:disabled) {
+		background: var(--color-lilac);
+	}
+}
+
+@keyframes pageEnter {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes contentEnter {
+	from {
+		opacity: 0;
+		transform: translateY(7px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes previewContentEnter {
+	from {
+		opacity: 0;
+		transform: translateY(-5px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
 @keyframes pulse {
-	to { transform: scale(1.7); }
+	to {
+		transform: scale(1.7);
+	}
 }
 
 @keyframes attributeRowFlash {
-	0% { background: var(--color-lime); }
-	100% { background: transparent; }
+	0% {
+		background: var(--color-lime);
+	}
+	100% {
+		background: transparent;
+	}
 }
 
 @keyframes attributeChangePop {
-	0% { opacity: 0; transform: translateY(6px) scale(0.88); }
-	15% { opacity: 1; transform: translateY(0) scale(1); }
-	76% { opacity: 1; transform: translateY(0) scale(1); }
-	100% { opacity: 0; transform: translateY(-5px) scale(0.96); }
+	0% {
+		opacity: 0;
+		transform: translateY(6px) scale(0.88);
+	}
+	15% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+	76% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: translateY(-5px) scale(0.96);
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.page,
+	.gamePage,
+	.gameCard,
+	.menuHero,
+	.resultHero,
+	.savesLayout,
+	.timelineView,
+	.previewRegionContent,
+	.nodeBlock,
+	.emptyNode,
+	.message,
 	.attributeRowChanged,
 	.attributeChange {
 		animation: none;
+	}
+
+	.gameCard:hover,
+	button.profileCard:hover,
+	.turnCard:hover,
+	.effectCard:hover,
+	.eventButton:hover:not(:disabled),
+	.githubLink:active {
+		transform: none;
+	}
+
+	.turnCard:hover::before {
+		transform: none;
 	}
 }
 

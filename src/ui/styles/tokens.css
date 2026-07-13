@@ -22,6 +22,11 @@
 	--space-xl: 32px;
 	--space-xxl: 48px;
 	--space-section: 96px;
+	--motion-fast: 140ms;
+	--motion-standard: 220ms;
+	--motion-page: 300ms;
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
 	--radius-xs: 2px;
 	--radius-sm: 6px;
 	--radius-md: 8px;

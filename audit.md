@@ -492,6 +492,8 @@ command trace 在整个命令完成后的 finally 才输出，且没有 parent c
 6. `[已解决]` 小按钮和 Effect 操作按钮的最小高度统一为 44px。
 7. `[已解决]` ConfirmDialog 使用 `DialogDescription`，异步确认期间设置 `aria-busy` 并禁用取消与确认按钮；调用方等待命令完成后再关闭。
 8. `[已解决]` 节点标题聚焦 effect 只依赖 eventInstanceId 与 currentNodeId。
+9. `[已解决]` 存档预览使用同一按钮展开和收起，收起时使在途请求失效，已加载结果可在当前页面会话内复用；按钮与面板通过 ARIA 关联。
+10. `[已解决]` 页面、局部内容、按钮、卡片和对话框使用统一 CSS motion token；`prefers-reduced-motion` 下移除非必要空间动画。
 
 ## 7. 推荐修复顺序
 
@@ -507,12 +509,13 @@ command trace 在整个命令完成后的 finally 才输出，且没有 parent c
 | 项目 | 结果 |
 | --- | --- |
 | `pnpm run test` | 通过；2 个测试文件、20 个非 UI 用例 |
-| `pnpm run build` | 通过；Vite 8.1.3，主 JS 495.67 kB，gzip 152.22 kB |
+| `pnpm run build` | 通过；Vite 8.1.3，主 JS 496.77 kB，gzip 152.59 kB |
 | `pnpm run lint` | 通过 |
 | `git diff --check` | 通过 |
 | P0-01 回归 | selector 失败时 terminal candidate、revision、snapshot 与持久化均保持未提交 |
 | P0-02 回归 | 下一回合失败时保留并发布已提交 `turn_end`，失败结果为 `committed: true` |
 | IndexedDB 回归 | `fake-indexeddb` 下通过开发期清理、CAS 冲突和坏记录隔离 |
+| UI 人工验收 | 待确认存档预览展开/收起、路由与节点过渡、Dialog 进出场及 reduced-motion 表现 |
 | 现有游戏包生成器与剧情路线 | 未运行；按本次审计范围明确排除 |
 | 浏览器 UI、真实 IndexedDB 升级和多标签页 | 未执行；仍需按人工清单确认 |
 

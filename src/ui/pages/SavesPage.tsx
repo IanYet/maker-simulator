@@ -54,43 +54,60 @@ function checkpointDomId(profileId: string, source: TurnRef): string {
 	return `checkpoint-${encodeURIComponent(profileId)}-${encodeURIComponent(source.runId)}-${encodeURIComponent(source.turnId)}`
 }
 
+function checkpointPreviewDomId(profileId: string, source: TurnRef): string {
+	return `${checkpointDomId(profileId, source)}-preview`
+}
+
 function CheckpointPreviewPanel({ preview }: { preview: SaveCheckpointPreview }) {
 	return (
-		<div className={styles.checkpointPreview} aria-label="检查点预览">
-			<p className={styles.previewHeading}>只读预览 · 回合 {preview.turnNumber} · {preview.phase} · {preview.runStatus}</p>
+		<div className={styles.checkpointPreview}>
+			<p className={styles.previewHeading}>
+				只读预览 · 回合 {preview.turnNumber} · {preview.phase} · {preview.runStatus}
+			</p>
 			<div className={styles.previewGrid}>
 				<section>
 					<h3>属性</h3>
-					{preview.attributes.length === 0
-						? <p className={styles.previewEmpty}>无可展示属性</p>
-						: preview.attributes.map((attribute) => (
-							<p className={styles.previewItem} key={`${attribute.characterId}:${attribute.attributeId}`}>
-								<span>{attribute.characterDisplayName} · {attribute.displayName}</span>
+					{preview.attributes.length === 0 ? (
+						<p className={styles.previewEmpty}>无可展示属性</p>
+					) : (
+						preview.attributes.map((attribute) => (
+							<p
+								className={styles.previewItem}
+								key={`${attribute.characterId}:${attribute.attributeId}`}
+							>
+								<span>
+									{attribute.characterDisplayName} · {attribute.displayName}
+								</span>
 								<strong>{attribute.displayValue}</strong>
 							</p>
-						))}
+						))
+					)}
 				</section>
 				<section>
 					<h3>效果</h3>
-					{preview.effects.length === 0
-						? <p className={styles.previewEmpty}>无已获得效果</p>
-						: preview.effects.map((effect) => (
+					{preview.effects.length === 0 ? (
+						<p className={styles.previewEmpty}>无已获得效果</p>
+					) : (
+						preview.effects.map((effect) => (
 							<p className={styles.previewItem} key={effect.effectId}>
 								<span>{effect.displayName}</span>
 								<strong>{effect.actived ? '已激活' : '未激活'}</strong>
 							</p>
-						))}
+						))
+					)}
 				</section>
 				<section>
 					<h3>事件</h3>
 					{preview.pendingEvents.map((event) => (
 						<p className={styles.previewItem} key={`pending:${event.eventId}`}>
-							<span>{event.displayName}</span><strong>待处理</strong>
+							<span>{event.displayName}</span>
+							<strong>待处理</strong>
 						</p>
 					))}
 					{preview.activeEvents.map((event) => (
 						<p className={styles.previewItem} key={event.eventInstanceId}>
-							<span>{event.displayName}</span><strong>{event.nodeDisplayName}</strong>
+							<span>{event.displayName}</span>
+							<strong>{event.nodeDisplayName}</strong>
 						</p>
 					))}
 					{preview.pendingEvents.length === 0 && preview.activeEvents.length === 0 && (
@@ -99,9 +116,17 @@ function CheckpointPreviewPanel({ preview }: { preview: SaveCheckpointPreview })
 				</section>
 				<section>
 					<h3>终局</h3>
-					{preview.ending
-						? <><p className={styles.previewItem}><span>{preview.ending.displayName}</span><strong>{preview.ending.nodeDisplayName}</strong></p><p className={styles.previewCopy}>{preview.ending.content}</p></>
-						: <p className={styles.previewEmpty}>此检查点没有关联终局节点</p>}
+					{preview.ending ? (
+						<>
+							<p className={styles.previewItem}>
+								<span>{preview.ending.displayName}</span>
+								<strong>{preview.ending.nodeDisplayName}</strong>
+							</p>
+							<p className={styles.previewCopy}>{preview.ending.content}</p>
+						</>
+					) : (
+						<p className={styles.previewEmpty}>此检查点没有关联终局节点</p>
+					)}
 				</section>
 			</div>
 		</div>
@@ -118,34 +143,43 @@ export function SavesPage() {
 	const [message, setMessage] = useState<string>()
 	const [truncateTarget, setTruncateTarget] = useState<TruncateTarget>()
 	const [previewState, setPreviewState] = useState<PreviewState>()
+	const [expandedPreviewKey, setExpandedPreviewKey] = useState<string>()
 	const previewRequest = useRef(0)
 
 	const load = useCallback(() => {
 		let active = true
+		previewRequest.current += 1
 		services.getSaveBrowser(gameId).then(
 			(view) => {
 				if (!active) return
 				setState({ status: 'ready', view })
+				setExpandedPreviewKey(undefined)
 				setPreviewState(undefined)
-				setSelectedId((current) => current && view.profiles.some(
-					(profile) => profile.profileId === current,
-				) ? current : view.profiles[0]?.profileId)
+				setSelectedId((current) =>
+					current && view.profiles.some((profile) => profile.profileId === current)
+						? current
+						: view.profiles[0]?.profileId,
+				)
 			},
 			(error: unknown) => {
-				if (active) setState({
-					status: 'error',
-					message: error instanceof Error ? error.message : String(error),
-				})
+				if (active)
+					setState({
+						status: 'error',
+						message: error instanceof Error ? error.message : String(error),
+					})
 			},
 		)
-		return () => { active = false }
+		return () => {
+			active = false
+		}
 	}, [gameId, services])
 
 	useEffect(() => load(), [load])
 
-	const selected = state.status === 'ready'
-		? state.view.profiles.find((profile) => profile.profileId === selectedId)
-		: undefined
+	const selected =
+		state.status === 'ready'
+			? state.view.profiles.find((profile) => profile.profileId === selectedId)
+			: undefined
 
 	async function runCommand(
 		profileId: string,
@@ -163,18 +197,32 @@ export function SavesPage() {
 		return result
 	}
 
-	const truncateSummary = useMemo(() => truncateTarget
-		? `将永久删除其后的 ${truncateTarget.removedCount} 个检查点，其中 ${truncateTarget.pinnedCount} 个已固定。此操作不可撤销。`
-		: '', [truncateTarget])
+	const truncateSummary = useMemo(
+		() =>
+			truncateTarget
+				? `将永久删除其后的 ${truncateTarget.removedCount} 个检查点，其中 ${truncateTarget.pinnedCount} 个已固定。此操作不可撤销。`
+				: '',
+		[truncateTarget],
+	)
 
 	function selectProfile(profileId: string): void {
 		previewRequest.current += 1
+		setExpandedPreviewKey(undefined)
 		setPreviewState(undefined)
 		setSelectedId(profileId)
 	}
 
-	function previewCheckpoint(profileId: string, source: TurnRef): void {
+	function toggleCheckpointPreview(profileId: string, source: TurnRef): void {
 		const key = checkpointKey(profileId, source)
+		if (expandedPreviewKey === key) {
+			previewRequest.current += 1
+			setExpandedPreviewKey(undefined)
+			return
+		}
+
+		setExpandedPreviewKey(key)
+		if (previewState?.key === key && previewState.status === 'ready') return
+
 		const request = ++previewRequest.current
 		setPreviewState({ status: 'loading', key })
 		services.getCheckpointPreview(profileId, source).then(
@@ -205,7 +253,13 @@ export function SavesPage() {
 			>
 				<h2 className={styles.runTitle}>
 					第 {runIndex + 1} 条时间线{' '}
-					<span className={styles.pill}>{run.origin?.kind === 'restart' ? '再来一局' : run.origin?.kind === 'branch' ? '分支' : '起点'}</span>
+					<span className={styles.pill}>
+						{run.origin?.kind === 'restart'
+							? '再来一局'
+							: run.origin?.kind === 'branch'
+								? '分支'
+								: '起点'}
+					</span>
 				</h2>
 				{run.origin?.resolved && (
 					<a
@@ -217,12 +271,16 @@ export function SavesPage() {
 				)}
 				{missingOrigin && run.origin && (
 					<p className={styles.originMissing}>
-						来源检查点已清理 · {run.origin.source.runId.slice(0, 12)} / {run.origin.source.turnId.slice(0, 12)}
+						来源检查点已清理 · {run.origin.source.runId.slice(0, 12)} /{' '}
+						{run.origin.source.turnId.slice(0, 12)}
 					</p>
 				)}
 				<div className={styles.timeline}>
 					{run.checkpoints.map((turn, turnIndex) => {
 						const key = checkpointKey(selected.profileId, turn.source)
+						const preview = previewState?.key === key ? previewState : undefined
+						const previewExpanded = expandedPreviewKey === key
+						const previewId = checkpointPreviewDomId(selected.profileId, turn.source)
 						return (
 							<article
 								className={`${styles.turnCard} ${turn.current ? styles.turnCurrent : ''}`}
@@ -233,18 +291,113 @@ export function SavesPage() {
 									<strong>{kindLabel(turn)}</strong>
 									{turn.current && <span className={styles.pill}>当前</span>}
 								</div>
-								<span className={styles.turnMeta}>#{turnIndex + 1} · {formatDate(turn.createdAt)} · {turn.pinned ? '已固定' : '自动保留'}</span>
+								<span className={styles.turnMeta}>
+									#{turnIndex + 1} · {formatDate(turn.createdAt)} ·{' '}
+									{turn.pinned ? '已固定' : '自动保留'}
+								</span>
 								<div className={styles.turnActions}>
-									<Button className={styles.smallButton} disabled={!selected.available} variant="secondary" onClick={() => previewCheckpoint(selected.profileId, turn.source)}>预览</Button>
-									{turn.canContinue && <Button className={styles.smallButton} onClick={() => void runCommand(selected.profileId, { type: 'continue-checkpoint', source: turn.source }, true)}>继续</Button>}
-									{turn.canBranch && <Button className={styles.smallButton} onClick={() => void runCommand(selected.profileId, { type: 'create-branch', source: turn.source }, true)}>创建分支</Button>}
-									{turn.canTruncate && <Button className={styles.smallButton} variant="tertiary" onClick={() => setTruncateTarget({ profileId: selected.profileId, source: turn.source, removedCount: turn.truncateRemovedCount, pinnedCount: turn.truncatePinnedCount })}>删除后续并继续</Button>}
-									{turn.resultLocation && <ButtonLink className={styles.smallButton} variant={turn.kind === 'abandoned' ? 'secondary' : 'primary'} to={turn.resultLocation}>{turn.kind === 'abandoned' ? '查看记录' : '查看结局'}</ButtonLink>}
-									<Button className={styles.smallButton} disabled={!selected.available} variant="secondary" onClick={() => void runCommand(selected.profileId, { type: 'set-checkpoint-pinned', source: turn.source, pinned: !turn.pinned })}>{turn.pinned ? '取消固定' : '固定'}</Button>
+									<Button
+										aria-controls={previewId}
+										aria-expanded={previewExpanded}
+										className={styles.smallButton}
+										disabled={!selected.available}
+										variant="secondary"
+										onClick={() => toggleCheckpointPreview(selected.profileId, turn.source)}
+									>
+										{previewExpanded ? '收起预览' : '预览'}
+									</Button>
+									{turn.canContinue && (
+										<Button
+											className={styles.smallButton}
+											onClick={() =>
+												void runCommand(
+													selected.profileId,
+													{ type: 'continue-checkpoint', source: turn.source },
+													true,
+												)
+											}
+										>
+											继续
+										</Button>
+									)}
+									{turn.canBranch && (
+										<Button
+											className={styles.smallButton}
+											onClick={() =>
+												void runCommand(
+													selected.profileId,
+													{ type: 'create-branch', source: turn.source },
+													true,
+												)
+											}
+										>
+											创建分支
+										</Button>
+									)}
+									{turn.canTruncate && (
+										<Button
+											className={styles.smallButton}
+											variant="tertiary"
+											onClick={() =>
+												setTruncateTarget({
+													profileId: selected.profileId,
+													source: turn.source,
+													removedCount: turn.truncateRemovedCount,
+													pinnedCount: turn.truncatePinnedCount,
+												})
+											}
+										>
+											删除后续并继续
+										</Button>
+									)}
+									{turn.resultLocation && (
+										<ButtonLink
+											className={styles.smallButton}
+											variant={turn.kind === 'abandoned' ? 'secondary' : 'primary'}
+											to={turn.resultLocation}
+										>
+											{turn.kind === 'abandoned' ? '查看记录' : '查看结局'}
+										</ButtonLink>
+									)}
+									<Button
+										className={styles.smallButton}
+										disabled={!selected.available}
+										variant="secondary"
+										onClick={() =>
+											void runCommand(selected.profileId, {
+												type: 'set-checkpoint-pinned',
+												source: turn.source,
+												pinned: !turn.pinned,
+											})
+										}
+									>
+										{turn.pinned ? '取消固定' : '固定'}
+									</Button>
 								</div>
-								{previewState?.key === key && previewState.status === 'loading' && <StatusBanner tone="loading">正在投影检查点…</StatusBanner>}
-								{previewState?.key === key && previewState.status === 'error' && <StatusBanner tone="error">无法预览：{previewState.message}</StatusBanner>}
-								{previewState?.key === key && previewState.status === 'ready' && <CheckpointPreviewPanel preview={previewState.preview} />}
+								<div
+									aria-busy={preview?.status === 'loading'}
+									aria-hidden={!previewExpanded}
+									aria-label="检查点预览"
+									className={`${styles.previewRegion} ${previewExpanded ? styles.previewRegionOpen : ''}`}
+									id={previewId}
+									role="region"
+								>
+									<div className={styles.previewRegionInner}>
+										{preview && (
+											<div className={styles.previewRegionContent}>
+												{preview.status === 'loading' && (
+													<StatusBanner tone="loading">正在投影检查点…</StatusBanner>
+												)}
+												{preview.status === 'error' && (
+													<StatusBanner tone="error">无法预览：{preview.message}</StatusBanner>
+												)}
+												{preview.status === 'ready' && (
+													<CheckpointPreviewPanel preview={preview.preview} />
+												)}
+											</div>
+										)}
+									</div>
+								</div>
 							</article>
 						)
 					})}
@@ -254,18 +407,38 @@ export function SavesPage() {
 	}
 
 	return (
-		<PageChrome action={<ButtonLink variant="tertiary" to={`/games/${encodeURIComponent(gameId)}`}>返回游戏菜单</ButtonLink>}>
+		<PageChrome
+			action={
+				<ButtonLink variant="tertiary" to={`/games/${encodeURIComponent(gameId)}`}>
+					返回游戏菜单
+				</ButtonLink>
+			}
+		>
 			<p className={styles.eyebrow}>Save browser</p>
 			<h1 className={styles.title}>时间线与分支。</h1>
-			<p className={styles.subtitle}>浏览检查点不会改变当前恢复位置。继续、创建分支或截断后，新的恢复游标才会被原子保存。</p>
-			{message && <div className={styles.statusWrap}><StatusBanner tone="error">{message}</StatusBanner></div>}
-			{state.status === 'loading' && <StatusBanner tone="loading">正在读取 IndexedDB 存档…</StatusBanner>}
-			{state.status === 'error' && <StatusBanner tone="error">无法读取存档：{state.message}</StatusBanner>}
+			<p className={styles.subtitle}>
+				浏览检查点不会改变当前恢复位置。继续、创建分支或截断后，新的恢复游标才会被原子保存。
+			</p>
+			{message && (
+				<div className={styles.statusWrap}>
+					<StatusBanner tone="error">{message}</StatusBanner>
+				</div>
+			)}
+			{state.status === 'loading' && (
+				<StatusBanner tone="loading">正在读取 IndexedDB 存档…</StatusBanner>
+			)}
+			{state.status === 'error' && (
+				<StatusBanner tone="error">无法读取存档：{state.message}</StatusBanner>
+			)}
 			{state.status === 'ready' && state.view.invalidSaveCount > 0 && (
-				<StatusBanner tone="error">有 {state.view.invalidSaveCount} 条损坏记录已被隔离，其余存档仍可使用。</StatusBanner>
+				<StatusBanner tone="error">
+					有 {state.view.invalidSaveCount} 条损坏记录已被隔离，其余存档仍可使用。
+				</StatusBanner>
 			)}
 			{state.status === 'ready' && state.view.profiles.length === 0 && (
-				<StatusBanner tone="empty">这个游戏还没有可用存档。开始新游戏后，初始检查点会显示在这里。</StatusBanner>
+				<StatusBanner tone="empty">
+					这个游戏还没有可用存档。开始新游戏后，初始检查点会显示在这里。
+				</StatusBanner>
 			)}
 			{state.status === 'ready' && state.view.profiles.length > 0 && (
 				<div className={styles.savesLayout}>
@@ -277,21 +450,39 @@ export function SavesPage() {
 								onClick={() => selectProfile(profile.profileId)}
 								type="button"
 							>
-								<span className={styles.profileName}>{profile.label || `存档 · ${formatDate(profile.createdAt)}`}</span>
-								<span className={styles.profileMeta}>回合 {profile.currentTurnNumber} · {profile.currentRunStatus} · v{profile.configVersion}</span>
-								{profile.unavailableReason && <span className={styles.profileMeta}>{profile.unavailableReason}</span>}
+								<span className={styles.profileName}>
+									{profile.label || `存档 · ${formatDate(profile.createdAt)}`}
+								</span>
+								<span className={styles.profileMeta}>
+									回合 {profile.currentTurnNumber} · {profile.currentRunStatus} · v
+									{profile.configVersion}
+								</span>
+								{profile.unavailableReason && (
+									<span className={styles.profileMeta}>{profile.unavailableReason}</span>
+								)}
 							</button>
 						))}
 					</aside>
-					<section className={styles.timeline} aria-label="时间线">
-						{selected && <p className={styles.metaLine}>{selected.runs.length} 条时间线 · 更新于 {formatDate(selected.updatedAt)}</p>}
-						{selected && selected.runs
-							.filter((run) => !run.origin || run.origin.resolved)
-							.map((run) => renderRun(run, selected.runs.indexOf(run)))}
+					<section
+						className={`${styles.timeline} ${styles.timelineView}`}
+						aria-label="时间线"
+						key={selected?.profileId ?? 'empty'}
+					>
+						{selected && (
+							<p className={styles.metaLine}>
+								{selected.runs.length} 条时间线 · 更新于 {formatDate(selected.updatedAt)}
+							</p>
+						)}
+						{selected &&
+							selected.runs
+								.filter((run) => !run.origin || run.origin.resolved)
+								.map((run) => renderRun(run, selected.runs.indexOf(run)))}
 						{selected && selected.runs.some((run) => run.origin && !run.origin.resolved) && (
 							<div className={styles.orphanedRuns}>
 								<h2 className={styles.orphanedTitle}>来源已清理</h2>
-								<p className={styles.turnMeta}>这些时间线仍有完整 initial snapshot，可以独立预览和恢复。</p>
+								<p className={styles.turnMeta}>
+									这些时间线仍有完整 initial snapshot，可以独立预览和恢复。
+								</p>
 								{selected.runs
 									.filter((run) => run.origin && !run.origin.resolved)
 									.map((run) => renderRun(run, selected.runs.indexOf(run)))}

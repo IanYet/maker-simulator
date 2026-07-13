@@ -45,13 +45,15 @@ export function ConfirmDialog({
 
 	return (
 		<Dialog open={open} onClose={handleClose}>
-			<DialogBackdrop className={styles.dialogBackdrop} />
+			<DialogBackdrop transition className={styles.dialogBackdrop} />
 			<div className={styles.dialogWrap}>
-				<DialogPanel aria-busy={busy} className={styles.dialogPanel}>
+				<DialogPanel transition aria-busy={busy} className={styles.dialogPanel}>
 					<DialogTitle className={styles.dialogTitle}>{title}</DialogTitle>
 					<DialogDescription className={styles.dialogText}>{description}</DialogDescription>
 					<div className={styles.dialogActions}>
-						<Button disabled={busy} variant="secondary" onClick={handleClose}>取消</Button>
+						<Button disabled={busy} variant="secondary" onClick={handleClose}>
+							取消
+						</Button>
 						<Button
 							disabled={busy}
 							variant={danger ? 'danger' : 'primary'}

@@ -131,6 +131,15 @@ spacing:
   xxl: 48px
   section: 96px
 
+motion:
+  fast: 140ms
+  standard: 220ms
+  page: 300ms
+  easing-standard: "cubic-bezier(0.2, 0, 0, 1)"
+  easing-emphasized: "cubic-bezier(0.16, 1, 0.3, 1)"
+  distance-sm: 5px
+  distance-md: 10px
+
 components:
   button-primary:
     backgroundColor: "{colors.primary}"
@@ -238,6 +247,14 @@ components:
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
     padding: 16px
+  checkpoint-preview:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.md}"
+    borderColor: "{colors.hairline}"
+    transitionDuration: "{motion.standard}"
+    transitionEasing: "{motion.easing-emphasized}"
   feature-illustration-tile:
     backgroundColor: "{colors.surface-soft}"
     textColor: "{colors.ink}"
@@ -395,6 +412,33 @@ Figma's marketing system is shadow-light by design — the color blocks substitu
 - **Sticky-note style component thumbnails** in FigJam — slightly off-axis pastel rectangles arranged like notes on a board — read as collage, not card-stack.
 - **Embedded product UI mocks** (Figma Design panels, FigJam canvas snippets) appear as flat compositions on color blocks; their internal shadows are subtle and stay within the mock.
 
+## Motion & Transitions
+
+Motion explains navigation, disclosure, asynchronous replacement, and direct manipulation. It stays secondary to the black-and-white editorial frame and pastel blocks; movement must not become an independent decorative layer.
+
+### Timing and Easing
+
+| Token | Value | Use |
+|---|---:|---|
+| `{motion.fast}` | 140ms | Hover color, border, and small control feedback |
+| `{motion.standard}` | 220ms | Disclosure, dialog, node, banner, and local content transitions |
+| `{motion.page}` | 300ms | Route page and primary content entry |
+| `{motion.easing-standard}` | cubic-bezier(0.2, 0, 0, 1) | Opacity and color transitions |
+| `{motion.easing-emphasized}` | cubic-bezier(0.16, 1, 0.3, 1) | Short spatial movement that settles quickly |
+
+### Interaction Rules
+
+- A route page enters once with opacity and at most `{motion.distance-md}` of upward travel. Route changes do not animate the outgoing page or delay navigation.
+- Newly available local content, including event nodes, status banners, selected save timelines, and loaded grids, uses `{motion.standard}` or `{motion.page}` with no more than `{motion.distance-md}` of travel.
+- Hover feedback is limited to `{motion.distance-sm}` or less. Buttons, selectable cards, event pills, and timeline cards may lift slightly; ordinary text and static content do not move.
+- `{components.checkpoint-preview}` uses one toggle control for both states. The control exposes `aria-expanded` and names the panel with `aria-controls`; loading, error, and ready content occupy the same collapsible region. Collapsing an in-flight request prevents the late result from reopening the region.
+- Dialog backdrop opacity and dialog panel opacity/scale transition together on both entry and exit. Focus trapping and focus restoration remain authoritative over animation timing.
+- Busy feedback may loop while work is active. Page, card, disclosure, and result animations run once per state transition.
+
+### Reduced Motion
+
+Under `prefers-reduced-motion: reduce`, page and local content entry animations are removed, spatial hover movement is disabled, smooth scrolling becomes immediate, and remaining state transitions complete effectively instantly. State changes, focus movement, labels, and live-region announcements remain unchanged.
+
 ## Shapes
 
 ### Border Radius Scale
@@ -464,6 +508,11 @@ Figma's marketing system is shadow-light by design — the color blocks substitu
 
 **`feature-illustration-tile`** — Larger composition tile that holds a product UI mock or pastel illustration.
 - Background `{colors.surface-soft}`, text `{colors.ink}`, type `{typography.eyebrow}`, rounded `{rounded.md}`, padding `{spacing.lg}`.
+
+**`checkpoint-preview`** — Collapsible read-only detail region inside a save timeline card.
+- Background `{colors.canvas}`, text `{colors.ink}`, type `{typography.body-sm}`, separated from checkpoint actions by a `{colors.hairline}` rule.
+- The same pill toggles “预览” and “收起预览”. The region expands and collapses over `{motion.standard}` without changing the saved recovery cursor.
+- Reopening an already loaded preview reuses the local read model; choosing another Profile or refreshing save data clears the expanded state.
 
 ### Color-Block Sections (signature)
 
@@ -575,4 +624,4 @@ The defining surface of Figma's marketing. Each is a full-content-width panel wi
 - The exact pastel hex values of `{colors.block-*}` are derived from screenshot pixels; the production source likely uses named tokens that aren't exposed via CSS variables. Treat the documented hex values as faithful approximations rather than exact brand specs.
 - Dark mode is not documented because the marketing site does not ship a dark theme — the closest analog is the navy color-block (`color-block-section-navy`) and the inverse-canvas footer.
 - Form-field error and validation styling is not visible on `/contact/` because no error states render in the static screenshot. Inputs have hairline borders and rounded `{rounded.md}` corners; error treatment is not documented.
-- The animated marquee-strip and color-block reveal animations are not documented (per the no-interaction policy).
+- Scroll-linked illustration motion and decorative marquee choreography remain undefined; application UI motion is limited to the state transitions documented above.

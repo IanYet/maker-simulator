@@ -366,6 +366,7 @@ function GameScreen({ session }: { session: GameSession }) {
 					<div className={styles.nodeArea}>
 						{focused ? (
 							<EventNode
+								key={`${focused.eventInstanceId}:${focused.currentNodeId}`}
 								session={session}
 								event={focused}
 								busy={view.busy}
