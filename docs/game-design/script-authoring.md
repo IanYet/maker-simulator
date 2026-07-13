@@ -4,7 +4,7 @@
 
 ## 脚本运行时参数
 
-Rule 与 Action 都先接收一个 `context` 对象，随后才是 Config 中配置的参数。Rule 会在 UI 读取和 Reaction 全量扫描时重复执行，因此只能读取 State 视图和调用其他 Rule。Action 可以写入 State、使用受管随机数、调用其他 Action，并请求终局。
+Rule 与 Action 都先接收一个 `context` 对象，随后才是 Config 中配置的参数。Rule 会作为依赖图计算节点，在 State 依赖失效后由 UI、Effect 生命周期或 Reaction observer 惰性重算，因此只能读取 State 视图和调用其他 Rule。Action 可以写入 State、使用受管随机数、调用其他 Action，并请求终局。
 
 - `context.config` 是只读的原始 GameConfig。
 - `context.profileState` 是 Config 与 ProfileState 合并后的解析 State 视图。
@@ -191,7 +191,7 @@ interface EffectConfig extends CommonConfig {
 
 策划默认约定：不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，优先声明在 Effect 上；Effect 的 `displayName` 与 `description` 应说明持续规则及其影响，让玩家能在效果面板看到这些规则。EventConfig Reaction 主要用于事件内容自身的持续响应。
 
-效果的 `acquiredValue`、`activedValue` 基础值和发生回合保存在 RunState 的 `effects` 对应 EffectState 中。所有 EffectConfig 的 Reaction 在创建、载入、分支或截断恢复 RunData 时纳入扫描，无需等待 EffectState 出现；恢复时只建立基准值。Reaction 基准值属于可由 State 重建的运行时数据，不写入存档。
+效果的 `acquiredValue`、`activedValue` 基础值和发生回合保存在 RunState 的 `effects` 对应 EffectState 中。所有 EffectConfig 的 Reaction 在创建、载入、分支或截断恢复 RunData 时注册为持续 observer，无需等待 EffectState 出现；恢复时只建立基准值。依赖图和 Reaction baseline 都属于可由 State 重建的运行时数据，不写入存档。
 
 ### 事件 Event
 事件是叙事的对象。一个事件是一张有向图：节点负责展示叙事、执行动作或检查规则；边由动作或规则决定。事件可以是事件，区域，商店，科技树等等所有有剧情有分支节点的抽象

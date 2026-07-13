@@ -185,7 +185,7 @@ export const actions = {
 
 ### Rule 是纯计算
 
-Rule 会在每次 UI 读取、Reaction 全量扫描和嵌套 Rule 调用时直接执行，因此 Rule 必须是对 Config、State 与参数的纯计算：
+Rule 会成为以 key 和参数标识的依赖图计算节点；State 依赖失效后，UI、Effect 生命周期、Reaction observer 或嵌套 Rule 调用会触发惰性重算。Rule 必须是对 Config、State 与参数的纯计算：
 
 - RuleContext 只提供只读 `config`、`profileState`、`runState`、`turnState` 和 `rule`；
 - RuleContext **不提供** `action`、`random` 或 `endRun`；
@@ -359,15 +359,15 @@ ActionRegistry 和 RuleRegistry 在包加载时建立一次，不为每个 Profi
 1. 接收已成功链接的 `LoadedGamePackage`。
 2. 创建稀疏 ProfileState/RunState/TurnState 与 RandomState，把 Config 的 `xxxValue` 基础值和初始生命周期事实物化到 RunState。
 3. 校验初始 State，构造包含 `initial` TurnData 的 RunData 与 StoredProfile，并持久化。
-4. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，创建处理单元管理器和 Config/State 合并 Proxy，再绑定 RuleRegistry 与 ActionRegistry。
-5. 按 canonical key 收集配置级 Reaction 并建立基准；失败时关闭 Runtime，已持久化的 `initial` 保持不变。
+4. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，创建处理单元管理器、Config/State 合并 Proxy 和依赖图，再绑定 RuleRegistry 与 ActionRegistry。
+5. 按 canonical key 注册 Effect 生命周期与配置级 Reaction observer 并建立基准；失败时关闭 Runtime，已持久化的 `initial` 保持不变。
 6. 将已就绪的运行时交给回合状态机，由它以 initial 为回滚边界开始首回合；首回合脚本失败时同样保留完整 initial 并报告错误。
 
 继续、branch 或截断恢复的衔接顺序是：
 
 1. 校验 StoredProfile，并根据其中的 Config id 与版本取得完全匹配的 `LoadedGamePackage`；精确版本不可用时停止恢复。
 2. 从选中 snapshot 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本。
-3. 创建处理单元管理器、合并 Proxy、context-bound Rule/Action 执行器和 Reaction baseline。
+3. 创建处理单元管理器、合并 Proxy、context-bound Rule/Action 执行器、依赖图和 observer baseline。
 4. 按 canonical key 注册所有配置级 Reaction，并为每个 active EventInstance 的当前 TextNode 恢复节点 Reaction；所有 Reaction 都只建立基准值。
 5. `initial` 与 `turn_end` 交给状态机开始下一回合；`terminal` 或 `abandoned` 只恢复结果界面，不创建可接受游戏指令的回合运行时。
 

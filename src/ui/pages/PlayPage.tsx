@@ -1,11 +1,4 @@
-import {
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-	type RefObject,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import type {
 	ActiveEventView,
@@ -30,7 +23,8 @@ interface AttributeChange {
 	token: string
 }
 
-const attributeKey = (characterId: string, attributeId: string): string => `${characterId}.${attributeId}`
+const attributeKey = (characterId: string, attributeId: string): string =>
+	`${characterId}.${attributeId}`
 
 function EffectCard({
 	effect,
@@ -45,13 +39,17 @@ function EffectCard({
 }) {
 	const pending = !effect.actived
 	return (
-		<article className={`${styles.effectCard} ${effect.actived ? styles.effectCardActive : styles.effectCardPending}`}>
+		<article
+			className={`${styles.effectCard} ${effect.actived ? styles.effectCardActive : styles.effectCardPending}`}
+		>
 			<div className={styles.effectName}>
 				<span>{effect.displayName}</span>
 				<span className={styles.pill}>{effect.actived ? '已激活' : '待激活'}</span>
 			</div>
 			{effect.description && <p className={styles.effectText}>{effect.description}</p>}
-			{effect.bindCharacterDisplayName && <p className={styles.effectText}>绑定：{effect.bindCharacterDisplayName}</p>}
+			{effect.bindCharacterDisplayName && (
+				<p className={styles.effectText}>绑定：{effect.bindCharacterDisplayName}</p>
+			)}
 			{pending && effect.manuallyActivatable && (
 				<div className={styles.effectActions}>
 					<Button
@@ -85,7 +83,13 @@ export function PlayPage() {
 				if (active) setState({ status: 'ready', session })
 				else session.dispose()
 			},
-			(error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : String(error) }) },
+			(error: unknown) => {
+				if (active)
+					setState({
+						status: 'error',
+						message: error instanceof Error ? error.message : String(error),
+					})
+			},
 		)
 		return () => {
 			active = false
@@ -94,10 +98,18 @@ export function PlayPage() {
 	}, [navigate, profileId, services])
 
 	if (state.status === 'loading') {
-		return <main className={styles.page}><StatusBanner tone="loading">正在从最后稳定检查点重建运行时…</StatusBanner></main>
+		return (
+			<main className={styles.page}>
+				<StatusBanner tone="loading">正在从最后稳定检查点重建运行时…</StatusBanner>
+			</main>
+		)
 	}
 	if (state.status === 'error') {
-		return <main className={styles.page}><StatusBanner tone="error">无法恢复游戏：{state.message}</StatusBanner></main>
+		return (
+			<main className={styles.page}>
+				<StatusBanner tone="error">无法恢复游戏：{state.message}</StatusBanner>
+			</main>
+		)
 	}
 	return <GameScreen session={state.session} />
 }
@@ -137,14 +149,27 @@ function GameScreen({ session }: { session: GameSession }) {
 	}, [attributeChanges])
 
 	/** 记录一次命令造成的属性差异，并交给面板动画短暂展示。 */
-	function showAttributeChanges(previous: readonly AttributeView[], current: readonly AttributeView[], revision: number): void {
-		const previousByKey = new Map(previous.map((attribute) => [attributeKey(attribute.characterId, attribute.attributeId), attribute]))
+	function showAttributeChanges(
+		previous: readonly AttributeView[],
+		current: readonly AttributeView[],
+		revision: number,
+	): void {
+		const previousByKey = new Map(
+			previous.map((attribute) => [
+				attributeKey(attribute.characterId, attribute.attributeId),
+				attribute,
+			]),
+		)
 		const changes: Record<string, AttributeChange> = {}
 
 		for (const attribute of current) {
 			const key = attributeKey(attribute.characterId, attribute.attributeId)
 			const prior = previousByKey.get(key)
-			if (!prior || (prior.value === attribute.value && prior.displayValue === attribute.displayValue)) continue
+			if (
+				!prior ||
+				(prior.value === attribute.value && prior.displayValue === attribute.displayValue)
+			)
+				continue
 			changes[key] = {
 				from: prior.displayValue,
 				to: attribute.displayValue,
@@ -153,14 +178,18 @@ function GameScreen({ session }: { session: GameSession }) {
 			}
 		}
 
-		if (Object.keys(changes).length > 0) setAttributeChanges((active) => ({ ...active, ...changes }))
+		if (Object.keys(changes).length > 0)
+			setAttributeChanges((active) => ({ ...active, ...changes }))
 	}
 
 	const attributesByCharacter = useMemo(() => {
-		const groups = new Map<string, {
-			displayName: string
-			attributes: typeof view.runtime.attributes
-		}>()
+		const groups = new Map<
+			string,
+			{
+				displayName: string
+				attributes: typeof view.runtime.attributes
+			}
+		>()
 		for (const attribute of view.runtime.attributes) {
 			const current = groups.get(attribute.characterId)
 			groups.set(attribute.characterId, {
@@ -233,7 +262,8 @@ function GameScreen({ session }: { session: GameSession }) {
 							<div className={styles.attributeGroup} key={characterId}>
 								<h3>{group.displayName}</h3>
 								{group.attributes.map((attribute) => {
-									const change = attributeChanges[attributeKey(attribute.characterId, attribute.attributeId)]
+									const change =
+										attributeChanges[attributeKey(attribute.characterId, attribute.attributeId)]
 									const direction = change
 										? change.delta > 0
 											? styles.attributeChangePositive
@@ -248,7 +278,12 @@ function GameScreen({ session }: { session: GameSession }) {
 										>
 											<span>{attribute.displayName}</span>
 											<span className={styles.attributeValueWrap}>
-												<span className={styles.attributeValue}>{attribute.displayValue}{attribute.min !== undefined || attribute.max !== undefined ? ` / ${attribute.min ?? '−∞'}–${attribute.max ?? '∞'}` : ''}</span>
+												<span className={styles.attributeValue}>
+													{attribute.displayValue}
+													{attribute.min !== undefined || attribute.max !== undefined
+														? ` / ${attribute.min ?? '−∞'}–${attribute.max ?? '∞'}`
+														: ''}
+												</span>
 												{change && (
 													<span
 														aria-live="polite"
@@ -267,20 +302,38 @@ function GameScreen({ session }: { session: GameSession }) {
 					</section>
 					<section className={styles.sideSection}>
 						<h2 className={styles.sectionLabel}>Effects / 构建</h2>
-						{view.runtime.effects.length === 0 ? <p>尚未获得 Effect。</p> : (
+						{view.runtime.effects.length === 0 ? (
+							<p>尚未获得 Effect。</p>
+						) : (
 							<>
 								<div className={styles.effectGroup}>
 									<h3 className={styles.effectGroupTitle}>已激活</h3>
 									<div className={styles.effectList}>
 										{activeEffects.length === 0 && <p>暂无已激活 Effect。</p>}
-										{activeEffects.map((effect) => <EffectCard busy={view.busy} effect={effect} execute={execute} key={effect.effectId} session={session} />)}
+										{activeEffects.map((effect) => (
+											<EffectCard
+												busy={view.busy}
+												effect={effect}
+												execute={execute}
+												key={effect.effectId}
+												session={session}
+											/>
+										))}
 									</div>
 								</div>
 								<div className={styles.effectGroup}>
 									<h3 className={styles.effectGroupTitle}>已获得 · 待激活</h3>
 									<div className={styles.effectList}>
 										{pendingEffects.length === 0 && <p>暂无待激活 Effect。</p>}
-										{pendingEffects.map((effect) => <EffectCard busy={view.busy} effect={effect} execute={execute} key={effect.effectId} session={session} />)}
+										{pendingEffects.map((effect) => (
+											<EffectCard
+												busy={view.busy}
+												effect={effect}
+												execute={execute}
+												key={effect.effectId}
+												session={session}
+											/>
+										))}
 									</div>
 								</div>
 							</>
@@ -293,36 +346,62 @@ function GameScreen({ session }: { session: GameSession }) {
 							<p className={styles.sectionLabel}>Current run</p>
 							<h1 className={styles.playTitle}>{view.gameName}</h1>
 						</div>
-						<div className={styles.playMeta}>回合 {view.runtime.turnNumber} · {view.runtime.phase}{view.busy ? ' · 执行中' : ''}</div>
+						<div className={styles.playMeta}>
+							回合 {view.runtime.turnNumber} · {view.runtime.phase}
+							{view.busy ? ' · 执行中' : ''}
+						</div>
 					</header>
-					{message && <div className={styles.message} role="alert">{message}</div>}
+					{message && (
+						<div className={styles.message} role="alert">
+							{message}
+						</div>
+					)}
 					<div className={styles.eventStrip} aria-label="事件入口">
-						{view.runtime.activeEvents.length === 0 && view.runtime.eventCards.length === 0
-							? <span className={styles.playMeta}>本回合没有可启动事件</span>
-							: eventButtons()}
+						{view.runtime.activeEvents.length === 0 && view.runtime.eventCards.length === 0 ? (
+							<span className={styles.playMeta}>本回合没有可启动事件</span>
+						) : (
+							eventButtons()
+						)}
 					</div>
 					<div className={styles.nodeArea}>
-						{focused
-							? <EventNode session={session} event={focused} busy={view.busy} execute={execute} headingRef={nodeHeading} />
-							: (
-								<Surface tone="soft" className={styles.emptyNode}>
-									<p className={styles.eyebrow}>Event network</p>
-									<h2 className={styles.nodeTitle}>选择一个事件，或结束当前回合。</h2>
-									<p className={styles.nodeContent}>事件可以并行进行；待处理区或进行中带有“必须处理”标记的事件会阻止进入下一回合。</p>
-								</Surface>
-							)}
+						{focused ? (
+							<EventNode
+								session={session}
+								event={focused}
+								busy={view.busy}
+								execute={execute}
+								headingRef={nodeHeading}
+							/>
+						) : (
+							<Surface tone="soft" className={styles.emptyNode}>
+								<p className={styles.eyebrow}>Event network</p>
+								<h2 className={styles.nodeTitle}>选择一个事件，或结束当前回合。</h2>
+								<p className={styles.nodeContent}>
+									事件可以并行进行；待处理区或进行中带有“必须处理”标记的事件会阻止进入下一回合。
+								</p>
+							</Surface>
+						)}
 					</div>
 					<footer className={styles.actionBar}>
 						<div className={styles.actionBarSecondary}>
-							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('exit')}>退出</Button>
-							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('abandon')}>退出并放弃</Button>
-							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('saves')}>选择存档</Button>
+							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('exit')}>
+								退出
+							</Button>
+							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('abandon')}>
+								放弃
+							</Button>
+							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('saves')}>
+								选择存档
+							</Button>
 						</div>
 						<div className={styles.actionBarPrimary}>
 							{view.busy && <span className={styles.busy}>处理中</span>}
 							<Button
 								disabled={view.busy || !view.runtime.canAdvanceTurn}
-								title={view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；') || undefined}
+								title={
+									view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；') ||
+									undefined
+								}
 								onClick={() => void execute(session.advanceTurn())}
 							>
 								下一回合
@@ -331,7 +410,12 @@ function GameScreen({ session }: { session: GameSession }) {
 					</footer>
 				</section>
 			</div>
-			<LiveRegion>{message || (view.busy ? '正在执行命令' : view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；'))}</LiveRegion>
+			<LiveRegion>
+				{message ||
+					(view.busy
+						? '正在执行命令'
+						: view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；'))}
+			</LiveRegion>
 			<ConfirmDialog
 				open={dialog === 'exit'}
 				title="退出当前回合？"
@@ -386,8 +470,13 @@ function EventNode({
 	const node = event.currentNode
 	return (
 		<Surface tone="lilac" className={styles.nodeBlock}>
-			<p className={styles.eyebrow}>{event.displayName}{node.required ? ' · Required' : ''}</p>
-			<h2 className={styles.nodeTitle} ref={headingRef} tabIndex={-1}>{node.displayName}</h2>
+			<p className={styles.eyebrow}>
+				{event.displayName}
+				{node.required ? ' · Required' : ''}
+			</p>
+			<h2 className={styles.nodeTitle} ref={headingRef} tabIndex={-1}>
+				{node.displayName}
+			</h2>
 			<p className={styles.nodeContent}>{node.content}</p>
 			{node.type === 'single' ? (
 				<div className={styles.choiceList}>
@@ -396,10 +485,15 @@ function EventNode({
 							className={styles.choiceButton}
 							disabled={busy || !choice.enabled}
 							key={choice.choiceId}
-							onClick={() => void execute(session.chooseSingle(event.eventInstanceId, node.nodeId, choice.choiceId))}
+							onClick={() =>
+								void execute(
+									session.chooseSingle(event.eventInstanceId, node.nodeId, choice.choiceId),
+								)
+							}
 							variant="secondary"
 						>
-							{choice.displayName}{choice.description ? ` — ${choice.description}` : ''}
+							{choice.displayName}
+							{choice.description ? ` — ${choice.description}` : ''}
 						</Button>
 					))}
 				</div>
@@ -407,17 +501,74 @@ function EventNode({
 				<div className={styles.choiceList}>
 					{node.choices.map((choice) => (
 						<div className={styles.multipleRow} key={choice.choiceId}>
-							<div><strong>{choice.displayName}</strong>{choice.description && <p>{choice.description}</p>}</div>
+							<div>
+								<strong>{choice.displayName}</strong>
+								{choice.description && <p>{choice.description}</p>}
+							</div>
 							<div className={styles.stepper}>
-								<Button icon variant="secondary" aria-label={`减少 ${choice.displayName}`} disabled={busy || !choice.enabled || choice.count === 0} onClick={() => void execute(session.updateSelection(event.eventInstanceId, node.nodeId, choice.choiceId, choice.count - 1))}>−</Button>
-								<span className={styles.count} aria-live="polite">{choice.count}</span>
-								<Button icon variant="secondary" aria-label={`增加 ${choice.displayName}`} disabled={busy || !choice.enabled || (choice.maxCount !== undefined && choice.count >= choice.maxCount)} onClick={() => void execute(session.updateSelection(event.eventInstanceId, node.nodeId, choice.choiceId, choice.count + 1))}>＋</Button>
+								<Button
+									icon
+									variant="secondary"
+									aria-label={`减少 ${choice.displayName}`}
+									disabled={busy || !choice.enabled || choice.count === 0}
+									onClick={() =>
+										void execute(
+											session.updateSelection(
+												event.eventInstanceId,
+												node.nodeId,
+												choice.choiceId,
+												choice.count - 1,
+											),
+										)
+									}
+								>
+									−
+								</Button>
+								<span className={styles.count} aria-live="polite">
+									{choice.count}
+								</span>
+								<Button
+									icon
+									variant="secondary"
+									aria-label={`增加 ${choice.displayName}`}
+									disabled={
+										busy ||
+										!choice.enabled ||
+										(choice.maxCount !== undefined && choice.count >= choice.maxCount)
+									}
+									onClick={() =>
+										void execute(
+											session.updateSelection(
+												event.eventInstanceId,
+												node.nodeId,
+												choice.choiceId,
+												choice.count + 1,
+											),
+										)
+									}
+								>
+									＋
+								</Button>
 							</div>
 						</div>
 					))}
 					<div className={styles.commandList}>
 						{node.commands.map((command) => (
-							<Button disabled={busy || !command.enabled} key={command.commandId} onClick={() => void execute(session.executeNodeCommand(event.eventInstanceId, node.nodeId, command.commandId))}>{command.displayName}</Button>
+							<Button
+								disabled={busy || !command.enabled}
+								key={command.commandId}
+								onClick={() =>
+									void execute(
+										session.executeNodeCommand(
+											event.eventInstanceId,
+											node.nodeId,
+											command.commandId,
+										),
+									)
+								}
+							>
+								{command.displayName}
+							</Button>
 						))}
 					</div>
 				</div>

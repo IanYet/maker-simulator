@@ -40,9 +40,12 @@ import {
 } from './errors'
 import { nextRandom } from './random'
 import {
+	compareReactionDefinitions,
 	collectReactionDefinitions,
+	collectTextNodeReactionDefinitions,
 	type ReactionDefinition,
 } from './reactions'
+import { ReactiveDependencyGraph, type RuntimeStateScope } from './reactivity'
 import { projectRuntimeSnapshot } from './selectors'
 import { createRuntimeView, readPath } from './state-view'
 import {
@@ -55,13 +58,15 @@ import {
 import { NoopRuntimeMonitor } from './monitor'
 
 const ACTION_LIMIT = 512
-const RULE_EXECUTION_LIMIT = 4096
+const RULE_RECOMPUTATION_LIMIT = 4096
 const CHECK_LIMIT = 128
 
 interface RuleStat {
 	count: number
 	durationMs: number
 	maxMs: number
+	maxDependencies: number
+	maxDependents: number
 }
 
 interface LifecycleWrite {
@@ -82,6 +87,14 @@ interface ReactionTask {
 	definition: ReactionDefinition
 }
 
+/** 与 Runtime 稳定状态一起提交或回滚的响应式执行数据。 */
+interface ReactiveRuntimeState {
+	graph: ReactiveDependencyGraph
+	reactions: Map<string, ReactionDefinition>
+	baselines: Map<string, Primitive>
+	effectValues: Map<string, { acquired: boolean; actived: boolean }>
+}
+
 /** Runtime 内存中的稳定存档与当前回合工作状态。 */
 interface RuntimeState {
 	profile: StoredProfile
@@ -96,7 +109,7 @@ interface Unit {
 	profile: Draft<StoredProfile>
 	run: Draft<RunData>
 	working: Draft<StateSnapshot>
-	baselines: Map<string, Primitive>
+	reactive: ReactiveRuntimeState
 	ruleStack: string[]
 	actionStack: ActionFrame[]
 	ruleCount: number
@@ -105,21 +118,39 @@ interface Unit {
 	ruleStats: Map<string, RuleStat>
 	pendingEnd?: { sourceEventInstanceId?: string }
 	persist: boolean
-	effectValues: Map<string, { acquired: boolean; actived: boolean }>
 	finished: boolean
 	traceRunId: string
 	traceTurnNumber: number
 	tracePhase: TurnPhase
 }
 
+function createReactiveState(): ReactiveRuntimeState {
+	return {
+		graph: new ReactiveDependencyGraph(),
+		reactions: new Map(),
+		baselines: new Map(),
+		effectValues: new Map(),
+	}
+}
+
+function cloneReactiveState(state: ReactiveRuntimeState): ReactiveRuntimeState {
+	return {
+		graph: state.graph.clone(),
+		reactions: new Map(state.reactions),
+		baselines: new Map(state.baselines),
+		effectValues: new Map(state.effectValues),
+	}
+}
 
 const now = (): string => new Date().toISOString()
 const createId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`
 function isPrimitive(value: unknown): value is Primitive {
-	return value === null ||
+	return (
+		value === null ||
 		typeof value === 'string' ||
 		typeof value === 'boolean' ||
 		(typeof value === 'number' && Number.isFinite(value))
+	)
 }
 
 function freezeSnapshot(snapshot: RuntimeSnapshot): RuntimeSnapshot {
@@ -127,7 +158,10 @@ function freezeSnapshot(snapshot: RuntimeSnapshot): RuntimeSnapshot {
 }
 
 /** 克隆目标检查点，并按其 kind 投影当时的 Run 生命周期供恢复或只读预览。 */
-function stateFromCheckpoint(profile: StoredProfile, source: TurnRef = profile.current): RuntimeState {
+function stateFromCheckpoint(
+	profile: StoredProfile,
+	source: TurnRef = profile.current,
+): RuntimeState {
 	const run = profile.runDatas[source.runId]
 	const turn = run?.turnDatas[source.turnId]
 	if (!run || !turn) throw new Error('The current checkpoint is missing')
@@ -168,7 +202,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	#commandCounter = 0
 	#traceCounter = 0
 	#activeCommandTraceId?: string
-	#baselines = new Map<string, Primitive>()
+	#reactive = createReactiveState()
 	readonly #monitor: RuntimeMonitor
 	readonly game: LoadedGamePackage
 	private readonly saves?: SaveRepository
@@ -191,8 +225,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		const validatedProfile = validateProfileAgainstConfig(profile, game.config)
 		this.#state = stateFromCheckpoint(validatedProfile, source)
 		this.#monitor = monitor
-		this.initializeReactionBaselines()
-		this.#snapshot = this.selectSnapshot(this.#state, this.#baselines, this.#revision)
+		this.initializeReactiveState()
+		const selection = this.selectSnapshot(this.#state, this.#reactive, this.#revision)
+		this.#snapshot = selection.snapshot
+		this.#reactive = selection.reactive
 	}
 
 	/** 从已有稳定存档的当前检查点恢复 Runtime。 */
@@ -200,7 +236,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		game: LoadedGamePackage,
 		profile: StoredProfile,
 		saves: SaveRepository,
-		monitorFactory?: RuntimeMonitorFactory
+		monitorFactory?: RuntimeMonitorFactory,
 	): Promise<GameplayRuntimeImpl> {
 		const monitor = monitorFactory?.(profile.current.runId) ?? new NoopRuntimeMonitor()
 		let runtime: GameplayRuntimeImpl | undefined
@@ -244,16 +280,20 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	/** 串行执行一条 RuntimeCommand；并发命令会返回 busy。 */
 	dispatch(command: RuntimeCommand): Promise<RuntimeCommandResult> {
 		if (this.#disposed) {
-			return Promise.resolve(runtimeFailureResult(
-				new RuntimeFailure('not-found', 'This runtime has been closed'),
-				this.#revision,
-			))
+			return Promise.resolve(
+				runtimeFailureResult(
+					new RuntimeFailure('not-found', 'This runtime has been closed'),
+					this.#revision,
+				),
+			)
 		}
 		if (this.#busy) {
-			return Promise.resolve(runtimeFailureResult(
-				new RuntimeFailure('busy', 'Another command is still running'),
-				this.#revision,
-			))
+			return Promise.resolve(
+				runtimeFailureResult(
+					new RuntimeFailure('busy', 'Another command is still running'),
+					this.#revision,
+				),
+			)
 		}
 		this.#busy = true
 		return this.executeCommand(command).finally(() => {
@@ -295,10 +335,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				'abandon',
 				(unit) => {
 					this.appendCheckpoint(unit, 'abandoned')
-					unit.baselines.clear()
+					this.clearReactiveObservers(unit)
 					unit.persist = true
 				},
-				true
+				true,
 			)
 			return { ok: true, revision: this.#revision }
 		} catch (error) {
@@ -330,7 +370,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			0,
 			undefined,
 			this.commandTraceDetail(command),
-			{ traceId: commandTraceId }
+			{ traceId: commandTraceId },
 		)
 		this.#activeCommandTraceId = commandTraceId
 		let outcome: 'ok' | 'error' = 'ok'
@@ -344,26 +384,18 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					await this.activateEffect(command.effectId)
 					break
 				case 'choose-single':
-					await this.chooseSingle(
-						command.eventInstanceId,
-						command.nodeId,
-						command.choiceId
-					)
+					await this.chooseSingle(command.eventInstanceId, command.nodeId, command.choiceId)
 					break
 				case 'set-multiple-choice':
 					await this.setMultipleChoice(
 						command.eventInstanceId,
 						command.nodeId,
 						command.choiceId,
-						command.count
+						command.count,
 					)
 					break
 				case 'execute-node-command':
-					await this.executeNodeCommand(
-						command.eventInstanceId,
-						command.nodeId,
-						command.commandId
-					)
+					await this.executeNodeCommand(command.eventInstanceId, command.nodeId, command.commandId)
 					break
 				case 'advance-turn':
 					await this.advanceTurn()
@@ -386,16 +418,14 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					...this.commandTraceDetail(command),
 					...(traceFailure
 						? {
-							errorId: traceFailure.errorId,
-							code: traceFailure.code,
-							callChain: JSON.stringify(traceFailure.callChain),
-							...(traceFailure.jsonPointer
-								? { jsonPointer: traceFailure.jsonPointer }
-								: {}),
-						}
+								errorId: traceFailure.errorId,
+								code: traceFailure.code,
+								callChain: JSON.stringify(traceFailure.callChain),
+								...(traceFailure.jsonPointer ? { jsonPointer: traceFailure.jsonPointer } : {}),
+							}
 						: {}),
 				},
-				{ parentId: commandTraceId }
+				{ parentId: commandTraceId },
 			)
 			this.#activeCommandTraceId = previousCommandTraceId
 		}
@@ -421,7 +451,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 
 		const eventId = Object.entries(this.#state.working.runState.events).find(
-			([, state]) => state.instances?.[command.eventInstanceId]
+			([, state]) => state.instances?.[command.eventInstanceId],
 		)?.[0]
 		const event = eventId ? this.game.config.events[eventId] : undefined
 		const node = event?.nodes[command.nodeId]
@@ -430,21 +460,16 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		if (command.type === 'choose-single') {
 			if (node.type !== 'single') return detail
 			const authoredChoices = node.choicesValue
-			const choice = Object.values(authoredChoices).find(
-				(item) => item.id === command.choiceId
-			)
+			const choice = Object.values(authoredChoices).find((item) => item.id === command.choiceId)
 			return choice ? { ...detail, actionKey: choice.action.key } : detail
 		}
 		if (command.type === 'set-multiple-choice') {
 			if (node.type !== 'multiple') return detail
 			const authoredChoices = node.choicesValue
-			const choice = Object.values(authoredChoices).find(
-				(item) => item.id === command.choiceId
-			)
+			const choice = Object.values(authoredChoices).find((item) => item.id === command.choiceId)
 			return choice ? { ...detail, value: choice.value } : detail
 		}
-		const authoredCommand =
-			node.type === 'multiple' ? node.commands[command.commandId] : undefined
+		const authoredCommand = node.type === 'multiple' ? node.commands[command.commandId] : undefined
 		return authoredCommand ? { ...detail, actionKey: authoredCommand.action.key } : detail
 	}
 
@@ -461,7 +486,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				throw new RuntimeFailure('not-enabled', 'The event is already active')
 			if (
 				Object.values(event.instances).some(
-					(instance) => instance.startedTurn === unit.working.turnState.turnNumber
+					(instance) => instance.startedTurn === unit.working.turnState.turnNumber,
 				)
 			) {
 				throw new RuntimeFailure('not-enabled', 'This event has already started this turn')
@@ -478,8 +503,11 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			const eventState = (unit.working.runState.events[eventId] ??= { id: eventId })
 			;(eventState.instances ??= {})[instanceId] = instance
 			eventState.activeInstanceId = instanceId
+			this.invalidateStateWrite(unit, 'run', ['events', eventId, 'instances', instanceId])
+			this.invalidateStateWrite(unit, 'run', ['events', eventId, 'activeInstanceId'])
 			const entry = this.game.config.events[eventId].nodes[event.entryNodeId]
 			if (entry.type === 'check') this.runCheck(unit, instanceId, entry.id)
+			else this.registerTextNodeReactions(unit, eventId, instance)
 		})
 	}
 
@@ -500,26 +528,18 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				throw new RuntimeFailure('not-enabled', 'The Effect is not currently available')
 			if (!effect.acquired)
 				throw new RuntimeFailure('not-enabled', 'The Effect has not been acquired')
-			if (effect.actived)
-				throw new RuntimeFailure('not-enabled', 'The Effect is already active')
+			if (effect.actived) throw new RuntimeFailure('not-enabled', 'The Effect is already active')
 			this.runView(unit, true).effects[effectId].activedValue = true
 		})
 	}
 
-	private async chooseSingle(
-		instanceId: string,
-		nodeId: string,
-		choiceId: string
-	): Promise<void> {
+	private async chooseSingle(instanceId: string, nodeId: string, choiceId: string): Promise<void> {
 		this.requireInputPhase()
 		await this.runUnit(`choose-single:${choiceId}`, (unit) => {
 			const { instance, eventId } = this.requireCurrentInstance(unit, instanceId, nodeId)
 			const node = this.turnView(unit).events[eventId].nodes[nodeId]
 			if (node.type !== 'single')
-				throw new RuntimeFailure(
-					'stale-node',
-					'The current node is not a single-choice node'
-				)
+				throw new RuntimeFailure('stale-node', 'The current node is not a single-choice node')
 			const choice = node.choices[choiceId]
 			if (!choice) throw new RuntimeFailure('not-found', 'The choice does not exist')
 			if (!choice.visible || !choice.unlocked || !choice.enabled)
@@ -532,22 +552,16 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		instanceId: string,
 		nodeId: string,
 		choiceId: string,
-		count: number
+		count: number,
 	): Promise<void> {
 		this.requireInputPhase()
 		if (!Number.isInteger(count) || count < 0)
-			throw new RuntimeFailure(
-				'not-enabled',
-				'Selection count must be a non-negative integer'
-			)
+			throw new RuntimeFailure('not-enabled', 'Selection count must be a non-negative integer')
 		await this.runUnit(`set-multiple-choice:${choiceId}`, (unit) => {
 			const { instance, eventId } = this.requireCurrentInstance(unit, instanceId, nodeId)
 			const node = this.turnView(unit).events[eventId].nodes[nodeId]
 			if (node.type !== 'multiple')
-				throw new RuntimeFailure(
-					'stale-node',
-					'The current node is not a multiple-choice node'
-				)
+				throw new RuntimeFailure('stale-node', 'The current node is not a multiple-choice node')
 			const choice = node.choices[choiceId]
 			if (!choice) throw new RuntimeFailure('not-found', 'The choice does not exist')
 			if (!choice.visible || !choice.unlocked || !choice.enabled)
@@ -563,13 +577,23 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			})
 			if (count === 0) delete selection.choices[choiceId]
 			else selection.choices[choiceId] = { id: choiceId, value: choice.value, count }
+			this.invalidateStateWrite(unit, 'turn', [
+				'events',
+				eventId,
+				'nodes',
+				nodeId,
+				'selections',
+				instance.instanceId,
+				'choices',
+				choiceId,
+			])
 		})
 	}
 
 	private async executeNodeCommand(
 		instanceId: string,
 		nodeId: string,
-		commandId: string
+		commandId: string,
 	): Promise<void> {
 		this.requireInputPhase()
 		await this.runUnit(`execute-node-command:${commandId}`, (unit) => {
@@ -603,6 +627,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			'turn-end',
 			(unit) => {
 				unit.working.turnState.phase = 'turn_end'
+				this.invalidateStateWrite(unit, 'turn', ['phase'])
 				this.trace('transition', 'turn_end', 0, 'ok', 0, unit)
 				this.stabilize(unit)
 				if (!unit.pendingEnd) {
@@ -611,7 +636,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				}
 			},
 			true,
-			false
+			false,
 		)
 		if (this.currentRun().status === 'active') {
 			try {
@@ -636,11 +661,14 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		await this.runUnit('turn-start', (unit) => {
 			this.clearAllSelections(unit)
 			unit.working.turnState.turnNumber += 1
+			this.invalidateStateWrite(unit, 'turn', ['turnNumber'])
 			unit.working.turnState.phase = 'turn_start'
+			this.invalidateStateWrite(unit, 'turn', ['phase'])
 			this.trace('transition', 'turn_start', 0, 'ok', 0, unit)
 			this.stabilize(unit)
 			if (!unit.pendingEnd) {
 				unit.working.turnState.phase = 'event_handle'
+				this.invalidateStateWrite(unit, 'turn', ['phase'])
 				this.trace('transition', 'event_handle', 0, 'ok', 0, unit)
 				this.stabilize(unit)
 			}
@@ -652,7 +680,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		if (run.status !== 'active' || this.#state.working.turnState.phase !== 'event_handle') {
 			throw new RuntimeFailure(
 				'invalid-phase',
-				'This command is only available while handling events'
+				'This command is only available while handling events',
 			)
 		}
 	}
@@ -660,7 +688,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private requireCurrentInstance(
 		unit: Unit,
 		instanceId: string,
-		nodeId: string
+		nodeId: string,
 	): { eventId: string; instance: Draft<EventInstance> } {
 		for (const [eventId, eventState] of Object.entries(unit.working.runState.events)) {
 			const instance = eventState.instances?.[instanceId]
@@ -680,7 +708,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	private createUnit(
 		name: string,
 		source: RuntimeState = this.#state,
-		baselines: ReadonlyMap<string, Primitive> = this.#baselines,
+		reactive: ReactiveRuntimeState = this.#reactive,
 	): Unit {
 		const draft = createDraft(source)
 		const profile = draft.profile
@@ -693,14 +721,12 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		return {
 			id: `u-${++this.#unitCounter}`,
 			name,
-			...(this.#activeCommandTraceId
-				? { parentTraceId: this.#activeCommandTraceId }
-				: {}),
+			...(this.#activeCommandTraceId ? { parentTraceId: this.#activeCommandTraceId } : {}),
 			draft,
 			profile,
 			run,
 			working,
-			baselines: new Map(baselines),
+			reactive: cloneReactiveState(reactive),
 			ruleStack: [],
 			actionStack: [],
 			ruleCount: 0,
@@ -708,7 +734,6 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			checkCount: 0,
 			ruleStats: new Map(),
 			persist: false,
-			effectValues: new Map(),
 			finished: false,
 			traceRunId: run.runId,
 			traceTurnNumber: working.turnState.turnNumber,
@@ -724,20 +749,18 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		name: string,
 		operation: (unit: Unit) => void,
 		allowHostTerminal = true,
-		publish = true
+		publish = true,
 	): Promise<void> {
 		const unit = this.createUnit(name)
 		const started = performance.now()
 		let finished = false
 		try {
-			this.captureEffectValues(unit)
 			operation(unit)
 			this.stabilize(unit)
 			if (unit.pendingEnd) {
-				if (!allowHostTerminal)
-					throw new Error('A terminal request is not allowed in this unit')
+				if (!allowHostTerminal) throw new Error('A terminal request is not allowed in this unit')
 				this.appendCheckpoint(unit, 'terminal', unit.pendingEnd.sourceEventInstanceId)
-				unit.baselines.clear()
+				this.clearReactiveObservers(unit)
 				unit.persist = true
 			}
 			const candidate = finishDraft(unit.draft)
@@ -745,7 +768,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			unit.finished = true
 			if (unit.persist) validateProfileAgainstConfig(candidate.profile, this.game.config)
 			const nextRevision = this.#revision + 1
-			const nextSnapshot = this.selectSnapshot(candidate, unit.baselines, nextRevision)
+			const selection = this.selectSnapshot(candidate, unit.reactive, nextRevision)
 			let committedState = candidate
 			if (unit.persist) {
 				const persistenceStarted = performance.now()
@@ -753,14 +776,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 					if (!this.saves) throw new Error('This Runtime is read-only')
 					const stored = await this.saves.put(candidate.profile)
 					committedState = { profile: stored, working: candidate.working }
-					this.trace(
-						'persistence',
-						name,
-						performance.now() - persistenceStarted,
-						'ok',
-						0,
-						unit
-					)
+					this.trace('persistence', name, performance.now() - persistenceStarted, 'ok', 0, unit)
 				} catch (error) {
 					this.trace(
 						'persistence',
@@ -769,7 +785,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 						'error',
 						0,
 						unit,
-						{ code: 'persistence-error' }
+						{ code: 'persistence-error' },
 					)
 					throw new RuntimeFailure(
 						'persistence-error',
@@ -778,9 +794,9 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				}
 			}
 			this.#state = committedState
-			this.#baselines = unit.baselines
+			this.#reactive = selection.reactive
 			this.#revision = nextRevision
-			this.#snapshot = nextSnapshot
+			this.#snapshot = selection.snapshot
 			if (publish) this.notify()
 			this.trace('transaction', 'commit', performance.now() - started, 'ok', 0, unit)
 			this.traceRuleSummary(unit)
@@ -789,17 +805,9 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 				finishDraft(unit.draft)
 				unit.finished = true
 			}
-			this.trace(
-				'transaction',
-				'rollback',
-				performance.now() - started,
-				'rollback',
-				0,
-				unit,
-				{
-					code: error instanceof RuntimeFailure ? error.code : 'script-error',
-				}
-			)
+			this.trace('transaction', 'rollback', performance.now() - started, 'rollback', 0, unit, {
+				code: error instanceof RuntimeFailure ? error.code : 'script-error',
+			})
 			this.traceRuleSummary(unit, 'rollback')
 			throw error
 		}
@@ -814,6 +822,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			writable: writable ? unit.working.profileState : undefined,
 			scope: 'profile',
 			evaluateRule: (rule) => this.evaluateRule(unit, rule),
+			onStateRead: (path) => unit.reactive.graph.trackStateRead('profile', path),
+			onStateWrite: (path) => this.invalidateStateWrite(unit, 'profile', path),
 		}) as unknown as ProfileRuntime | ActionProfileRuntime
 	}
 
@@ -826,6 +836,8 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			writable: writable ? unit.working.runState : undefined,
 			scope: 'run',
 			evaluateRule: (rule) => this.evaluateRule(unit, rule),
+			onStateRead: (path) => unit.reactive.graph.trackStateRead('run', path),
+			onStateWrite: (path) => this.invalidateStateWrite(unit, 'run', path),
 			onEventWrite: (path, property, previous, next) => {
 				const frame = unit.actionStack.at(-1)
 				if (!frame) throw new Error('Event lifecycle can only be changed by an Action')
@@ -844,7 +856,18 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			writable: writable ? unit.working.turnState : undefined,
 			scope: 'turn',
 			evaluateRule: (rule) => this.evaluateRule(unit, rule),
+			onStateRead: (path) => unit.reactive.graph.trackStateRead('turn', path),
+			onStateWrite: (path) => this.invalidateStateWrite(unit, 'turn', path),
 		}) as unknown as TurnRuntime | ActionTurnRuntime
+	}
+
+	/** 将 Runtime 或 Action 的实际 State 写入传播到当前处理单元的依赖图。 */
+	private invalidateStateWrite(
+		unit: Unit,
+		scope: RuntimeStateScope,
+		path: readonly string[],
+	): void {
+		unit.reactive.graph.invalidateStateWrite(scope, path)
 	}
 
 	private ruleFunctions(unit: Unit): RuleFunctions {
@@ -852,7 +875,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			Object.keys(this.game.rules).map((key) => [
 				key,
 				(...args: Primitive[]) => this.evaluateRule(unit, { key, args }),
-			])
+			]),
 		) as RuleFunctions
 	}
 
@@ -866,56 +889,72 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 						unit,
 						{ key, args },
 						parent?.sourceEventInstanceId,
-						parent?.allowedCandidates
+						parent?.allowedCandidates,
 					)
 				},
-			])
+			]),
 		) as ActionFunctions
 	}
 
 	private evaluateRule(unit: Unit, call: DeepReadonly<Rule>): unknown {
 		const implementation = this.game.rules[call.key]
 		if (!implementation) throw new Error(`Unknown Rule “${call.key}”`)
-		if (++unit.ruleCount > RULE_EXECUTION_LIMIT)
-			throw new Error(`Rule execution limit (${RULE_EXECUTION_LIMIT}) exceeded`)
 		const identity = `${call.key}:${stableArgs(call.args)}`
 		if (unit.ruleStack.includes(identity))
 			throw new Error(`Recursive Rule cycle: ${[...unit.ruleStack, identity].join(' → ')}`)
-		const context: RuleContext = {
-			config: this.game.config as DeepReadonly<GameConfig>,
-			profileState: this.profileView(unit) as DeepReadonly<ProfileRuntime>,
-			runState: this.runView(unit) as DeepReadonly<RunRuntime>,
-			turnState: this.turnView(unit) as DeepReadonly<TurnRuntime>,
-			rule: this.ruleFunctions(unit),
+		const nodeId = `rule:${identity}`
+		const value = unit.reactive.graph.read(nodeId, () => {
+			if (++unit.ruleCount > RULE_RECOMPUTATION_LIMIT)
+				throw new Error(`Rule recomputation limit (${RULE_RECOMPUTATION_LIMIT}) exceeded`)
+			const context: RuleContext = {
+				config: this.game.config as DeepReadonly<GameConfig>,
+				profileState: this.profileView(unit) as DeepReadonly<ProfileRuntime>,
+				runState: this.runView(unit) as DeepReadonly<RunRuntime>,
+				turnState: this.turnView(unit) as DeepReadonly<TurnRuntime>,
+				rule: this.ruleFunctions(unit),
+			}
+			unit.ruleStack.push(identity)
+			const started = performance.now()
+			let outcome: 'ok' | 'error' = 'ok'
+			try {
+				return implementation.calc(context, ...call.args)
+			} catch (error) {
+				outcome = 'error'
+				throw new ScriptExecutionError(error, `Rule ${identity}`)
+			} finally {
+				unit.ruleStack.pop()
+				const duration = performance.now() - started
+				const stat = unit.ruleStats.get(call.key) ?? {
+					count: 0,
+					durationMs: 0,
+					maxMs: 0,
+					maxDependencies: 0,
+					maxDependents: 0,
+				}
+				stat.count += 1
+				stat.durationMs += duration
+				stat.maxMs = Math.max(stat.maxMs, duration)
+				unit.ruleStats.set(call.key, stat)
+				if (this.#monitor.verbose)
+					this.trace('rule-summary', call.key, duration, outcome, unit.ruleStack.length, unit, {
+						args: argsTraceDetail(call.args),
+					})
+			}
+		})
+		const dependencyStats = unit.reactive.graph.nodeDependencyStats(nodeId)
+		const stat = unit.ruleStats.get(call.key)
+		if (stat) {
+			stat.maxDependencies = Math.max(stat.maxDependencies, dependencyStats.dependencies)
+			stat.maxDependents = Math.max(stat.maxDependents, dependencyStats.dependents)
 		}
-		unit.ruleStack.push(identity)
-		const started = performance.now()
-		let outcome: 'ok' | 'error' = 'ok'
-		try {
-			return implementation.calc(context, ...call.args)
-		} catch (error) {
-			outcome = 'error'
-			throw new ScriptExecutionError(error, `Rule ${identity}`)
-		} finally {
-			unit.ruleStack.pop()
-			const duration = performance.now() - started
-			const stat = unit.ruleStats.get(call.key) ?? { count: 0, durationMs: 0, maxMs: 0 }
-			stat.count += 1
-			stat.durationMs += duration
-			stat.maxMs = Math.max(stat.maxMs, duration)
-			unit.ruleStats.set(call.key, stat)
-			if (this.#monitor.verbose)
-				this.trace('rule-summary', call.key, duration, outcome, unit.ruleStack.length, unit, {
-					args: argsTraceDetail(call.args),
-				})
-		}
+		return value
 	}
 
 	private runAction(
 		unit: Unit,
 		call: DeepReadonly<Action>,
 		sourceEventInstanceId?: string,
-		allowedCandidates?: ReadonlySet<string>
+		allowedCandidates?: ReadonlySet<string>,
 	): void {
 		const implementation = this.game.actions[call.key]
 		if (!implementation) throw new Error(`Unknown Action “${call.key}”`)
@@ -943,8 +982,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			endRun: () => {
 				if (unit.pendingEnd) return
 				unit.pendingEnd = {
-					...(sourceEventInstanceId &&
-					this.isTextNodeInstance(unit, sourceEventInstanceId)
+					...(sourceEventInstanceId && this.isTextNodeInstance(unit, sourceEventInstanceId)
 						? { sourceEventInstanceId }
 						: {}),
 				}
@@ -957,10 +995,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			this.finalizeActionFrame(unit, frame)
 		} catch (error) {
 			outcome = 'error'
-			throw new ScriptExecutionError(
-				error,
-				`Action ${call.key}:${stableArgs(call.args)}`,
-			)
+			throw new ScriptExecutionError(error, `Action ${call.key}:${stableArgs(call.args)}`)
 		} finally {
 			unit.actionStack.pop()
 			this.trace(
@@ -981,7 +1016,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 								nextValue: String(frame.writes[0].next),
 							}
 						: {}),
-				}
+				},
 			)
 		}
 	}
@@ -1006,23 +1041,38 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			if (instance.status !== 'active' || eventState.activeInstanceId !== instanceId)
 				throw new Error('Only an active EventInstance can navigate')
 			const previousNode = String(write.previous)
+			this.unregisterTextNodeReactions(unit, eventId, instance, previousNode)
 			instance.nodePath.push(write.next)
+			this.invalidateStateWrite(unit, 'run', [
+				'events',
+				eventId,
+				'instances',
+				instanceId,
+				'nodePath',
+			])
 			this.clearSelection(unit, eventId, previousNode, instanceId)
 			const target = event.nodes[write.next]
 			if (target.type === 'check') this.runCheck(unit, instanceId, target.id)
+			else this.registerTextNodeReactions(unit, eventId, instance)
 			return
 		}
 		if (write.previous === write.next) return
-		if (
-			write.previous !== 'active' ||
-			(write.next !== 'completed' && write.next !== 'abandoned')
-		) {
+		if (write.previous !== 'active' || (write.next !== 'completed' && write.next !== 'abandoned')) {
 			throw new Error(
-				'EventInstance status can only transition from active to completed or abandoned'
+				'EventInstance status can only transition from active to completed or abandoned',
 			)
 		}
+		this.unregisterTextNodeReactions(unit, eventId, instance)
 		instance.endedTurn = unit.working.turnState.turnNumber
+		this.invalidateStateWrite(unit, 'run', [
+			'events',
+			eventId,
+			'instances',
+			instanceId,
+			'endedTurn',
+		])
 		delete eventState.activeInstanceId
+		this.invalidateStateWrite(unit, 'run', ['events', eventId, 'activeInstanceId'])
 		this.clearSelection(unit, eventId, instance.currentNodeId, instanceId)
 	}
 
@@ -1039,22 +1089,14 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		if (!eventId) throw new Error('CheckNode EventInstance is missing')
 		const node = this.game.config.events[eventId].nodes[nodeId]
 		if (node.type !== 'check') return
-		this.trace(
-			'transition',
-			`check:${eventId}.${nodeId}`,
-			0,
-			'ok',
-			unit.actionStack.length,
-			unit,
-			{ eventId, nodeId, eventInstanceId: instanceId }
-		)
+		this.trace('transition', `check:${eventId}.${nodeId}`, 0, 'ok', unit.actionStack.length, unit, {
+			eventId,
+			nodeId,
+			eventInstanceId: instanceId,
+		})
 		this.runAction(unit, node.check, instanceId, new Set(Object.keys(node.candidateNodes)))
 		const instance = unit.working.runState.events[eventId].instances?.[instanceId]
-		if (
-			instance?.status === 'active' &&
-			instance.currentNodeId === nodeId &&
-			!unit.pendingEnd
-		) {
+		if (instance?.status === 'active' && instance.currentNodeId === nodeId && !unit.pendingEnd) {
 			throw new Error(`CheckNode ${eventId}.${nodeId} did not leave the node`)
 		}
 	}
@@ -1071,45 +1113,116 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		return false
 	}
 
-	/** 返回当前生效且已按 canonical ordinal 排序的 Reaction。 */
-	private reactionDefinitions(unit: Unit): ReactionDefinition[] {
-		return collectReactionDefinitions(this.game.config, unit.working.runState)
-	}
-	private evaluateReaction(unit: Unit, definition: ReactionDefinition): Primitive {
-		const watch = definition.reaction.watch
-		let value: unknown
-		if ('source' in watch) {
-			const root =
-				watch.source === 'profileState'
-					? this.profileView(unit)
-					: watch.source === 'runState'
-						? this.runView(unit)
-						: this.turnView(unit)
-			const path =
-				watch.source === 'self' ? [...definition.selfPath, ...watch.path] : watch.path
-			value = readPath(root, path)
-		} else {
-			value = this.evaluateRule(unit, watch)
-		}
-		if (!isPrimitive(value))
-			throw new Error(`Reaction ${definition.key} did not resolve to a Primitive`)
-		return value
+	private reactionObserverId(key: string): string {
+		return `reaction:${key}`
 	}
 
-	private scanReactions(unit: Unit, queue: ReactionTask[]): void {
-		const definitions = this.reactionDefinitions(unit)
-		const activeKeys = new Set(definitions.map((definition) => definition.key))
-		for (const key of unit.baselines.keys())
-			if (!activeKeys.has(key)) unit.baselines.delete(key)
+	private effectObserverId(effectId: string, field: 'acquired' | 'actived'): string {
+		return `effect-lifecycle:${JSON.stringify([effectId, field])}`
+	}
+
+	private parseEffectObserverId(
+		observerId: string,
+	): { effectId: string; field: 'acquired' | 'actived' } | undefined {
+		if (!observerId.startsWith('effect-lifecycle:')) return undefined
+		try {
+			const value: unknown = JSON.parse(observerId.slice('effect-lifecycle:'.length))
+			if (
+				!Array.isArray(value) ||
+				typeof value[0] !== 'string' ||
+				(value[1] !== 'acquired' && value[1] !== 'actived')
+			)
+				return undefined
+			return { effectId: value[0], field: value[1] }
+		} catch {
+			return undefined
+		}
+	}
+
+	/** 注册 Reaction observer 并只建立当前 baseline，不调度 Action。 */
+	private registerReaction(unit: Unit, definition: ReactionDefinition): void {
+		if (unit.reactive.reactions.has(definition.key)) return
+		unit.reactive.reactions.set(definition.key, definition)
+		const observerId = this.reactionObserverId(definition.key)
+		unit.reactive.graph.registerObserver(observerId)
+		unit.reactive.baselines.set(definition.key, this.evaluateReaction(unit, definition))
+		unit.reactive.graph.markObserverClean(observerId)
+	}
+
+	/** 注销离开作用域的 Reaction observer、baseline 及其反向依赖边。 */
+	private unregisterReaction(unit: Unit, definition: ReactionDefinition): void {
+		unit.reactive.reactions.delete(definition.key)
+		unit.reactive.baselines.delete(definition.key)
+		unit.reactive.graph.unregisterObserver(this.reactionObserverId(definition.key))
+	}
+
+	private registerTextNodeReactions(
+		unit: Unit,
+		eventId: string,
+		instance: DeepReadonly<EventInstance>,
+	): void {
+		for (const definition of collectTextNodeReactionDefinitions(
+			this.game.config,
+			eventId,
+			instance,
+		))
+			this.registerReaction(unit, definition)
+	}
+
+	private unregisterTextNodeReactions(
+		unit: Unit,
+		eventId: string,
+		instance: DeepReadonly<EventInstance>,
+		nodeId: string = instance.currentNodeId,
+	): void {
+		for (const definition of collectTextNodeReactionDefinitions(this.game.config, eventId, {
+			...instance,
+			status: 'active',
+			currentNodeId: nodeId,
+		}))
+			this.unregisterReaction(unit, definition)
+	}
+
+	private evaluateReaction(unit: Unit, definition: ReactionDefinition): Primitive {
+		return unit.reactive.graph.read(this.reactionObserverId(definition.key), () => {
+			const watch = definition.reaction.watch
+			let value: unknown
+			if ('source' in watch) {
+				const root =
+					watch.source === 'profileState'
+						? this.profileView(unit)
+						: watch.source === 'runState'
+							? this.runView(unit)
+							: this.turnView(unit)
+				const path = watch.source === 'self' ? [...definition.selfPath, ...watch.path] : watch.path
+				value = readPath(root, path)
+			} else {
+				value = this.evaluateRule(unit, watch)
+			}
+			if (!isPrimitive(value))
+				throw new Error(`Reaction ${definition.key} did not resolve to a Primitive`)
+			return value
+		})
+	}
+
+	/** 只重算依赖已经失效的 Reaction observer，并按 canonical ordinal 入队。 */
+	private collectAffectedReactions(unit: Unit, queue: ReactionTask[]): void {
+		const definitions = unit.reactive.graph
+			.dirtyObserverIds()
+			.filter((observerId) => observerId.startsWith('reaction:'))
+			.map((observerId) => unit.reactive.reactions.get(observerId.slice('reaction:'.length)))
+			.filter((definition): definition is ReactionDefinition => definition !== undefined)
+			.sort(compareReactionDefinitions)
 		for (const definition of definitions) {
 			const value = this.evaluateReaction(unit, definition)
-			if (!unit.baselines.has(definition.key)) {
-				unit.baselines.set(definition.key, value)
+			unit.reactive.graph.markObserverClean(this.reactionObserverId(definition.key))
+			if (!unit.reactive.baselines.has(definition.key)) {
+				unit.reactive.baselines.set(definition.key, value)
 				continue
 			}
-			const previous = unit.baselines.get(definition.key) as Primitive
+			const previous = unit.reactive.baselines.get(definition.key) as Primitive
 			if (Object.is(previous, value)) continue
-			unit.baselines.set(definition.key, value)
+			unit.reactive.baselines.set(definition.key, value)
 			const { from, to } = definition.reaction
 			if (
 				(from === undefined || Object.is(from, previous)) &&
@@ -1121,28 +1234,23 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	}
 
 	/**
-	 * 全量扫描当前 Reaction 的 Rule/ValueRef，并按 canonical ordinal 加入 FIFO。
-	 * root 操作后及每个 Reaction Action 后重新扫描；新增定义只建立 baseline。
+	 * 处理依赖图中失效的 Effect 生命周期与 Reaction observer，直到因果队列稳定。
+	 * 新进入作用域的 TextNode Reaction 只建立 baseline；队列项执行前再次检查注册表。
 	 */
 	private stabilize(unit: Unit): void {
-		this.syncEffectLifecycle(unit)
+		this.syncAffectedEffectLifecycle(unit)
 		const queue: ReactionTask[] = []
-		this.scanReactions(unit, queue)
+		this.collectAffectedReactions(unit, queue)
 		while (queue.length > 0) {
 			const task = queue.shift()
 			if (!task) break
-			if (!this.reactionDefinitions(unit).some((item) => item.key === task.definition.key))
-				continue
+			if (!unit.reactive.reactions.has(task.definition.key)) continue
 			const started = performance.now()
 			let outcome: 'ok' | 'error' = 'ok'
 			try {
-				this.runAction(
-					unit,
-					task.definition.reaction.action,
-					task.definition.sourceEventInstanceId
-				)
-				this.syncEffectLifecycle(unit)
-				this.scanReactions(unit, queue)
+				this.runAction(unit, task.definition.reaction.action, task.definition.sourceEventInstanceId)
+				this.syncAffectedEffectLifecycle(unit)
+				this.collectAffectedReactions(unit, queue)
 			} catch (error) {
 				outcome = 'error'
 				throw new ScriptExecutionError(error, `Reaction ${task.definition.key}`)
@@ -1160,42 +1268,100 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 						...(task.definition.sourceEventInstanceId
 							? { eventInstanceId: task.definition.sourceEventInstanceId }
 							: {}),
-					}
+					},
 				)
 			}
 		}
 	}
 
-	private captureEffectValues(unit: Unit): void {
-		const view = this.turnView(unit)
-		for (const effect of Object.values(view.effects)) {
-			unit.effectValues.set(effect.id, { acquired: effect.acquired, actived: effect.actived })
-		}
-	}
-
-	private syncEffectLifecycle(unit: Unit): void {
-		const view = this.turnView(unit)
-		for (const effect of Object.values(view.effects)) {
-			const previous = unit.effectValues.get(effect.id) ?? {
-				acquired: effect.acquired,
-				actived: effect.actived,
+	/** 只同步依赖失效的 Effect acquired/actived observer。 */
+	private syncAffectedEffectLifecycle(unit: Unit): void {
+		while (true) {
+			const affected = unit.reactive.graph
+				.dirtyObserverIds()
+				.map((observerId) => ({ observerId, value: this.parseEffectObserverId(observerId) }))
+				.filter(
+					(
+						item,
+					): item is {
+						observerId: string
+						value: { effectId: string; field: 'acquired' | 'actived' }
+					} => item.value !== undefined,
+				)
+				.sort((left, right) => {
+					const leftEffect = this.game.config.effects[left.value.effectId]
+					const rightEffect = this.game.config.effects[right.value.effectId]
+					return (
+						(leftEffect?.order ?? 0) - (rightEffect?.order ?? 0) ||
+						left.value.effectId.localeCompare(right.value.effectId) ||
+						(left.value.field === 'acquired' ? -1 : 1)
+					)
+				})
+			if (affected.length === 0) return
+			for (const {
+				observerId,
+				value: { effectId, field },
+			} of affected) {
+				const next = unit.reactive.graph.read(observerId, () => {
+					const effect = this.turnView(unit).effects[effectId]
+					if (!effect) throw new Error(`Unknown Effect “${effectId}”`)
+					return effect[field]
+				})
+				if (typeof next !== 'boolean')
+					throw new Error(`Effect ${effectId}.${field} did not resolve to boolean`)
+				unit.reactive.graph.markObserverClean(observerId)
+				const previous = unit.reactive.effectValues.get(effectId) ?? {
+					acquired: next,
+					actived: next,
+				}
+				if (!previous[field] && next) {
+					const state = (unit.working.runState.effects[effectId] ??= { id: effectId })
+					const turnField = field === 'acquired' ? 'acquiredTurn' : 'activedTurn'
+					state[turnField] = unit.working.turnState.turnNumber
+					this.invalidateStateWrite(unit, 'run', ['effects', effectId, turnField])
+				}
+				unit.reactive.effectValues.set(effectId, { ...previous, [field]: next })
 			}
-			const state = (unit.working.runState.effects[effect.id] ??= { id: effect.id })
-			if (!previous.acquired && effect.acquired)
-				state.acquiredTurn = unit.working.turnState.turnNumber
-			if (!previous.actived && effect.actived)
-				state.activedTurn = unit.working.turnState.turnNumber
-			unit.effectValues.set(effect.id, { acquired: effect.acquired, actived: effect.actived })
 		}
 	}
 
-	private initializeReactionBaselines(): void {
+	private registerEffectLifecycleObservers(unit: Unit): void {
+		const effects = Object.values(this.game.config.effects).sort(
+			(left, right) => left.order - right.order || left.id.localeCompare(right.id),
+		)
+		for (const effect of effects) {
+			const values = { acquired: false, actived: false }
+			for (const field of ['acquired', 'actived'] as const) {
+				const observerId = this.effectObserverId(effect.id, field)
+				unit.reactive.graph.registerObserver(observerId)
+				const value = unit.reactive.graph.read(
+					observerId,
+					() => this.turnView(unit).effects[effect.id][field],
+				)
+				if (typeof value !== 'boolean')
+					throw new Error(`Effect ${effect.id}.${field} did not resolve to boolean`)
+				values[field] = value
+				unit.reactive.graph.markObserverClean(observerId)
+			}
+			unit.reactive.effectValues.set(effect.id, values)
+		}
+	}
+
+	private clearReactiveObservers(unit: Unit): void {
+		unit.reactive.graph.clearObservers()
+		unit.reactive.reactions.clear()
+		unit.reactive.baselines.clear()
+		unit.reactive.effectValues.clear()
+	}
+
+	/** 首次构造 Runtime 时建立计算图及全部持续 observer 的 baseline。 */
+	private initializeReactiveState(): void {
 		const unit = this.createUnit('baseline')
 		try {
-			for (const definition of this.reactionDefinitions(unit)) {
-				unit.baselines.set(definition.key, this.evaluateReaction(unit, definition))
-			}
-			this.#baselines = unit.baselines
+			this.registerEffectLifecycleObservers(unit)
+			for (const definition of collectReactionDefinitions(this.game.config, unit.working.runState))
+				this.registerReaction(unit, definition)
+			this.#reactive = unit.reactive
 			this.traceRuleSummary(unit)
 			finishDraft(unit.draft)
 			unit.finished = true
@@ -1218,11 +1384,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 	}
 
-	private appendCheckpoint(
-		unit: Unit,
-		kind: CheckpointKind,
-		endingEventInstanceId?: string
-	): void {
+	private appendCheckpoint(unit: Unit, kind: CheckpointKind, endingEventInstanceId?: string): void {
 		const createdAt = now()
 		const turnId = createId('turn')
 		const snapshot = this.makeStateSnapshot(unit)
@@ -1270,12 +1432,25 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 
 	private clearSelection(unit: Unit, eventId: string, nodeId: string, instanceId: string): void {
 		const selections = unit.working.turnState.events[eventId]?.nodes?.[nodeId]?.selections
-		if (selections) delete selections[instanceId]
+		if (!selections || !(instanceId in selections)) return
+		delete selections[instanceId]
+		this.invalidateStateWrite(unit, 'turn', [
+			'events',
+			eventId,
+			'nodes',
+			nodeId,
+			'selections',
+			instanceId,
+		])
 	}
 
 	private clearAllSelections(unit: Unit): void {
-		for (const event of Object.values(unit.working.turnState.events)) {
-			for (const node of Object.values(event.nodes ?? {})) delete node.selections
+		for (const [eventId, event] of Object.entries(unit.working.turnState.events)) {
+			for (const [nodeId, node] of Object.entries(event.nodes ?? {})) {
+				if (node.selections === undefined) continue
+				delete node.selections
+				this.invalidateStateWrite(unit, 'turn', ['events', eventId, 'nodes', nodeId, 'selections'])
+			}
 		}
 	}
 
@@ -1292,10 +1467,10 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 	/** 将当前工作状态投影为 UI 使用的深度冻结 RuntimeSnapshot。 */
 	private selectSnapshot(
 		state: RuntimeState,
-		baselines: ReadonlyMap<string, Primitive>,
+		reactive: ReactiveRuntimeState,
 		revision: number,
-	): RuntimeSnapshot {
-		const unit = this.createUnit('selector', state, baselines)
+	): { snapshot: RuntimeSnapshot; reactive: ReactiveRuntimeState } {
+		const unit = this.createUnit('selector', state, reactive)
 		try {
 			const snapshot = projectRuntimeSnapshot({
 				config: this.game.config,
@@ -1307,7 +1482,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 			this.traceRuleSummary(unit)
 			finishDraft(unit.draft)
 			unit.finished = true
-			return frozen
+			return { snapshot: frozen, reactive: unit.reactive }
 		} catch (error) {
 			this.traceRuleSummary(unit, 'error')
 			finishDraft(unit.draft)
@@ -1334,7 +1509,7 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		depth: number,
 		unit?: Unit,
 		detail?: Readonly<Record<string, Primitive>>,
-		options: { traceId?: string; parentId?: string } = {}
+		options: { traceId?: string; parentId?: string } = {},
 	): void {
 		let runId: string
 		let turnNumber: number
@@ -1376,19 +1551,20 @@ export class GameplayRuntimeImpl implements GameplayRuntime {
 		}
 	}
 
-	private traceRuleSummary(
-		unit: Unit,
-		outcome: 'ok' | 'error' | 'rollback' = 'ok',
-	): void {
+	private traceRuleSummary(unit: Unit, outcome: 'ok' | 'error' | 'rollback' = 'ok'): void {
 		if (unit.ruleStats.size === 0) return
 		const slowest = [...unit.ruleStats.entries()].sort((a, b) => b[1].maxMs - a[1].maxMs)[0]
-		const duration = [...unit.ruleStats.values()].reduce(
-			(sum, stat) => sum + stat.durationMs,
-			0
-		)
+		const duration = [...unit.ruleStats.values()].reduce((sum, stat) => sum + stat.durationMs, 0)
+		const widest = [...unit.ruleStats.entries()].sort(
+			(a, b) =>
+				b[1].maxDependents - a[1].maxDependents || b[1].maxDependencies - a[1].maxDependencies,
+		)[0]
 		this.trace('rule-summary', slowest?.[0] ?? 'rules', duration, outcome, 0, unit, {
 			count: unit.ruleCount,
 			slowest: slowest?.[0] ?? '',
+			widest: widest?.[0] ?? '',
+			dependencies: widest?.[1].maxDependencies ?? 0,
+			fanout: widest?.[1].maxDependents ?? 0,
 		})
 	}
 }

@@ -305,7 +305,9 @@ IndexedDB transaction 保证一次 `put` 原子，但不能防止两个 Session/
 
 **修复后状态**
 
-响应式执行模型已明确为确定性的 eager scan：Rule 每次调用直接执行，不缓存、不收集依赖；root 操作后和每个 Reaction Action 后全量扫描当前 watch；新出现的 Reaction 只建立 baseline，离开作用域的定义删除 baseline，执行前失活的队列项跳过。代码常量与文档统一将 4096 表述为单处理单元的 Rule 执行次数上限，并说明扫描复杂度和适用规模。当前不引入依赖图；只有性能分析证明全量扫描成为瓶颈时再评估，该机制不属于脚本契约。以下为原审计记录。
+Runtime 已实现可随处理单元提交或回滚的双向依赖图。State Proxy 的字段读取、`ownKeys`、集合成员和嵌套 Rule 调用会登记动态依赖；成功重算替换旧依赖，基础类型结果缓存，异常结果不缓存。Action 与引擎内部 State 写入只使反向可达的计算节点失效，Effect 生命周期和 Reaction 只处理 dirty observer，不再重建或计算全部 watch。
+
+EffectConfig 与 EventConfig Reaction 在构造时注册一次；TextNode Reaction 随 EventInstance 进入、跳转和结束精确注册/注销。受影响 Reaction 仍按 canonical ordinal 进入 FIFO，失活队列项执行前通过注册表跳过。RuntimeMonitor 的 Rule 汇总包含依赖数量和反向扇出，4096 统一表示单处理单元的 Rule 重算上限。自动回归覆盖缓存命中、集合路径依赖、嵌套失效传播、动态分支依赖替换、异常不缓存、事务图回滚、无关 observer 不重算和 TextNode observer 生命周期。以下为原审计记录。
 
 **结论**
 
@@ -496,7 +498,7 @@ command trace 在整个命令完成后的 finally 才输出，且没有 parent c
 1. `[已完成]` 统一 Runtime staged commit，定义 advance-turn partial commit 与重试协议。
 2. `[已完成]` 拆分 StoredProfile、Runtime 工作状态和只读检查点投影；加入坏档逐条隔离与持久化 revision/CAS。
 3. `[已完成]` 将页面收敛到 AppServices read model、应用命令和 GameSession 接口；recent metadata 不再推翻领域命令。
-4. `[已完成]` **决定响应式执行模型**：代码与文档统一采用无缓存、无依赖收集的确定性 eager scan。
+4. `[已完成]` **实现响应式依赖图**：Rule 计算节点缓存基础结果并替换动态依赖；State 写入只传播到反向可达的 Effect/Reaction observer。
 5. `[已完成]` **补齐剩余正确性边界**：加入 Config 感知 StoredProfile 校验和 Rule 返回契约校验。
 6. `[已完成]` **处理独立问题**：完成存档预览与分支关系、错误协议、required/State 示例文档、监控、非 UI 自动测试与 UI polish。
 
@@ -504,8 +506,8 @@ command trace 在整个命令完成后的 finally 才输出，且没有 parent c
 
 | 项目 | 结果 |
 | --- | --- |
-| `pnpm run test` | 通过；1 个测试文件、15 个非 UI 用例 |
-| `pnpm run build` | 通过；Vite 8.1.3，主 JS 487.76 kB，gzip 150.38 kB |
+| `pnpm run test` | 通过；2 个测试文件、20 个非 UI 用例 |
+| `pnpm run build` | 通过；Vite 8.1.3，主 JS 495.67 kB，gzip 152.22 kB |
 | `pnpm run lint` | 通过 |
 | `git diff --check` | 通过 |
 | P0-01 回归 | selector 失败时 terminal candidate、revision、snapshot 与持久化均保持未提交 |

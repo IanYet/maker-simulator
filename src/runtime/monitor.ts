@@ -90,15 +90,12 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 	readonly #durations = new Map<RuntimeTraceKind, number>()
 	readonly #slowest: RuntimeTrace[] = []
 	readonly #recent: RuntimeTrace[] = []
-	#ruleExecutions = 0
+	#ruleRecomputations = 0
 	#finished = false
 	readonly verbose: boolean
 	private readonly runId: string
 
-	constructor(
-		verbose: boolean,
-		runId: string,
-	) {
+	constructor(verbose: boolean, runId: string) {
 		this.verbose = verbose
 		this.runId = runId
 	}
@@ -106,12 +103,9 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 	trace(value: RuntimeTrace): void {
 		try {
 			this.#counts.set(value.kind, (this.#counts.get(value.kind) ?? 0) + 1)
-			this.#durations.set(
-				value.kind,
-				(this.#durations.get(value.kind) ?? 0) + value.durationMs,
-			)
+			this.#durations.set(value.kind, (this.#durations.get(value.kind) ?? 0) + value.durationMs)
 			if (value.kind === 'rule-summary' && typeof value.detail?.count === 'number') {
-				this.#ruleExecutions += value.detail.count
+				this.#ruleRecomputations += value.detail.count
 			}
 			if (value.durationMs > 0) {
 				this.#slowest.push(value)
@@ -125,8 +119,8 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 			const indent = '  '.repeat(Math.max(0, value.depth))
 			const detail = value.detail
 				? Object.entries(value.detail)
-					.map(([key, item]) => `${key}=${String(item)}`)
-					.join(' ')
+						.map(([key, item]) => `${key}=${String(item)}`)
+						.join(' ')
 				: ''
 			console.info(
 				`[maker-runtime] trace=${value.traceId}${value.parentId ? ` parent=${value.parentId}` : ''} run=${value.runId} turn=${value.turnNumber} unit=${value.unitId} ${indent}${value.kind} ${value.name}${detail ? ` ${detail}` : ''} ${value.durationMs.toFixed(2)}ms ${value.outcome}`,
@@ -149,7 +143,7 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 				durationMs: Number((performance.now() - this.#started).toFixed(2)),
 				commands: this.#counts.get('command-end') ?? 0,
 				actions: this.#counts.get('action') ?? 0,
-				ruleExecutions: this.#ruleExecutions,
+				ruleRecomputations: this.#ruleRecomputations,
 				unitMs: Number((this.#durations.get('transaction') ?? 0).toFixed(2)),
 				persistenceMs: Number((this.#durations.get('persistence') ?? 0).toFixed(2)),
 				slowest,
@@ -168,6 +162,5 @@ export function createMonitorFactory(): RuntimeMonitorFactory {
 	const setting = new URLSearchParams(window.location.search).get('runtimeMonitor')
 	const enabled = import.meta.env.DEV || setting === '1' || setting === 'verbose'
 	const verbose = setting === 'verbose'
-	return (runId) =>
-		enabled ? new ConsoleRuntimeMonitor(verbose, runId) : new NoopRuntimeMonitor()
+	return (runId) => (enabled ? new ConsoleRuntimeMonitor(verbose, runId) : new NoopRuntimeMonitor())
 }

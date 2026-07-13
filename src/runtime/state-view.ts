@@ -1,10 +1,4 @@
-import type {
-	GameConfig,
-	GameState,
-	Primitive,
-	Rule,
-	TurnState,
-} from '../types'
+import type { GameConfig, GameState, Primitive, Rule, TurnState } from '../types'
 
 interface ViewEnvironment {
 	readonly config: GameConfig
@@ -13,6 +7,8 @@ interface ViewEnvironment {
 	readonly writable?: GameState
 	readonly scope: 'profile' | 'run' | 'turn'
 	readonly evaluateRule: (rule: Rule) => unknown
+	readonly onStateRead?: (path: readonly string[]) => void
+	readonly onStateWrite?: (path: readonly string[]) => void
 	readonly onEventWrite?: (
 		path: readonly string[],
 		property: 'currentNodeId' | 'status',
@@ -103,7 +99,12 @@ function validateDerivedRuleResult(
 		}
 		for (const key of Object.keys(value)) {
 			if (!hasOwn(choicesValue, key)) {
-				invalidRuleResult(rule, path, `only keys declared by choicesValue (unknown “${key}”)`, value)
+				invalidRuleResult(
+					rule,
+					path,
+					`only keys declared by choicesValue (unknown “${key}”)`,
+					value,
+				)
 			}
 			const choice = (value as Readonly<Record<string, unknown>>)[key]
 			if (
@@ -125,12 +126,7 @@ function resolveRule(
 	path: readonly string[],
 ): unknown {
 	if (!isRule(value) || !isDerivedFieldPath(path)) return value
-	return validateDerivedRuleResult(
-		value,
-		environment.evaluateRule(value),
-		environment,
-		path,
-	)
+	return validateDerivedRuleResult(value, environment.evaluateRule(value), environment, path)
 }
 
 function configAt(environment: ViewEnvironment, path: readonly string[]): unknown {
@@ -165,7 +161,11 @@ function stateAt(state: GameState, path: readonly string[]): unknown {
 }
 
 function effectiveAt(environment: ViewEnvironment, path: readonly string[]): unknown {
-	if (path.length === 1 && environment.turnState && (path[0] === 'turnNumber' || path[0] === 'phase')) {
+	if (
+		path.length === 1 &&
+		environment.turnState &&
+		(path[0] === 'turnNumber' || path[0] === 'phase')
+	) {
 		return environment.turnState[path[0]]
 	}
 	const rawConfig = rawConfigAt(environment, path)
@@ -208,7 +208,10 @@ function needsId(path: readonly string[]): boolean {
 		(path.length === 2 && ['characters', 'effects', 'events'].includes(path[0])) ||
 		(path.length === 4 && path[0] === 'characters' && path[2] === 'attributes') ||
 		(path.length === 4 && path[0] === 'events' && path[2] === 'nodes') ||
-		(path.length === 6 && path[0] === 'events' && path[2] === 'nodes' && ['choices', 'choicesValue', 'commands'].includes(path[4]))
+		(path.length === 6 &&
+			path[0] === 'events' &&
+			path[2] === 'nodes' &&
+			['choices', 'choicesValue', 'commands'].includes(path[4]))
 	)
 }
 
@@ -232,7 +235,10 @@ function ensureParent(state: GameState, path: readonly string[]): Record<string,
 	return cursor
 }
 
-function isEventLifecycle(path: readonly string[], property: PropertyKey): property is 'currentNodeId' | 'status' {
+function isEventLifecycle(
+	path: readonly string[],
+	property: PropertyKey,
+): property is 'currentNodeId' | 'status' {
 	return (
 		path.length === 4 &&
 		path[0] === 'events' &&
@@ -249,37 +255,92 @@ function isWritableContentPath(path: readonly string[]): boolean {
 	const property = path.at(-1)
 	if (!property) return false
 	if (['weightValue', 'visible', 'unlockedValue', 'enabledValue'].includes(property)) return true
-	if (path.length === 5 && path[0] === 'characters' && path[2] === 'attributes' && property === 'value') return true
-	if (path.length === 3 && path[0] === 'effects' && ['acquiredValue', 'activedValue', 'bindCharacterId'].includes(property)) return true
-	if (path.length === 5 && path[0] === 'events' && path[2] === 'nodes' && property === 'requiredValue') return true
-	if (path.length === 7 && path[0] === 'events' && path[2] === 'nodes' && path[4] === 'choicesValue' && property === 'maxCountValue') return true
+	if (
+		path.length === 5 &&
+		path[0] === 'characters' &&
+		path[2] === 'attributes' &&
+		property === 'value'
+	)
+		return true
+	if (
+		path.length === 3 &&
+		path[0] === 'effects' &&
+		['acquiredValue', 'activedValue', 'bindCharacterId'].includes(property)
+	)
+		return true
+	if (
+		path.length === 5 &&
+		path[0] === 'events' &&
+		path[2] === 'nodes' &&
+		property === 'requiredValue'
+	)
+		return true
+	if (
+		path.length === 7 &&
+		path[0] === 'events' &&
+		path[2] === 'nodes' &&
+		path[4] === 'choicesValue' &&
+		property === 'maxCountValue'
+	)
+		return true
 	return false
 }
 
-function validateWrite(environment: ViewEnvironment, path: readonly string[], value: unknown): unknown {
+function validateWrite(
+	environment: ViewEnvironment,
+	path: readonly string[],
+	value: unknown,
+): unknown {
 	const property = path.at(-1)
 	if (property === 'weightValue') {
-		if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10) throw new Error('weight must be between 0 and 10')
+		if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10)
+			throw new Error('weight must be between 0 and 10')
 	}
 	if (property === 'maxCountValue') {
-		if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) throw new Error('maxCount must be a non-negative integer')
+		if (typeof value !== 'number' || !Number.isInteger(value) || value < 0)
+			throw new Error('maxCount must be a non-negative integer')
 	}
 	if (property === 'value' && path[0] === 'characters') {
 		const attribute = configAt(environment, path.slice(0, -1))
-		if (attribute === null || typeof attribute !== 'object' || typeof value !== 'number' || !Number.isFinite(value)) {
+		if (
+			attribute === null ||
+			typeof attribute !== 'object' ||
+			typeof value !== 'number' ||
+			!Number.isFinite(value)
+		) {
 			throw new Error('Attribute value must be a finite number')
 		}
-		const typed = attribute as { type: string; min?: number; max?: number; valueDisplay?: readonly string[] }
+		const typed = attribute as {
+			type: string
+			min?: number
+			max?: number
+			valueDisplay?: readonly string[]
+		}
 		if (typed.type === 'enum') {
-			if (!Number.isInteger(value) || value < 0 || value >= (typed.valueDisplay?.length ?? 0)) throw new Error('Invalid enum attribute value')
+			if (!Number.isInteger(value) || value < 0 || value >= (typed.valueDisplay?.length ?? 0))
+				throw new Error('Invalid enum attribute value')
 		} else {
-			return Math.min(typed.max ?? Number.POSITIVE_INFINITY, Math.max(typed.min ?? Number.NEGATIVE_INFINITY, value))
+			return Math.min(
+				typed.max ?? Number.POSITIVE_INFINITY,
+				Math.max(typed.min ?? Number.NEGATIVE_INFINITY, value),
+			)
 		}
 	}
 	if (property === 'bindCharacterId' && value !== undefined) {
-		if (typeof value !== 'string' || !environment.config.characters[value]) throw new Error('Unknown Effect character binding')
+		if (typeof value !== 'string' || !environment.config.characters[value])
+			throw new Error('Unknown Effect character binding')
 	}
-	if (['visible', 'unlockedValue', 'enabledValue', 'acquiredValue', 'activedValue', 'requiredValue'].includes(property ?? '') && typeof value !== 'boolean') {
+	if (
+		[
+			'visible',
+			'unlockedValue',
+			'enabledValue',
+			'acquiredValue',
+			'activedValue',
+			'requiredValue',
+		].includes(property ?? '') &&
+		typeof value !== 'boolean'
+	) {
 		throw new Error(`${String(property)} must be boolean`)
 	}
 	return value
@@ -292,35 +353,45 @@ function makeProxy(environment: ViewEnvironment, path: readonly string[]): objec
 			if (property === 'toJSON') return undefined
 			if (typeof property !== 'string') return undefined
 			const childPath = [...path, property]
+			environment.onStateRead?.(childPath)
 			const value = effectiveAt(environment, childPath)
-			if (value === undefined && isSyntheticRecord(childPath)) return makeProxy(environment, childPath)
+			if (value === undefined && isSyntheticRecord(childPath))
+				return makeProxy(environment, childPath)
 			if (Array.isArray(value)) return Object.freeze([...value])
 			if (value !== null && typeof value === 'object') return makeProxy(environment, childPath)
 			return value
 		},
 		set(_target, property, next) {
-			if (typeof property !== 'string' || !environment.writable) throw new Error('Rule runtime views are read-only')
+			if (typeof property !== 'string' || !environment.writable)
+				throw new Error('Rule runtime views are read-only')
 			const childPath = [...path, property]
 			const lifecycle = isEventLifecycle(path, property)
-			if (lifecycle && environment.scope !== 'run') throw new Error('EventInstance lifecycle is writable only through runState')
-			if (!lifecycle && !isWritableContentPath(childPath)) throw new Error(`State path ${childPath.join('.')} is read-only`)
+			if (lifecycle && environment.scope !== 'run')
+				throw new Error('EventInstance lifecycle is writable only through runState')
+			if (!lifecycle && !isWritableContentPath(childPath))
+				throw new Error(`State path ${childPath.join('.')} is read-only`)
 			const rawConfig = rawConfigAt(environment, childPath)
-			if (isRule(rawConfig)) throw new Error(`Rule-derived field ${childPath.join('.')} cannot be assigned`)
+			if (isRule(rawConfig))
+				throw new Error(`Rule-derived field ${childPath.join('.')} cannot be assigned`)
 			const previous = effectiveAt(environment, childPath)
 			const value = lifecycle ? next : validateWrite(environment, childPath, next)
 			if (lifecycle) environment.onEventWrite?.(path, property, previous, value)
 			const parent = ensureParent(environment.writable, path)
 			if (value === undefined) delete parent[property]
 			else parent[property] = value
+			if (!Object.is(previous, value)) environment.onStateWrite?.(childPath)
 			return true
 		},
 		ownKeys() {
+			environment.onStateRead?.(path)
 			return stateObjectKeys(environment, path)
 		},
 		has(_target, property) {
+			environment.onStateRead?.(path)
 			return typeof property === 'string' && stateObjectKeys(environment, path).includes(property)
 		},
 		getOwnPropertyDescriptor(_target, property) {
+			environment.onStateRead?.(path)
 			if (typeof property === 'string' && stateObjectKeys(environment, path).includes(property)) {
 				return { enumerable: true, configurable: true }
 			}
@@ -334,8 +405,8 @@ function makeProxy(environment: ViewEnvironment, path: readonly string[]): objec
 
 /**
  * 创建供 Rule、Action 和 Runtime selector 使用的分层 State Proxy。
- * 读取时按 Profile → Run → Turn → Config 合并；写入时只允许 ActionContext
- * 的白名单字段，并把事件生命周期写入交给 Runtime 记录。
+ * 读取时按 Profile → Run → Turn → Config 合并并报告依赖路径；写入时只允许
+ * ActionContext 的白名单字段，并把变更路径和事件生命周期写入交给 Runtime。
  */
 export function createRuntimeView(environment: ViewEnvironment): Record<string, unknown> {
 	return makeProxy(environment, []) as Record<string, unknown>

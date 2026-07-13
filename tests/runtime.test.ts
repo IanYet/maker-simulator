@@ -86,12 +86,14 @@ function makeConfig(): GameConfig {
 				activedValue: false,
 				actived: rule('constant.false'),
 				manuallyActivatable: false,
-				reactionList: [{
-					watch: rule('watch.turn-start'),
-					from: false,
-					to: true,
-					action: { key: 'score.increment', args: [] },
-				}],
+				reactionList: [
+					{
+						watch: rule('watch.turn-start'),
+						from: false,
+						to: true,
+						action: { key: 'score.increment', args: [] },
+					},
+				],
 			},
 		},
 		events: {
@@ -281,8 +283,9 @@ test('Config-aware validation rejects ghost State keys with a JSON Pointer', () 
 	validateProfileAgainstConfig(profile, game.config)
 	const turn = profile.runDatas[profile.current.runId].turnDatas[profile.current.turnId]
 	turn.snapshot.runState.characters.ghost = { id: 'ghost' }
-	expect(() => validateProfileAgainstConfig(profile, game.config))
-		.toThrowError('/snapshot/runState/characters/ghost')
+	expect(() => validateProfileAgainstConfig(profile, game.config)).toThrowError(
+		'/snapshot/runState/characters/ghost',
+	)
 })
 
 /** Rule 派生值越过布尔、权重或 Choice 身份约束时，应在读取投影时立即失败。 */
@@ -308,7 +311,13 @@ test('derived Rule contracts reject invalid booleans, weights and Choice identit
 		/between 0 and 10/,
 	)
 	assert.throws(
-		() => (((view.events as Record<string, Record<string, unknown>>).requiredEvent.nodes as Record<string, Record<string, unknown>>).requiredNode.choices),
+		() =>
+			(
+				(view.events as Record<string, Record<string, unknown>>).requiredEvent.nodes as Record<
+					string,
+					Record<string, unknown>
+				>
+			).requiredNode.choices,
 		/unknown “ghost”/,
 	)
 })
@@ -316,19 +325,23 @@ test('derived Rule contracts reject invalid booleans, weights and Choice identit
 /** Effect、Event 和当前 TextNode 的 Reaction 必须按稳定的 canonical 顺序收集。 */
 test('Reaction definitions use canonical Effect/Event/TextNode ordering', () => {
 	const config = makeConfig()
-	config.events.requiredEvent.reactionList = [{
-		watch: rule('constant.true'),
-		action: { key: 'check.noop', args: [] },
-	}]
+	config.events.requiredEvent.reactionList = [
+		{
+			watch: rule('constant.true'),
+			action: { key: 'check.noop', args: [] },
+		},
+	]
 	const requiredNode = config.events.requiredEvent.nodes.requiredNode
 	// 与 makeRules 中的检查相同：这里收窄的是测试夹具，不是在声明通用节点规则。
 	if (requiredNode.type !== 'single') {
 		throw new Error('requiredNode must be a single-choice node')
 	}
-	requiredNode.reactionList = [{
-		watch: rule('constant.true'),
-		action: { key: 'check.noop', args: [] },
-	}]
+	requiredNode.reactionList = [
+		{
+			watch: rule('constant.true'),
+			action: { key: 'check.noop', args: [] },
+		},
+	]
 	const runState = emptyState()
 	runState.events.requiredEvent = {
 		id: 'requiredEvent',
@@ -345,11 +358,14 @@ test('Reaction definitions use canonical Effect/Event/TextNode ordering', () => 
 		},
 	}
 	const definitions = collectReactionDefinitions(config, runState)
-	assert.deepEqual(definitions.map((definition) => definition.ordinal[0]), [0, 1, 2])
+	assert.deepEqual(
+		definitions.map((definition) => definition.ordinal[0]),
+		[0, 1, 2],
+	)
 })
 
-/** Runtime 打开时应执行 eager scan，并将 required 阻塞原因投影为结构化数据。 */
-test('Runtime eager scan executes turn-start Reaction and exposes structured required blockers', async () => {
+/** Runtime 打开时应传播阶段依赖，并将 required 阻塞原因投影为结构化数据。 */
+test('Runtime dependency propagation executes turn-start Reaction and exposes structured required blockers', async () => {
 	const game = makeGame()
 	const profile = createProfile(game)
 	const saves = new MemorySaveRepository()
@@ -369,6 +385,193 @@ test('Runtime eager scan executes turn-start Reaction and exposes structured req
 			assert.equal(result.code, 'blocked')
 			assert.match(result.errorId, /^runtime-/)
 		}
+	} finally {
+		runtime.dispose()
+	}
+})
+
+/** 一次 State 写入只能重算依赖该路径的 Reaction watch，不能遍历无关 observer。 */
+test('Runtime dependency graph only recomputes affected Reaction observers', async () => {
+	const config = makeConfig()
+	const node = config.events.requiredEvent.nodes.requiredNode
+	if (node.type !== 'single') throw new Error('requiredNode must be a single-choice node')
+	config.events.requiredEvent.entryNodeId = node.id
+	node.choicesValue.increment = {
+		...common('increment', 0),
+		action: { key: 'score.increment', args: [] },
+	}
+	config.effects.turnEffect.reactionList.push(
+		{
+			watch: rule('watch.score'),
+			action: { key: 'check.noop', args: [] },
+		},
+		{
+			watch: rule('watch.turn-number'),
+			action: { key: 'check.noop', args: [] },
+		},
+		{
+			watch: rule('watch.instance-count'),
+			action: { key: 'check.noop', args: [] },
+		},
+	)
+	const executions = { score: 0, turnNumber: 0, instanceCount: 0 }
+	const game = withImplementations(makeGame(config), {
+		rules: {
+			'watch.score': {
+				key: 'watch.score',
+				calc: (context: RuleContext) => {
+					executions.score += 1
+					return context.runState.characters.hero.attributes.score.value
+				},
+			},
+			'watch.turn-number': {
+				key: 'watch.turn-number',
+				calc: (context: RuleContext) => {
+					executions.turnNumber += 1
+					return context.turnState.turnNumber
+				},
+			},
+			'watch.instance-count': {
+				key: 'watch.instance-count',
+				calc: (context: RuleContext) => {
+					executions.instanceCount += 1
+					return Object.keys(context.runState.events.requiredEvent.instances).length
+				},
+			},
+		},
+	})
+	const runtime = await GameplayRuntimeImpl.open(
+		game,
+		createProfile(game),
+		new MemorySaveRepository(),
+	)
+	try {
+		const beforeStart = { ...executions }
+		assert.equal(
+			(
+				await runtime.dispatch({
+					type: 'start-event',
+					eventId: 'requiredEvent',
+				})
+			).ok,
+			true,
+		)
+		assert.equal(executions.score, beforeStart.score)
+		assert.equal(executions.turnNumber, beforeStart.turnNumber)
+		assert.equal(executions.instanceCount, beforeStart.instanceCount + 1)
+
+		const active = runtime.getSnapshot().activeEvents[0]
+		assert.ok(active)
+		const beforeChoice = { ...executions }
+		assert.equal(
+			(
+				await runtime.dispatch({
+					type: 'choose-single',
+					eventInstanceId: active.eventInstanceId,
+					nodeId: active.currentNodeId,
+					choiceId: 'increment',
+				})
+			).ok,
+			true,
+		)
+		assert.equal(executions.score, beforeChoice.score + 1)
+		assert.equal(executions.turnNumber, beforeChoice.turnNumber)
+		assert.equal(executions.instanceCount, beforeChoice.instanceCount)
+	} finally {
+		runtime.dispose()
+	}
+})
+
+/** TextNode Reaction 进入节点时注册，离开 active 实例后必须立即注销。 */
+test('Runtime registers and unregisters TextNode observers with event lifecycle', async () => {
+	const config = makeConfig()
+	const node = config.events.requiredEvent.nodes.requiredNode
+	if (node.type !== 'single') throw new Error('requiredNode must be a single-choice node')
+	config.events.requiredEvent.entryNodeId = node.id
+	node.reactionList = [
+		{
+			watch: rule('watch.score'),
+			action: { key: 'check.noop', args: [] },
+		},
+	]
+	node.choicesValue.increment = {
+		...common('increment', 0),
+		action: { key: 'score.increment', args: [] },
+	}
+	node.choicesValue.complete = {
+		...common('complete', 1),
+		action: { key: 'event.complete', args: [] },
+	}
+	const game = withImplementations(makeGame(config), {
+		rules: {
+			'watch.score': {
+				key: 'watch.score',
+				calc: (context: RuleContext) => context.runState.characters.hero.attributes.score.value,
+			},
+		},
+		actions: {
+			'event.complete': {
+				key: 'event.complete',
+				exec: (context: ActionContext) => {
+					const event = context.runState.events.requiredEvent
+					const instanceId = event.activeInstanceId
+					if (!instanceId) throw new Error('requiredEvent must be active')
+					event.instances[instanceId].status = 'completed'
+				},
+			},
+		},
+	})
+	const monitor = new RecordingRuntimeMonitor()
+	const runtime = await GameplayRuntimeImpl.open(
+		game,
+		createProfile(game),
+		new MemorySaveRepository(),
+		() => monitor,
+	)
+	try {
+		assert.equal(
+			(
+				await runtime.dispatch({
+					type: 'start-event',
+					eventId: 'requiredEvent',
+				})
+			).ok,
+			true,
+		)
+		const active = runtime.getSnapshot().activeEvents[0]
+		assert.ok(active)
+		const nodeReactionCount = (): number =>
+			monitor.traces.filter(
+				(trace) =>
+					trace.kind === 'reaction' && trace.detail?.eventInstanceId === active.eventInstanceId,
+			).length
+
+		assert.equal(
+			(
+				await runtime.dispatch({
+					type: 'choose-single',
+					eventInstanceId: active.eventInstanceId,
+					nodeId: active.currentNodeId,
+					choiceId: 'increment',
+				})
+			).ok,
+			true,
+		)
+		assert.equal(nodeReactionCount(), 1)
+
+		assert.equal(
+			(
+				await runtime.dispatch({
+					type: 'choose-single',
+					eventInstanceId: active.eventInstanceId,
+					nodeId: active.currentNodeId,
+					choiceId: 'complete',
+				})
+			).ok,
+			true,
+		)
+		assert.equal((await runtime.dispatch({ type: 'advance-turn' })).ok, true)
+		assert.equal(nodeReactionCount(), 1)
 	} finally {
 		runtime.dispose()
 	}
@@ -447,17 +650,19 @@ test('selector failure discards a terminal candidate before persistence', async 
 	// 返回只用于满足 TypeScript 收窄；makeConfig 改坏夹具时，前一条断言会先失败。
 	if (node.type !== 'single') return
 	config.events.requiredEvent.entryNodeId = node.id
+	config.characters.hero.unlocked = rule('selector.maybe-fail')
 	node.choicesValue.finish = {
 		...common('finish', 0),
 		action: { key: 'score.finish', args: [] },
 	}
-	let selectorMustFail = false
 	const game = withImplementations(makeGame(config), {
 		rules: {
-			'constant.true': {
-				key: 'constant.true',
-				calc: () => {
-					if (selectorMustFail) throw new Error('synthetic selector failure')
+			'selector.maybe-fail': {
+				key: 'selector.maybe-fail',
+				calc: (context: RuleContext) => {
+					if (context.runState.characters.hero.attributes.score.value > 1) {
+						throw new Error('synthetic selector failure')
+					}
 					return true
 				},
 			},
@@ -467,7 +672,6 @@ test('selector failure discards a terminal candidate before persistence', async 
 				key: 'score.finish',
 				exec: (context: ActionContext) => {
 					context.runState.characters.hero.attributes.score.value += 1
-					selectorMustFail = true
 					context.endRun()
 				},
 			},
@@ -476,10 +680,15 @@ test('selector failure discards a terminal candidate before persistence', async 
 	const saves = new MemorySaveRepository()
 	const runtime = await GameplayRuntimeImpl.open(game, createProfile(game), saves)
 	try {
-		assert.equal((await runtime.dispatch({
-			type: 'start-event',
-			eventId: 'requiredEvent',
-		})).ok, true)
+		assert.equal(
+			(
+				await runtime.dispatch({
+					type: 'start-event',
+					eventId: 'requiredEvent',
+				})
+			).ok,
+			true,
+		)
 		const active = runtime.getSnapshot().activeEvents[0]
 		assert.ok(active)
 		const before = runtime.getSnapshot()
@@ -492,7 +701,10 @@ test('selector failure discards a terminal candidate before persistence', async 
 		assert.equal(result.ok, false)
 		if (!result.ok) assert.equal(result.code, 'script-error')
 		assert.equal(runtime.getSnapshot(), before)
-		assert.equal(runtime.getStoredProfile().runDatas[runtime.getCurrentCheckpoint().runId].status, 'active')
+		assert.equal(
+			runtime.getStoredProfile().runDatas[runtime.getCurrentCheckpoint().runId].status,
+			'active',
+		)
 		assert.equal(saves.profiles.size, 0)
 	} finally {
 		runtime.dispose()
@@ -514,11 +726,9 @@ test('Reaction self-triggering loops stop at a deterministic execution limit', a
 		action: { key: 'score.increment', args: [] },
 	})
 	const game = makeGame(config)
-	await expect(GameplayRuntimeImpl.open(
-		game,
-		createProfile(game),
-		new MemorySaveRepository(),
-	)).rejects.toThrowError(/(Action|Rule) execution limit/)
+	await expect(
+		GameplayRuntimeImpl.open(game, createProfile(game), new MemorySaveRepository()),
+	).rejects.toThrowError(/(Action execution|Rule recomputation) limit/)
 })
 
 /**
@@ -650,15 +860,16 @@ test('Rule failures return a copyable error id and complete nested call frames',
 		},
 	})
 	const profile = createProfile(game)
-	await expect(GameplayRuntimeImpl.open(
-		game,
-		profile,
-		new MemorySaveRepository(),
-	)).rejects.toSatisfy((error: unknown) => error instanceof Error &&
+	await expect(
+		GameplayRuntimeImpl.open(game, profile, new MemorySaveRepository()),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof Error &&
 			/Reaction/.test(error.message) &&
 			/Action score\.increment/.test(error.message) &&
 			/Rule failing\.nested/.test(error.message) &&
-			/\[runtime-/.test(error.message))
+			/\[runtime-/.test(error.message),
+	)
 })
 
 /** Runtime 尚在构造阶段失败时，也必须结束已经创建的 monitor 会话。 */
@@ -674,12 +885,9 @@ test('Runtime construction failures still finish the allocated monitor session',
 		},
 	})
 	const monitor = new RecordingRuntimeMonitor()
-	await expect(GameplayRuntimeImpl.open(
-		game,
-		createProfile(game),
-		new MemorySaveRepository(),
-		() => monitor,
-	)).rejects.toThrowError(/synthetic baseline failure/)
+	await expect(
+		GameplayRuntimeImpl.open(game, createProfile(game), new MemorySaveRepository(), () => monitor),
+	).rejects.toThrowError(/synthetic baseline failure/)
 	assert.equal(monitor.finished, true)
 })
 
@@ -687,48 +895,51 @@ test('Runtime construction failures still finish the allocated monitor session',
  * 串行验证 IndexedDB 三项存档边界：开发期升级清库、revision CAS 冲突，
  * 以及结构损坏记录与有效存档的隔离。
  */
-test.sequential('IndexedDB upgrade clears development data, CAS rejects stale writes, and bad records are isolated', async () => {
-	const game = makeGame()
-	const legacy = createProfile(game)
-	// 手工建立旧版本数据库并写入数据，随后由当前 Repository 触发升级。
-	await new Promise<void>((resolve, reject) => {
-		const request = indexedDB.open('maker-simulator', 2)
-		request.onupgradeneeded = () => {
-			const database = request.result
-			const profiles = database.createObjectStore('profiles', { keyPath: 'profileId' })
-			profiles.createIndex('by-config-id', 'configId')
-			profiles.createIndex('by-updated-at', 'updatedAt')
-			database.createObjectStore('app-metadata', { keyPath: 'key' })
-		}
-		request.onerror = () => reject(request.error)
-		request.onsuccess = () => {
-			const database = request.result
-			const transaction = database.transaction('profiles', 'readwrite')
-			transaction.objectStore('profiles').put(legacy)
-			transaction.onerror = () => reject(transaction.error)
-			transaction.oncomplete = () => {
-				database.close()
-				resolve()
+test.sequential(
+	'IndexedDB upgrade clears development data, CAS rejects stale writes, and bad records are isolated',
+	async () => {
+		const game = makeGame()
+		const legacy = createProfile(game)
+		// 手工建立旧版本数据库并写入数据，随后由当前 Repository 触发升级。
+		await new Promise<void>((resolve, reject) => {
+			const request = indexedDB.open('maker-simulator', 2)
+			request.onupgradeneeded = () => {
+				const database = request.result
+				const profiles = database.createObjectStore('profiles', { keyPath: 'profileId' })
+				profiles.createIndex('by-config-id', 'configId')
+				profiles.createIndex('by-updated-at', 'updatedAt')
+				database.createObjectStore('app-metadata', { keyPath: 'key' })
 			}
-		}
-	})
+			request.onerror = () => reject(request.error)
+			request.onsuccess = () => {
+				const database = request.result
+				const transaction = database.transaction('profiles', 'readwrite')
+				transaction.objectStore('profiles').put(legacy)
+				transaction.onerror = () => reject(transaction.error)
+				transaction.oncomplete = () => {
+					database.close()
+					resolve()
+				}
+			}
+		})
 
-	const saves = new IndexedDbSaveRepository()
-	assert.equal((await saves.listByConfigId(game.config.meta.id)).profiles.length, 0)
-	const first = await saves.put(createProfile(game))
-	const stale = structuredClone(first)
-	const current = await saves.put(first)
-	assert.equal(current.storageRevision, 2)
-	await expect(saves.put(stale)).rejects.toBeInstanceOf(SaveConflictError)
+		const saves = new IndexedDbSaveRepository()
+		assert.equal((await saves.listByConfigId(game.config.meta.id)).profiles.length, 0)
+		const first = await saves.put(createProfile(game))
+		const stale = structuredClone(first)
+		const current = await saves.put(first)
+		assert.equal(current.storageRevision, 2)
+		await expect(saves.put(stale)).rejects.toBeInstanceOf(SaveConflictError)
 
-	const database = await getDatabase()
-	await database.put('profiles', {
-		profileId: 'broken-profile',
-		configId: game.config.meta.id,
-		configVersion: game.config.meta.version,
-		updatedAt: new Date().toISOString(),
-	} as StoredProfile)
-	const listed = await saves.listByConfigId(game.config.meta.id)
-	assert.equal(listed.profiles.length, 1)
-	assert.equal(listed.invalid.length, 1)
-})
+		const database = await getDatabase()
+		await database.put('profiles', {
+			profileId: 'broken-profile',
+			configId: game.config.meta.id,
+			configVersion: game.config.meta.version,
+			updatedAt: new Date().toISOString(),
+		} as StoredProfile)
+		const listed = await saves.listByConfigId(game.config.meta.id)
+		assert.equal(listed.profiles.length, 1)
+		assert.equal(listed.invalid.length, 1)
+	},
+)

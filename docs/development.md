@@ -15,10 +15,13 @@ pnpm dev
 
 ```bash
 pnpm run build   # TypeScript 检查并生成生产构建
+pnpm run format  # 显式格式化全部代码；忽略文档、游戏内容和生成脚本
 pnpm run lint    # ESLint 检查 TypeScript/TSX
 pnpm run test    # Vitest 非 UI 回归测试
 pnpm run preview # 预览 dist 中的生产构建
 ```
+
+安装依赖时 Husky 会注册仓库内的 `pre-commit` hook。提交时 `lint-staged` 只把已暂存的代码文件交给 Prettier，不扫描文档、游戏包、Frostbound 生成脚本或锁文件。仓库的 VS Code 设置使用同一份 Prettier 配置，并把保存时格式化限制在 Git 标记的修改行，避免保存旧文件时重排整个文件。
 
 提交前至少运行 `pnpm run test`、`pnpm run build`、`pnpm run lint` 和 `git diff --check`。如果修改了 Frostbound authoring 源，还要重新生成游戏包：
 
@@ -136,12 +139,12 @@ export const actions = {
 1. `GamePackageLoader` 读取 catalog/manifest/config 和可信脚本模块。
 2. Zod schema 校验外部 JSON；linker 检查身份、对象 key/id、order、Rule/Action 引用、ValueRef、Reaction 和节点目标。
 3. `createProfile()` 创建稳定存档、首个 RunData 和 `initial` 检查点；配置中直接为 `true` 的 Effect 会进入初始 RunState。
-4. `GameplayRuntimeImpl` 建立 Reaction baseline，从检查点自动进入 `turn_start`，稳定后进入 `event_handle`。
-5. 每条 RuntimeCommand 创建一个 Immer draft 处理单元。Action、Rule、Reaction、CheckNode、随机游标和终局请求共享这个 draft。
-6. 处理单元先完成脚本与状态稳定、生成候选存档和候选 RuntimeSnapshot；需要持久化时，必须等待 IndexedDB 事务完成，随后才一次性替换 Runtime 状态、revision 与 snapshot 并通知 Session。任意前置步骤失败都保留旧状态。
+4. `GameplayRuntimeImpl` 建立 Rule 依赖图、Effect 生命周期 observer 和 Reaction baseline，从检查点自动进入 `turn_start`，稳定后进入 `event_handle`。
+5. 每条 RuntimeCommand 创建一个 Immer draft 和依赖图副本。Action、Rule、Reaction、CheckNode、随机游标和终局请求共享这个处理单元。
+6. 处理单元先完成脚本与状态稳定、生成候选存档和候选 RuntimeSnapshot；需要持久化时，必须等待 IndexedDB 事务完成，随后才一次性替换 Runtime 状态、依赖图、revision 与 snapshot 并通知 Session。任意前置步骤失败都保留旧状态。
 7. `advance-turn` 先检查 required blocker，再持久化 `turn_end` 检查点，然后自动开始下一回合。下一回合启动失败时，已经提交的 `turn_end` 会成为当前可见状态，同一命令可以从该边界重试。
 
-Reaction 的扫描顺序是 EffectConfig、EventConfig、当前 active TextNode；Reaction 首次进入作用域只建立 baseline。root 操作后以及每个 Reaction Action 后都会全量扫描当前 watch。新增自动规则时，先确认它属于哪个声明层级，再检查是否会因为状态变化形成循环。
+EffectConfig 与 EventConfig Reaction 在 Runtime 构造时注册，TextNode Reaction 随 active 节点精确注册和注销；首次进入作用域只建立 baseline。State 写入通过依赖图只重算 dirty observer，同时匹配多个 Reaction 时仍按 EffectConfig、EventConfig、active TextNode 的 canonical ordinal 入队。新增自动规则时，先确认声明层级、实际 State 依赖和可能形成的循环。
 
 ## 6. 存档与 IndexedDB
 

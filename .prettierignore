@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.codex/
+
+# 文档与游戏内容由人工维护，不参与代码格式化。
+*.md
+public/games/
+scripts/build-frostbound-package.mjs
+
+# 锁文件只由包管理器维护。
+pnpm-lock.yaml

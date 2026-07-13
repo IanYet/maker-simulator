@@ -71,7 +71,7 @@ RuntimeCommand 串行执行。引擎在执行时根据最新 State 重新校验 
 
 所有失败结果都带 `errorId`，面向玩家的安全摘要也附带该编号。脚本失败在内部保留 Reaction、Action 与 Rule frame 调用链；command monitor 记录 errorId、code、调用链和可用的 JSON Pointer，不把完整 State 或脚本堆栈返回 UI。
 
-一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft；root 操作后及每个 Reaction Action 后都按 canonical 顺序全量扫描当前 Reaction watch。队列稳定后先完成 draft、验证并生成候选 snapshot；需要保存检查点时先等待 Repository 成功，再统一替换 Runtime 状态、revision 与 snapshot 并通知。任一前置步骤失败都会丢弃候选结果，并保留命令前的状态与 UI snapshot。
+一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft 与依赖图副本；State 写入沿反向依赖边失效计算节点，只按 canonical 顺序重算 dirty Reaction observer。队列稳定后先完成 draft、验证并生成候选 snapshot；需要保存检查点时先等待 Repository 成功，再统一替换 Runtime 状态、依赖图、revision 与 snapshot 并通知。任一前置步骤失败都会丢弃候选结果，并保留命令前的状态与 UI snapshot。
 
 `AdvanceTurn` 是唯一跨越持久化边界的 gameplay command：它先用一个处理单元完成 `turn_end` 并原子提交检查点，再以该检查点为回滚边界开启下一回合处理单元。UI 不观察两者之间的正常中间态；若下一 `turn_start` 失败，已经完成的 `turn_end` 会被发布，结果返回 `committed: true`，再次执行 `advance-turn` 从该边界重试。持久化本身失败时返回 `committed: false`，内存和 UI 都保持命令前状态。新游戏也以持久化 `initial` 分隔构造与首回合处理。
 
@@ -244,7 +244,7 @@ type TurnPhase =
 | `event_handle` | 等待玩家处理零到多个事件或激活 Effect | 事件/节点命令、`activate-effect`、`advance-turn` | 事件交互保持本 phase；下一回合命令进入 `turn_end` |
 | `turn_end` | `advance-turn` 已提交检查点 | `advance-turn` 仅用于下一回合启动失败后的重试 | 自动开始下一回合 |
 
-状态机采用 run-to-idle：internal transition、Action、Reaction 全量扫描与匹配 Action 持续执行，直到 `event_handle` 用户输入点或 RunData 结束才发布 snapshot。依赖 phase 的脚本是在观察公开生命周期状态，不具备推进状态机的权限。
+状态机采用 run-to-idle：internal transition、Action、依赖失效传播与匹配的 Reaction Action 持续执行，直到 `event_handle` 用户输入点或 RunData 结束才发布 snapshot。依赖 phase 的脚本是在观察公开生命周期状态，不具备推进状态机的权限。
 
 ## 局级初始化顺序
 
@@ -252,16 +252,16 @@ type TurnPhase =
 
 1. 要求游戏包已经完成 schema 校验、registry 校验与 linking；局级 runtime 不重复 import JavaScript。
 2. 生成 Profile/Run id、时间与 PRNG seed，创建 ProfileState、RunState、TurnState，设置 `turnNumber = 0`、`phase = 'initializing'`。Config 的 `xxxValue` 基础值物化到新 Run 的 RunState。
-3. 创建处理单元管理器、PRNG draft、Config/State 合并 Proxy，以及绑定当前 Run 的纯 Rule executor 和事务 Action executor。
+3. 创建处理单元管理器、PRNG draft、Config/State 合并 Proxy、Rule 依赖图，以及绑定当前 Run 的纯 Rule executor 和事务 Action executor。
 4. 物化初始 Effect 等必须保存的回合 `0` 生命周期事实。
 5. 校验初始 State，构造包含 `initial` snapshot 的 StoredProfile 并持久化；这是新建存档的稳定成功边界。
-6. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，并按 canonical 顺序为 EffectConfig、EventConfig Reaction 建立 baseline；新局通常没有 active TextNode。
+6. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态和依赖图，并按 canonical 顺序为 Effect 生命周期、EffectConfig 与 EventConfig Reaction observer 建立 baseline；新局通常没有 active TextNode。
 7. baseline 成功后，以 `initial` 为回滚边界增加 `turnNumber`，进入 `turn_start`，自动运行到 `event_handle`，发布首个可交互 snapshot。baseline 或首回合脚本失败时保留完整 initial 并报告错误。
 
 ### 继续、branch 或截断恢复
 
 1. 按 `StoredProfile.configId/configVersion` 取得精确游戏包，并校验稳定存档与所选 snapshot。
-2. 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本，重建处理单元、Proxy、executors 和 Reaction baseline。
+2. 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本，重建处理单元、Proxy、executors、依赖图和 observer baseline。
 3. 校验每个 EventState 的 `activeInstanceId` 都指向唯一的 active EventInstance，注册全部配置级 Reaction，并恢复这些 active 实例当前 TextNode 的 Reaction；全部只建立基准。
 4. `initial` 与 `turn_end` 从下一回合运行到 `event_handle`；`terminal`/`abandoned` 只产生结果或历史视图。
 
@@ -282,7 +282,7 @@ Reaction 不依赖 Record 插入顺序。引擎按以下 canonical registration 
 ```mermaid
 flowchart TD
     A[从 initial 或 turn_end 稳定边界开始] --> B[清理上回合临时状态<br/>turnNumber + 1<br/>phase = turn_start]
-    B --> C[全量扫描 Reaction watch<br/>执行匹配 Action<br/>直到稳定]
+    B --> C[传播 State 依赖失效<br/>重算 dirty observer<br/>执行匹配 Action 直到稳定]
     C --> D{Action 请求 endRun?}
     D -- 是 --> Z[原子创建 terminal<br/>status = ended<br/>保留当前 phase 与结局字段]
     D -- 否 --> E[phase = event_handle<br/>运行 Action/Reaction 到稳定]
@@ -324,4 +324,4 @@ flowchart TD
 
 “退出”和从游戏内“选择存档”属于应用命令，不放进 ActionRegistry。退出当前游戏界面时丢弃自回合初始化以来的全部未提交工作状态；再次继续时从进入该回合前的 `initial` 或上一 `turn_end` 检查点重新开始。游戏状态只在 `turn_end` 原子持久化。
 
-“退出并放弃”确认后创建 `abandoned` 检查点并结束整条 active Run，不伪造游戏结局。“再来一局”在 ended 或 abandoned 的只读结果中显示，并创建 restart RunData。完整按钮、存档树与页面跳转见[玩家流程与界面设计](./player-flow-and-ui.md)。
+“放弃”确认后创建 `abandoned` 检查点并结束整条 active Run，不伪造游戏结局。“再来一局”在 ended 或 abandoned 的只读结果中显示，并创建 restart RunData。完整按钮、存档树与页面跳转见[玩家流程与界面设计](./player-flow-and-ui.md)。
