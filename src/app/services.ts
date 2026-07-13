@@ -9,8 +9,13 @@ import type {
 	TurnPhase,
 	TurnRef,
 } from '../types'
+import { publicDiagnostic } from '../diagnostics'
 import { FetchGamePackageSource, GamePackageLoader } from '../package-loader'
-import { AppMetadataRepository, IndexedDbSaveRepository } from '../persistence'
+import {
+	AppMetadataRepository,
+	IndexedDbSaveRepository,
+	validateProfileAgainstConfig,
+} from '../persistence'
 import { GameplayRuntimeImpl, addRestartRun, createMonitorFactory, createProfile } from '../runtime'
 import { GameSessionImpl, SaveBrowserControllerImpl } from '../session'
 
@@ -62,8 +67,13 @@ export interface SaveCheckpointView {
 /** 存档页中的一条 Run 时间线。 */
 export interface SaveRunView {
 	readonly runId: string
-	readonly originKind?: 'branch' | 'restart'
-	readonly originSummary?: string
+	readonly origin?: {
+		readonly kind: 'branch' | 'restart'
+		readonly source: TurnRef
+		readonly resolved: boolean
+		readonly sourceTurnNumber?: number
+		readonly sourceKind?: CheckpointKind
+	}
 	readonly checkpoints: readonly SaveCheckpointView[]
 }
 
@@ -85,6 +95,42 @@ export interface SaveProfileView {
 export interface SaveBrowserView {
 	readonly profiles: readonly SaveProfileView[]
 	readonly invalidSaveCount: number
+}
+
+/** 存档页按需加载的只读检查点内容摘要。 */
+export interface SaveCheckpointPreview {
+	readonly source: TurnRef
+	readonly runStatus: 'active' | 'ended' | 'abandoned'
+	readonly turnNumber: number
+	readonly phase: TurnPhase
+	readonly attributes: readonly {
+		readonly characterId: string
+		readonly characterDisplayName: string
+		readonly attributeId: string
+		readonly displayName: string
+		readonly displayValue: string
+	}[]
+	readonly effects: readonly {
+		readonly effectId: string
+		readonly displayName: string
+		readonly actived: boolean
+	}[]
+	readonly pendingEvents: readonly {
+		readonly eventId: string
+		readonly displayName: string
+	}[]
+	readonly activeEvents: readonly {
+		readonly eventId: string
+		readonly eventInstanceId: string
+		readonly displayName: string
+		readonly nodeId: string
+		readonly nodeDisplayName: string
+	}[]
+	readonly ending?: {
+		readonly displayName: string
+		readonly nodeDisplayName: string
+		readonly content: string
+	}
 }
 
 /** 结果页专用的只读检查点投影。 */
@@ -142,6 +188,25 @@ export class AppServices {
 		void this.#metadata.setRecentProfile(configId, profileId).catch(() => undefined)
 	}
 
+	/** 返回存档不可用原因；精确包存在时同时执行 Config 感知领域校验。 */
+	private async getProfileUnavailableReason(
+		profile: StoredProfile,
+		catalog: LocatedGameCatalog,
+	): Promise<string | undefined> {
+		const location = catalog.packages.find(
+			(item) => item.descriptor.id === profile.configId
+				&& item.descriptor.version === profile.configVersion,
+		)
+		if (!location) return `游戏包 ${profile.configId}@${profile.configVersion} 当前不可用`
+		try {
+			const game = await this.#packages.load(location)
+			validateProfileAgainstConfig(profile, game.config)
+			return undefined
+		} catch (error) {
+			return error instanceof Error ? error.message : String(error)
+		}
+	}
+
 	/** 加载默认包并返回游戏列表页可展示的只读状态。 */
 	async listGames(): Promise<readonly GameListItem[]> {
 		const catalog = await this.getCatalog()
@@ -180,10 +245,10 @@ export class AppServices {
 			this.#saves.listByConfigId(gameId),
 			this.#metadata.getRecentProfile(gameId).catch(() => undefined),
 		])
-		const available = saves.profiles.filter((profile) => catalog.packages.some(
-			(item) => item.descriptor.id === profile.configId
-				&& item.descriptor.version === profile.configVersion,
-		))
+		const available = (await Promise.all(saves.profiles.map(async (profile) => ({
+			profile,
+			unavailableReason: await this.getProfileUnavailableReason(profile, catalog),
+		})))).filter((item) => !item.unavailableReason).map((item) => item.profile)
 		const recent = available.find((profile) => profile.profileId === recentId) ?? available[0]
 		const turn = recent ? currentTurn(recent) : undefined
 		return {
@@ -210,7 +275,9 @@ export class AppServices {
 	/** 创建并保存 initial 检查点；首回合由随后打开的 Session 启动。 */
 	async createNewGame(gameId: string): Promise<CreatedGameView> {
 		const game = await this.getDefaultPackage(gameId)
-		const stored = await this.#saves.put(createProfile(game))
+		const stored = await this.#saves.put(
+			validateProfileAgainstConfig(createProfile(game), game.config),
+		)
 		this.rememberRecent(stored.configId, stored.profileId)
 		return { profileId: stored.profileId }
 	}
@@ -236,11 +303,9 @@ export class AppServices {
 			this.getCatalog(),
 			this.#saves.listByConfigId(gameId),
 		])
-		const profiles = saves.profiles.map((profile): SaveProfileView => {
-			const available = catalog.packages.some(
-				(item) => item.descriptor.id === profile.configId
-					&& item.descriptor.version === profile.configVersion,
-			)
+		const profiles = await Promise.all(saves.profiles.map(async (profile): Promise<SaveProfileView> => {
+			const unavailableReason = await this.getProfileUnavailableReason(profile, catalog)
+			const available = unavailableReason === undefined
 			const currentRun = profile.runDatas[profile.current.runId]
 			const turn = currentTurn(profile)
 			if (!currentRun || !turn) throw new Error('The save cursor is invalid')
@@ -250,8 +315,21 @@ export class AppServices {
 					runId: run.runId,
 					...(run.origin
 						? {
-							originKind: run.origin.kind,
-							originSummary: `${run.origin.source.runId.slice(0, 18)} / ${run.origin.source.turnId.slice(0, 18)}`,
+							origin: (() => {
+								const sourceTurn = profile.runDatas[run.origin.source.runId]
+									?.turnDatas[run.origin.source.turnId]
+								return {
+									kind: run.origin.kind,
+									source: { ...run.origin.source },
+									resolved: Boolean(sourceTurn),
+									...(sourceTurn
+										? {
+											sourceTurnNumber: sourceTurn.snapshot.turnState.turnNumber,
+											sourceKind: sourceTurn.kind,
+										}
+										: {}),
+								}
+							})(),
 						}
 						: {}),
 					checkpoints: run.turnOrder.map((turnId, index): SaveCheckpointView => {
@@ -287,20 +365,99 @@ export class AppServices {
 				currentTurnNumber: turn.snapshot.turnState.turnNumber,
 				currentRunStatus: currentRun.status,
 				available,
-				...(!available ? { unavailableReason: `游戏包 ${profile.configId}@${profile.configVersion} 当前不可用` } : {}),
+				...(unavailableReason ? { unavailableReason } : {}),
 				runs,
 			}
-		})
+		}))
 		return { profiles, invalidSaveCount: saves.invalid.length }
 	}
 
+	/** 按需投影任意保留检查点；不会修改 Profile.current 或写入存档。 */
+	async getCheckpointPreview(
+		profileId: string,
+		source: TurnRef,
+	): Promise<SaveCheckpointPreview> {
+		const profile = await this.#saves.get(profileId)
+		if (!profile) throw new Error('The requested save does not exist')
+		if (!profile.runDatas[source.runId]?.turnDatas[source.turnId]) {
+			throw new Error('The requested checkpoint does not exist')
+		}
+		const game = await this.#packages.loadExact(profile.configId, profile.configVersion)
+		validateProfileAgainstConfig(profile, game.config)
+		const snapshot = GameplayRuntimeImpl.projectCheckpoint(game, profile, source)
+		return {
+			source: { ...source },
+			runStatus: snapshot.runStatus,
+			turnNumber: snapshot.turnNumber,
+			phase: snapshot.phase,
+			attributes: snapshot.attributes.map((attribute) => ({
+				characterId: attribute.characterId,
+				characterDisplayName: attribute.characterDisplayName,
+				attributeId: attribute.attributeId,
+				displayName: attribute.displayName,
+				displayValue: attribute.displayValue,
+			})),
+			effects: snapshot.effects.map((effect) => ({
+				effectId: effect.effectId,
+				displayName: effect.displayName,
+				actived: effect.actived,
+			})),
+			pendingEvents: snapshot.eventCards.map((event) => ({
+				eventId: event.eventId,
+				displayName: event.displayName,
+			})),
+			activeEvents: snapshot.activeEvents.map((event) => ({
+				eventId: event.eventId,
+				eventInstanceId: event.eventInstanceId,
+				displayName: event.displayName,
+				nodeId: event.currentNodeId,
+				nodeDisplayName: event.currentNode.displayName,
+			})),
+			...(snapshot.endingEvent
+				? {
+					ending: {
+						displayName: snapshot.endingEvent.displayName,
+						nodeDisplayName: snapshot.endingEvent.currentNode.displayName,
+						content: snapshot.endingEvent.currentNode.content,
+					},
+				}
+				: {}),
+		}
+	}
+
 	/** 执行一条存档命令；页面不接触 Profile 或 Repository。 */
-	executeSaveCommand(profileId: string, command: SaveCommand): Promise<SessionCommandResult> {
-		return new SaveBrowserControllerImpl(
-			profileId,
-			this.#saves,
-			this.#metadata,
-		).dispatch(command)
+	async executeSaveCommand(profileId: string, command: SaveCommand): Promise<SessionCommandResult> {
+		try {
+			const profile = await this.#saves.get(profileId)
+			if (!profile) {
+				const diagnostic = publicDiagnostic('The save no longer exists', 'save')
+				return {
+					ok: false,
+					errorId: diagnostic.errorId,
+					code: 'not-found',
+					message: diagnostic.message,
+					revision: 0,
+					committed: false,
+				}
+			}
+			const game = await this.#packages.loadExact(profile.configId, profile.configVersion)
+			return new SaveBrowserControllerImpl(
+				profileId,
+				this.#saves,
+				this.#metadata,
+				game.config,
+			).dispatch(command)
+		} catch (error) {
+			const diagnostic = publicDiagnostic(error, 'save')
+			return {
+				ok: false,
+				errorId: diagnostic.errorId,
+				code: 'incompatible-save',
+				message: diagnostic.message,
+				revision: 0,
+				committed: false,
+			}
+		}
 	}
 
 	/** 从 terminal/abandoned 检查点构造严格只读的结果页模型。 */
@@ -336,7 +493,9 @@ export class AppServices {
 		const profile = await this.#saves.get(profileId)
 		if (!profile) throw new Error('The requested save does not exist')
 		const game = await this.#packages.loadExact(profile.configId, profile.configVersion)
-		const stored = await this.#saves.put(addRestartRun(profile, game, source))
+		const stored = await this.#saves.put(
+			validateProfileAgainstConfig(addRestartRun(profile, game, source), game.config),
+		)
 		this.rememberRecent(stored.configId, stored.profileId)
 	}
 }

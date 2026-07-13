@@ -159,7 +159,7 @@ Profile 卡建议显示：
 
 已经结束的 RunData 中，`terminal` 之前仍被保留的可恢复检查点可以创建分支或截断；`terminal` 本身不能作为继续起点。
 
-删除后续记录必须显示将删除的 TurnData 数量、受影响的 pin 数量以及不可撤销提示。“创建分支”应作为默认操作。预览历史检查点时，属性、Effect、事件和结局字段均读取该 TurnData 的 snapshot，不能混入当前工作状态。
+删除后续记录必须显示将删除的 TurnData 数量、受影响的 pin 数量以及不可撤销提示。“创建分支”应作为默认操作。预览历史检查点时，属性、Effect、事件和结局字段均读取该 TurnData 的 snapshot，生命周期按目标检查点的 `initial/turn_end/terminal/abandoned` kind 投影，不能混入当前工作状态。
 
 ## 游戏界面
 
@@ -295,11 +295,11 @@ Effect 按 Config `order` 排序。绑定 Character 时可以显示所属 Charac
 | Run 生命周期 | 当前 RunData.status 为 `active` |
 | phase | 当前为 `event_handle`；上一回合已提交但下一回合启动失败时允许从 `turn_end` 重试 |
 | 执行状态 | Action、Reaction 和自动节点队列均为空 |
-| required 节点 | 不存在有效 `required = true` 的未完成当前节点 |
+| required 内容 | 不存在入口或 CheckNode 候选链可达 required 的待处理事件，也不存在当前节点 required 的 active 事件 |
 | UI 状态 | 没有阻塞式确认框或存档切换流程 |
 | 持久化状态 | 上一次必要提交没有失败 |
 
-尚未点击的普通 enabled 事件不阻止下一回合。只有已经启动且当前节点有效 `required = true` 的实例阻止推进。
+尚未点击的普通 enabled 事件不阻止下一回合。若待处理事件的入口 TextNode 为 `required = true`，或其入口 CheckNode 候选链能够到达 required TextNode，该事件会阻止推进；已经启动的事件则按当前 active TextNode 的有效 `required` 判定。CheckNode 自身不承载 required，循环候选链按已访问集合终止检查。
 
 点击后 UI 调用宿主命令 `advanceTurn()`。引擎负责：
 

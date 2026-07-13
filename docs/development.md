@@ -16,10 +16,11 @@ pnpm dev
 ```bash
 pnpm run build   # TypeScript 检查并生成生产构建
 pnpm run lint    # ESLint 检查 TypeScript/TSX
+pnpm run test    # Vitest 非 UI 回归测试
 pnpm run preview # 预览 dist 中的生产构建
 ```
 
-提交前至少运行 `pnpm run build`、`pnpm run lint` 和 `git diff --check`。如果修改了 Frostbound authoring 源，还要重新生成游戏包：
+提交前至少运行 `pnpm run test`、`pnpm run build`、`pnpm run lint` 和 `git diff --check`。如果修改了 Frostbound authoring 源，还要重新生成游戏包：
 
 ```bash
 node scripts/build-frostbound-package.mjs
@@ -140,18 +141,21 @@ export const actions = {
 6. 处理单元先完成脚本与状态稳定、生成候选存档和候选 RuntimeSnapshot；需要持久化时，必须等待 IndexedDB 事务完成，随后才一次性替换 Runtime 状态、revision 与 snapshot 并通知 Session。任意前置步骤失败都保留旧状态。
 7. `advance-turn` 先检查 required blocker，再持久化 `turn_end` 检查点，然后自动开始下一回合。下一回合启动失败时，已经提交的 `turn_end` 会成为当前可见状态，同一命令可以从该边界重试。
 
-Reaction 的注册顺序是 EffectConfig、EventConfig、当前 active TextNode；Reaction 初次注册只建立 baseline。新增自动规则时，先确认它属于哪个声明层级，再检查是否会因为状态变化形成循环。
+Reaction 的扫描顺序是 EffectConfig、EventConfig、当前 active TextNode；Reaction 首次进入作用域只建立 baseline。root 操作后以及每个 Reaction Action 后都会全量扫描当前 watch。新增自动规则时，先确认它属于哪个声明层级，再检查是否会因为状态变化形成循环。
 
 ## 6. 存档与 IndexedDB
 
 IndexedDB 数据库名为 `maker-simulator`。`profiles` 保存 `StoredProfile`，只包含稳定检查点历史、恢复游标和 `storageRevision`；`app-metadata` 保存最近访问的存档 id。
 
-持久化操作必须经过 `validateProfile()`：
+存档校验分为两个边界：Repository 使用 `validateStoredProfile()` 检查未知输入的结构和容器不变量；精确游戏包加载后使用 `validateProfileAgainstConfig()` 检查 Config 领域关系。新建、打开、结果投影、继续、分支、截断、restart 和 Runtime 检查点写入都必须经过第二层。
 
 - `turnOrder` 与 `turnDatas` 必须一一对应；
 - `currentTurnId` 必须是该时间线最后一个保留检查点，存档当前游标必须与对应 RunData 一致；
 - ended/abandoned RunData 必须以对应终态检查点结束；
 - 每个 snapshot 的随机游标必须是非负安全整数；
+- State 的 Character、Attribute、Effect、Event、Node、Choice 与 Command key/id 必须属于精确 Config；
+- EventInstance 节点、路径、active 指针、回合范围、选择、Effect 绑定与终局引用必须能够解析；
+- ProfileState、RunState、TurnState 只能保存各自拥有的生命周期字段；
 - 写入前先 `structuredClone`，避免把外部引用或 Immer draft 交给 Repository。
 
 Repository 在一个读写事务中比较输入的 `storageRevision`，只接受数据库当前版本，并在成功写入时递增它。并发页面使用过期副本保存时会收到冲突，不会覆盖较新的检查点。
@@ -170,16 +174,16 @@ Repository 在一个读写事务中比较输入的 `storageRevision`，只接受
 日志重点字段：
 
 ```text
-command choose-single eventInstanceId=... nodeId=... choiceId=... actionKey=...
-command activate-effect commandType=activate-effect effectId=...
-action state.change actionKey=state.change args=["survivor","food",-1]
-reaction ... action=world.turn-start args=[]
+trace=command-7 command-start choose-single eventInstanceId=... nodeId=... choiceId=... actionKey=...
+trace=trace-42 parent=command-7 action state.change actionKey=state.change args=["survivor","food",-1]
+trace=trace-43 parent=command-7 reaction ... action=world.turn-start args=[]
+trace=trace-44 parent=command-7 command-end choose-single ... ok
 ```
 
 排查顺序建议：
 
 1. 先看 package loader 报错阶段：`catalog`、`manifest`、`config`、`module-import`、`schema-validation`、`registry-validation` 或 `linking`。
-2. 再看 RuntimeMonitor 的 command → action/reaction → transaction 链，确认具体 id、参数和回滚原因。
+2. 再按 command-start 的 `traceId` 筛选相同 `parentId`，查看 transition → action/reaction → transaction → command-end 链，确认具体 id、参数和回滚原因。
 3. 如果 UI 不更新，检查 Runtime 是否发布了新的 snapshot，以及 Session 是否仍处于 busy 状态。
 4. 如果 `advance-turn` 被拒绝，读取 `advanceTurnBlockers`，确认 required 事件卡、active 节点和终局请求。
 5. 如果出现 IndexedDB object store/index 错误，检查数据库升级版本和 `upgrade` 分支是否覆盖旧 schema。
@@ -194,9 +198,12 @@ reaction ... action=world.turn-start args=[]
 
 ```bash
 node scripts/build-frostbound-package.mjs
+pnpm run test
 pnpm run build
 pnpm run lint
 git diff --check
 ```
+
+`pnpm run test` 只运行 Runtime、持久化、包边界和纯应用操作的非 UI 自动测试；页面布局、键盘、焦点、触控目标和完整玩家流程继续按人工清单验收。
 
 同时人工验收：创建新游戏、处理 required 事件、推进回合、获得/失去 Effect、创建分支和截断、查看终局，以及在控制台确认 Action/Reaction 参数完整。

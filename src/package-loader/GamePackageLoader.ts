@@ -9,6 +9,16 @@ import { GamePackageLoadError, packageError } from './errors'
 import { deepFreeze, linkConfig, validateRegistries } from './linker'
 import { parseConfig, parseManifest } from './schemas'
 
+function zodJsonPointer(error: unknown): string | undefined {
+	if (!(error instanceof z.ZodError)) return undefined
+	const issue = error.issues[0]
+	if (!issue) return ''
+	return issue.path.reduce<string>(
+		(path, segment) => `${path}/${String(segment).replaceAll('~', '~0').replaceAll('/', '~1')}`,
+		'',
+	)
+}
+
 /**
  * 负责发现、校验、链接并缓存外部游戏包。
  *
@@ -77,7 +87,11 @@ export class GamePackageLoader {
 			manifest = parseManifest(await this.source.readJson(location.manifestLocation))
 		} catch (error) {
 			const stage = error instanceof z.ZodError ? 'schema-validation' : 'manifest'
-			throw packageError(stage, error, { ...details, path: location.manifestLocation })
+			throw packageError(stage, error, {
+				...details,
+				resourceLocation: location.manifestLocation,
+				jsonPointer: zodJsonPointer(error),
+			})
 		}
 
 		if (
@@ -93,13 +107,13 @@ export class GamePackageLoader {
 		const actionsLocation = this.source.resolve(location.manifestLocation, manifest.entries.actions)
 		const [configInput, ruleModule, actionModule] = await Promise.all([
 			this.source.readJson(configLocation).catch((error: unknown) => {
-				throw packageError('config', error, { ...details, path: configLocation })
+				throw packageError('config', error, { ...details, resourceLocation: configLocation })
 			}),
 			this.source.importTrustedModule(rulesLocation).catch((error: unknown) => {
-				throw packageError('module-import', error, { ...details, path: rulesLocation })
+				throw packageError('module-import', error, { ...details, resourceLocation: rulesLocation })
 			}),
 			this.source.importTrustedModule(actionsLocation).catch((error: unknown) => {
-				throw packageError('module-import', error, { ...details, path: actionsLocation })
+				throw packageError('module-import', error, { ...details, resourceLocation: actionsLocation })
 			}),
 		])
 
@@ -107,10 +121,30 @@ export class GamePackageLoader {
 		try {
 			config = parseConfig(configInput)
 		} catch (error) {
-			throw packageError('schema-validation', error, { ...details, path: configLocation })
+			throw packageError('schema-validation', error, {
+				...details,
+				resourceLocation: configLocation,
+				jsonPointer: zodJsonPointer(error),
+			})
 		}
-		const { rules, actions } = validateRegistries(ruleModule, actionModule)
-		linkConfig(location.descriptor, manifest, config, rules, actions)
+		let registries
+		try {
+			registries = validateRegistries(ruleModule, actionModule)
+			linkConfig(
+				location.descriptor,
+				manifest,
+				config,
+				registries.rules,
+				registries.actions,
+			)
+		} catch (error) {
+			throw packageError(
+				error instanceof GamePackageLoadError ? error.stage : 'linking',
+				error,
+				details,
+			)
+		}
+		const { rules, actions } = registries
 
 		return deepFreeze({
 			location,

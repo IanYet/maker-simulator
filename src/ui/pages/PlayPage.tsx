@@ -114,10 +114,12 @@ function GameScreen({ session }: { session: GameSession }) {
 	const focused = view.runtime.activeEvents.find(
 		(event) => event.eventInstanceId === view.focusedEventInstanceId,
 	)
+	const focusedEventInstanceId = focused?.eventInstanceId
+	const focusedNodeId = focused?.currentNodeId
 
 	useEffect(() => {
-		if (focused) nodeHeading.current?.focus()
-	}, [focused])
+		if (focusedEventInstanceId && focusedNodeId) nodeHeading.current?.focus()
+	}, [focusedEventInstanceId, focusedNodeId])
 
 	useEffect(() => {
 		const changes = Object.entries(attributeChanges)
@@ -155,10 +157,16 @@ function GameScreen({ session }: { session: GameSession }) {
 	}
 
 	const attributesByCharacter = useMemo(() => {
-		const groups = new Map<string, typeof view.runtime.attributes>()
+		const groups = new Map<string, {
+			displayName: string
+			attributes: typeof view.runtime.attributes
+		}>()
 		for (const attribute of view.runtime.attributes) {
-			const current = groups.get(attribute.characterDisplayName) ?? []
-			groups.set(attribute.characterDisplayName, [...current, attribute])
+			const current = groups.get(attribute.characterId)
+			groups.set(attribute.characterId, {
+				displayName: attribute.characterDisplayName,
+				attributes: [...(current?.attributes ?? []), attribute],
+			})
 		}
 		return groups
 	}, [view])
@@ -186,11 +194,6 @@ function GameScreen({ session }: { session: GameSession }) {
 	}
 
 	function eventButtons() {
-		const pendingRequired = new Set(
-			view.runtime.advanceTurnBlockers
-				.filter((blocker) => blocker.startsWith('待处理事件「'))
-				.map((blocker) => blocker.slice('待处理事件「'.length, -'」必须处理'.length)),
-		)
 		return (
 			<>
 				{view.runtime.activeEvents.map((event) => (
@@ -212,7 +215,7 @@ function GameScreen({ session }: { session: GameSession }) {
 						onClick={() => void execute(session.startEvent(event.eventId))}
 						type="button"
 					>
-						{event.displayName} · 开始{pendingRequired.has(event.displayName) ? ' · 必须处理' : ''}
+						{event.displayName} · 开始{event.required ? ' · 必须处理' : ''}
 					</button>
 				))}
 			</>
@@ -226,10 +229,10 @@ function GameScreen({ session }: { session: GameSession }) {
 					<section className={styles.sideSection}>
 						<h2 className={styles.sectionLabel}>Attributes / 属性</h2>
 						{attributesByCharacter.size === 0 && <p>暂无可见属性。</p>}
-						{[...attributesByCharacter.entries()].map(([character, attributes]) => (
-							<div className={styles.attributeGroup} key={character}>
-								<h3>{character}</h3>
-								{attributes.map((attribute) => {
+						{[...attributesByCharacter.entries()].map(([characterId, group]) => (
+							<div className={styles.attributeGroup} key={characterId}>
+								<h3>{group.displayName}</h3>
+								{group.attributes.map((attribute) => {
 									const change = attributeChanges[attributeKey(attribute.characterId, attribute.attributeId)]
 									const direction = change
 										? change.delta > 0
@@ -319,7 +322,7 @@ function GameScreen({ session }: { session: GameSession }) {
 							{view.busy && <span className={styles.busy}>处理中</span>}
 							<Button
 								disabled={view.busy || !view.runtime.canAdvanceTurn}
-								title={view.runtime.advanceTurnBlockers.join('；') || undefined}
+								title={view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；') || undefined}
 								onClick={() => void execute(session.advanceTurn())}
 							>
 								下一回合
@@ -328,14 +331,17 @@ function GameScreen({ session }: { session: GameSession }) {
 					</footer>
 				</section>
 			</div>
-			<LiveRegion>{message || (view.busy ? '正在执行命令' : view.runtime.advanceTurnBlockers.join('；'))}</LiveRegion>
+			<LiveRegion>{message || (view.busy ? '正在执行命令' : view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；'))}</LiveRegion>
 			<ConfirmDialog
 				open={dialog === 'exit'}
 				title="退出当前回合？"
 				description="本回合尚未到达稳定保存边界，退出后会从上一检查点重新开始本回合。"
 				confirmLabel="退出"
 				onClose={() => setDialog(undefined)}
-				onConfirm={() => { setDialog(undefined); void session.exitAndSave() }}
+				onConfirm={async () => {
+					await session.exitAndSave()
+					setDialog(undefined)
+				}}
 			/>
 			<ConfirmDialog
 				open={dialog === 'saves'}
@@ -343,7 +349,10 @@ function GameScreen({ session }: { session: GameSession }) {
 				description="本回合未提交的状态将被丢弃，存档中的最后稳定检查点不会改变。"
 				confirmLabel="打开存档"
 				onClose={() => setDialog(undefined)}
-				onConfirm={() => { setDialog(undefined); void session.openSaveBrowser() }}
+				onConfirm={async () => {
+					await session.openSaveBrowser()
+					setDialog(undefined)
+				}}
 			/>
 			<ConfirmDialog
 				open={dialog === 'abandon'}
@@ -352,7 +361,10 @@ function GameScreen({ session }: { session: GameSession }) {
 				confirmLabel="放弃并退出"
 				danger
 				onClose={() => setDialog(undefined)}
-				onConfirm={() => { setDialog(undefined); void abandonAndExit() }}
+				onConfirm={async () => {
+					await abandonAndExit()
+					setDialog(undefined)
+				}}
 			/>
 		</main>
 	)

@@ -1,4 +1,11 @@
-import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
+import {
+	Dialog,
+	DialogBackdrop,
+	DialogDescription,
+	DialogPanel,
+	DialogTitle,
+} from '@headlessui/react'
+import { useState } from 'react'
 import { Button } from './Button'
 import styles from './primitives.module.css'
 
@@ -17,19 +24,41 @@ export function ConfirmDialog({
 	description: string
 	confirmLabel: string
 	danger?: boolean
-	onConfirm: () => void
+	onConfirm: () => void | Promise<void>
 	onClose: () => void
 }) {
+	const [busy, setBusy] = useState(false)
+
+	async function handleConfirm(): Promise<void> {
+		if (busy) return
+		setBusy(true)
+		try {
+			await onConfirm()
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	function handleClose(): void {
+		if (!busy) onClose()
+	}
+
 	return (
-		<Dialog open={open} onClose={onClose}>
+		<Dialog open={open} onClose={handleClose}>
 			<DialogBackdrop className={styles.dialogBackdrop} />
 			<div className={styles.dialogWrap}>
-				<DialogPanel className={styles.dialogPanel}>
+				<DialogPanel aria-busy={busy} className={styles.dialogPanel}>
 					<DialogTitle className={styles.dialogTitle}>{title}</DialogTitle>
-					<p className={styles.dialogText}>{description}</p>
+					<DialogDescription className={styles.dialogText}>{description}</DialogDescription>
 					<div className={styles.dialogActions}>
-						<Button variant="secondary" onClick={onClose}>取消</Button>
-						<Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
+						<Button disabled={busy} variant="secondary" onClick={handleClose}>取消</Button>
+						<Button
+							disabled={busy}
+							variant={danger ? 'danger' : 'primary'}
+							onClick={() => void handleConfirm()}
+						>
+							{busy ? '处理中…' : confirmLabel}
+						</Button>
 					</div>
 				</DialogPanel>
 			</div>

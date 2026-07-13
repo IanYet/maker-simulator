@@ -51,6 +51,7 @@ pnpm dev
 ```bash
 pnpm build
 pnpm lint
+pnpm test
 pnpm preview
 ```
 
@@ -141,7 +142,7 @@ GamePackageLoader → schema/linker → LoadedGamePackage
 
 ## 计划
 
-1. 用dls代替js进行脚本表达
+1. 用 DSL 代替 JavaScript 进行脚本表达。
 2. 实现游戏脚本的可视化编辑器。
 3. 接入 AI，提供游戏脚本生成 Agent App。
 

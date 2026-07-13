@@ -1,13 +1,17 @@
 import type {
+	DeepReadonly,
+	GameConfig,
 	SaveBrowserController,
 	SaveCommand,
 	SessionCommandResult,
 } from '../types'
+import { publicDiagnostic } from '../diagnostics'
 import {
 	continueCheckpoint,
 	createBranch,
 	setCheckpointPinned,
 	truncateAndContinue,
+	validateProfileAgainstConfig,
 	type AppMetadataRepository,
 	type SaveRepository,
 } from '../persistence'
@@ -20,15 +24,18 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 	private readonly profileId: string
 	private readonly saves: SaveRepository
 	private readonly metadata: AppMetadataRepository
+	private readonly config: DeepReadonly<GameConfig>
 
 	constructor(
 		profileId: string,
 		saves: SaveRepository,
 		metadata: AppMetadataRepository,
+		config: DeepReadonly<GameConfig>,
 	) {
 		this.profileId = profileId
 		this.saves = saves
 		this.metadata = metadata
+		this.config = config
 	}
 
 	/** 执行一个存档操作，并把失败转换为 SessionCommandResult。 */
@@ -36,31 +43,36 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 		try {
 			const profile = await this.saves.get(this.profileId)
 			if (!profile) {
+				const diagnostic = publicDiagnostic('The save no longer exists', 'save')
 				return {
 					ok: false,
+					errorId: diagnostic.errorId,
 					code: 'not-found',
-					message: 'The save no longer exists',
+					message: diagnostic.message,
 					revision: 0,
 					committed: false,
 				}
 			}
+			const validated = validateProfileAgainstConfig(profile, this.config)
 			const next = command.type === 'continue-checkpoint'
-				? continueCheckpoint(profile, command.source)
+				? continueCheckpoint(validated, command.source)
 				: command.type === 'create-branch'
-					? createBranch(profile, command.source)
+					? createBranch(validated, command.source)
 					: command.type === 'truncate-and-continue'
-						? truncateAndContinue(profile, command.source)
-						: setCheckpointPinned(profile, command.source, command.pinned)
-			const stored = await this.saves.put(next)
+						? truncateAndContinue(validated, command.source)
+						: setCheckpointPinned(validated, command.source, command.pinned)
+			const stored = await this.saves.put(validateProfileAgainstConfig(next, this.config))
 			if (command.type !== 'set-checkpoint-pinned') {
 				void this.metadata.setRecentProfile(stored.configId, stored.profileId).catch(() => undefined)
 			}
 			return { ok: true, revision: 0 }
 		} catch (error) {
+			const diagnostic = publicDiagnostic(error, 'save')
 			return {
 				ok: false,
+				errorId: diagnostic.errorId,
 				code: 'persistence-error',
-				message: error instanceof Error ? error.message : String(error),
+				message: diagnostic.message,
 				revision: 0,
 				committed: false,
 			}

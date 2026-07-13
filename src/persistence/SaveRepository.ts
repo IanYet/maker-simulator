@@ -1,6 +1,6 @@
 import type { StoredProfile } from '../types'
 import { getDatabase } from './database'
-import { validateProfile } from './validation'
+import { validateStoredProfile } from './validation'
 
 /** 无法解析的单条存档记录；列表查询保留错误但不影响其它存档。 */
 export interface InvalidSaveRecord {
@@ -50,7 +50,7 @@ export class IndexedDbSaveRepository implements SaveRepository {
 		const invalid: InvalidSaveRecord[] = []
 		for (const record of records) {
 			try {
-				profiles.push(validateProfile(record))
+				profiles.push(validateStoredProfile(record))
 			} catch (error) {
 				invalid.push(invalidRecord(record, error))
 			}
@@ -62,7 +62,7 @@ export class IndexedDbSaveRepository implements SaveRepository {
 	/** 读取单个稳定存档；找不到时返回 undefined。 */
 	async get(profileId: string): Promise<StoredProfile | undefined> {
 		const record = await (await getDatabase()).get('profiles', profileId)
-		return record === undefined ? undefined : validateProfile(record)
+		return record === undefined ? undefined : validateStoredProfile(record)
 	}
 
 	/**
@@ -71,17 +71,17 @@ export class IndexedDbSaveRepository implements SaveRepository {
 	 * @throws {SaveConflictError} 调用方使用的存档不是数据库中的最新版本。
 	 */
 	async put(profile: StoredProfile): Promise<StoredProfile> {
-		const candidate = validateProfile(structuredClone(profile))
+		const candidate = validateStoredProfile(structuredClone(profile))
 		const database = await getDatabase()
 		const transaction = database.transaction('profiles', 'readwrite')
 		const existingRecord = await transaction.store.get(candidate.profileId)
 		if (existingRecord === undefined) {
 			if (candidate.storageRevision !== 0) throw new SaveConflictError()
 		} else {
-			const existing = validateProfile(existingRecord)
+			const existing = validateStoredProfile(existingRecord)
 			if (existing.storageRevision !== candidate.storageRevision) throw new SaveConflictError()
 		}
-		const stored = validateProfile({
+		const stored = validateStoredProfile({
 			...candidate,
 			storageRevision: candidate.storageRevision + 1,
 		})

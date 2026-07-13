@@ -241,9 +241,44 @@ button.profileCard {
 	border-left-color: var(--color-magenta);
 }
 
+.runGroupRestart {
+	border-left-color: var(--color-navy);
+}
+
 .runTitle {
 	margin-bottom: var(--space-md);
 	font-size: 22px;
+}
+
+.originLink,
+.originMissing {
+	display: block;
+	margin: calc(var(--space-sm) * -1) 0 var(--space-md);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.35px;
+	line-height: 1.6;
+	text-transform: uppercase;
+}
+
+.originLink {
+	text-decoration-thickness: 1px;
+	text-underline-offset: 3px;
+}
+
+.originMissing {
+	color: var(--color-magenta);
+}
+
+.orphanedRuns {
+	margin-top: var(--space-lg);
+	padding-top: var(--space-xl);
+	border-top: 1px dashed var(--color-magenta);
+}
+
+.orphanedTitle {
+	margin-bottom: var(--space-xs);
+	font-size: 24px;
 }
 
 .turnCard {
@@ -281,8 +316,63 @@ button.profileCard {
 	margin-top: var(--space-md);
 }
 
+.checkpointPreview {
+	margin-top: var(--space-lg);
+	padding-top: var(--space-lg);
+	border-top: 1px solid var(--color-hairline);
+}
+
+.previewHeading {
+	margin-bottom: var(--space-md);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.35px;
+	text-transform: uppercase;
+}
+
+.previewGrid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-lg);
+}
+
+.previewGrid h3 {
+	margin-bottom: var(--space-sm);
+	font-size: 15px;
+}
+
+.previewItem {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-sm);
+	padding: 5px 0;
+	border-bottom: 1px solid var(--color-hairline-soft);
+	font-size: 13px;
+}
+
+.previewItem strong {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	text-align: right;
+}
+
+.previewEmpty,
+.previewCopy {
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.previewEmpty {
+	color: var(--color-navy);
+}
+
+.previewCopy {
+	margin-top: var(--space-sm);
+}
+
 .smallButton {
-	min-height: 36px;
+	min-height: 44px;
 	padding: 5px 13px;
 	font-size: 13px;
 }
@@ -453,7 +543,7 @@ button.profileCard {
 }
 
 .effectAction {
-	min-height: 36px;
+	min-height: 44px;
 	padding: 5px 13px;
 	font-size: 13px;
 }
@@ -710,6 +800,10 @@ button.profileCard {
 
 	.gameGrid,
 	.savesLayout {
+		grid-template-columns: 1fr;
+	}
+
+	.previewGrid {
 		grid-template-columns: 1fr;
 	}
 

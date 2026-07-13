@@ -49,6 +49,7 @@ export type RuntimeCommandResult =
 	| { ok: true; revision: number }
 	| {
 			ok: false
+			errorId: string
 			code: RuntimeCommandErrorCode
 			message: string
 			revision: number
@@ -68,6 +69,7 @@ export type SessionCommandResult =
 	| { ok: true; revision: number }
 	| {
 			ok: false
+			errorId: string
 			code: SessionCommandErrorCode
 			message: string
 			revision: number
@@ -104,7 +106,23 @@ export interface EventCardView {
 	readonly eventId: string
 	readonly displayName: string
 	readonly description?: string
+	/** 入口或 CheckNode 候选链可达 required TextNode 时为 true。 */
+	readonly required: boolean
 }
+
+/** 阻止进入下一回合的结构化原因；message 仅用于展示。 */
+export type AdvanceTurnBlocker =
+	| {
+		readonly kind: 'pending-required-event'
+		readonly eventId: string
+		readonly message: string
+	  }
+	| {
+		readonly kind: 'active-required-event'
+		readonly eventId: string
+		readonly eventInstanceId: string
+		readonly message: string
+	  }
 
 /** active EventNode 的共同展示字段。 */
 export interface EventNodeViewBase {
@@ -188,7 +206,7 @@ export interface RuntimeSnapshotBase {
 	readonly eventCards: readonly EventCardView[]
 	readonly activeEvents: readonly ActiveEventView[]
 	readonly canAdvanceTurn: boolean
-	readonly advanceTurnBlockers: readonly string[]
+	readonly advanceTurnBlockers: readonly AdvanceTurnBlocker[]
 }
 
 export type RuntimeSnapshot = RuntimeSnapshotBase &

@@ -43,6 +43,8 @@ type RuntimeCommandResult =
     | { ok: true; revision: number }
     | {
           ok: false;
+          /** 单次失败的可复制诊断编号。 */
+          errorId: string;
           code:
               | 'busy'
               | 'invalid-phase'
@@ -67,7 +69,9 @@ interface GameplayRuntime {
 
 RuntimeCommand 串行执行。引擎在执行时根据最新 State 重新校验 phase、对象 id、有效 `enabled`、当前节点与 required 门禁，不信任 UI 渲染时的旧值。busy 时拒绝并发命令。
 
-一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft；每批写入都触发 Rule 失效与 Reaction 检查。队列稳定后先完成 draft、验证并生成候选 snapshot；需要保存检查点时先等待 Repository 成功，再统一替换 Runtime 状态、revision 与 snapshot 并通知。任一前置步骤失败都会丢弃候选结果，并保留命令前的状态与 UI snapshot。
+所有失败结果都带 `errorId`，面向玩家的安全摘要也附带该编号。脚本失败在内部保留 Reaction、Action 与 Rule frame 调用链；command monitor 记录 errorId、code、调用链和可用的 JSON Pointer，不把完整 State 或脚本堆栈返回 UI。
+
+一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft；root 操作后及每个 Reaction Action 后都按 canonical 顺序全量扫描当前 Reaction watch。队列稳定后先完成 draft、验证并生成候选 snapshot；需要保存检查点时先等待 Repository 成功，再统一替换 Runtime 状态、revision 与 snapshot 并通知。任一前置步骤失败都会丢弃候选结果，并保留命令前的状态与 UI snapshot。
 
 `AdvanceTurn` 是唯一跨越持久化边界的 gameplay command：它先用一个处理单元完成 `turn_end` 并原子提交检查点，再以该检查点为回滚边界开启下一回合处理单元。UI 不观察两者之间的正常中间态；若下一 `turn_start` 失败，已经完成的 `turn_end` 会被发布，结果返回 `committed: true`，再次执行 `advance-turn` 从该边界重试。持久化本身失败时返回 `committed: false`，内存和 UI 都保持命令前状态。新游戏也以持久化 `initial` 分隔构造与首回合处理。
 
@@ -103,7 +107,17 @@ interface EventCardView {
     eventId: string;
     displayName: string;
     description?: string;
+    required: boolean;
 }
+
+type AdvanceTurnBlocker =
+    | { kind: 'pending-required-event'; eventId: string; message: string }
+    | {
+          kind: 'active-required-event';
+          eventId: string;
+          eventInstanceId: string;
+          message: string;
+      };
 
 interface SingleChoiceView {
     choiceId: string;
@@ -179,7 +193,7 @@ interface RuntimeSnapshotBase {
     eventCards: readonly EventCardView[];
     activeEvents: readonly ActiveEventView[];
     canAdvanceTurn: boolean;
-    advanceTurnBlockers: readonly string[];
+    advanceTurnBlockers: readonly AdvanceTurnBlocker[];
 }
 
 type RuntimeSnapshot = RuntimeSnapshotBase & (
@@ -191,7 +205,7 @@ type RuntimeSnapshot = RuntimeSnapshotBase & (
 
 GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最后一个 snapshot 仍允许 `runStatus = 'abandoned'`，从而与领域 `RunStatus` 保持一致。`ended` snapshot 根据 terminal TurnData 的可选 `endingEventInstanceId` 重建 `endingEvent`；由配置级 Reaction 或阶段 Action 请求终局时可以省略，UI 显示通用终局信息。UI 不直接读取 Runtime Proxy 或猜测结局字段。
 
-可启动事件和当前节点中的 Choice、Command 在 selector 中应用 `visible && unlocked` 过滤，并将有效 `enabled` 投影给 UI。CheckNode 会在 run-to-idle 过程中自动处理，不会出现在 `EventNodeView`。多选项的 `count` 来自当前 EventInstance 在 TurnState 中的选择结果。
+可启动事件和当前节点中的 Choice、Command 在 selector 中应用 `visible && unlocked` 过滤，并将有效 `enabled` 投影给 UI。`EventCardView.required` 直接表达 pending 事件门禁，`AdvanceTurnBlocker` 使用稳定 event/instance id 建立关联；UI 只展示 message，不解析文案。CheckNode 会在 run-to-idle 过程中自动处理，不会出现在 `EventNodeView`。多选项的 `count` 来自当前 EventInstance 在 TurnState 中的选择结果。
 
 | UI 操作 | Runtime 调用 | 引擎行为 |
 | --- | --- | --- |
@@ -230,7 +244,7 @@ type TurnPhase =
 | `event_handle` | 等待玩家处理零到多个事件或激活 Effect | 事件/节点命令、`activate-effect`、`advance-turn` | 事件交互保持本 phase；下一回合命令进入 `turn_end` |
 | `turn_end` | `advance-turn` 已提交检查点 | `advance-turn` 仅用于下一回合启动失败后的重试 | 自动开始下一回合 |
 
-状态机采用 run-to-idle：internal transition、Rule invalidation、Action 与 Reaction 持续执行，直到 `event_handle` 用户输入点或 RunData 结束才发布 snapshot。依赖 phase 的脚本是在观察公开生命周期状态，不具备推进状态机的权限。
+状态机采用 run-to-idle：internal transition、Action、Reaction 全量扫描与匹配 Action 持续执行，直到 `event_handle` 用户输入点或 RunData 结束才发布 snapshot。依赖 phase 的脚本是在观察公开生命周期状态，不具备推进状态机的权限。
 
 ## 局级初始化顺序
 
@@ -239,20 +253,19 @@ type TurnPhase =
 1. 要求游戏包已经完成 schema 校验、registry 校验与 linking；局级 runtime 不重复 import JavaScript。
 2. 生成 Profile/Run id、时间与 PRNG seed，创建 ProfileState、RunState、TurnState，设置 `turnNumber = 0`、`phase = 'initializing'`。Config 的 `xxxValue` 基础值物化到新 Run 的 RunState。
 3. 创建处理单元管理器、PRNG draft、Config/State 合并 Proxy，以及绑定当前 Run 的纯 Rule executor 和事务 Action executor。
-4. 编译派生字段 Rule 的计算节点与依赖图，不执行 Action。
-5. 物化初始 Effect 等必须保存的回合 `0` 生命周期事实。
-6. 校验初始 State，构造包含 `initial` snapshot 的 StoredProfile 并持久化；这是新建存档的稳定成功边界。
-7. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，并按 canonical 顺序为 EffectConfig、EventConfig Reaction 建立 baseline；新局通常没有 active TextNode。
-8. baseline 成功后，以 `initial` 为回滚边界增加 `turnNumber`，进入 `turn_start`，自动运行到 `event_handle`，发布首个可交互 snapshot。baseline 或首回合脚本失败时保留完整 initial 并报告错误。
+4. 物化初始 Effect 等必须保存的回合 `0` 生命周期事实。
+5. 校验初始 State，构造包含 `initial` snapshot 的 StoredProfile 并持久化；这是新建存档的稳定成功边界。
+6. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，并按 canonical 顺序为 EffectConfig、EventConfig Reaction 建立 baseline；新局通常没有 active TextNode。
+7. baseline 成功后，以 `initial` 为回滚边界增加 `turnNumber`，进入 `turn_start`，自动运行到 `event_handle`，发布首个可交互 snapshot。baseline 或首回合脚本失败时保留完整 initial 并报告错误。
 
 ### 继续、branch 或截断恢复
 
 1. 按 `StoredProfile.configId/configVersion` 取得精确游戏包，并校验稳定存档与所选 snapshot。
-2. 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本，重建处理单元、Proxy、executors、计算节点和依赖图。
+2. 克隆 ProfileState、RunState、TurnState 与 RandomState 工作副本，重建处理单元、Proxy、executors 和 Reaction baseline。
 3. 校验每个 EventState 的 `activeInstanceId` 都指向唯一的 active EventInstance，注册全部配置级 Reaction，并恢复这些 active 实例当前 TextNode 的 Reaction；全部只建立基准。
 4. `initial` 与 `turn_end` 从下一回合运行到 `event_handle`；`terminal`/`abandoned` 只产生结果或历史视图。
 
-固定先后关系是：初始生命周期事实先于 `initial` snapshot，持久化 initial 先于 Runtime baseline，executor 先于计算节点，baseline 先于首次 phase 变化。完整 State/Proxy 细节见[运行时系统设计](./runtime-system.md#运行时构造)。
+固定先后关系是：初始生命周期事实先于 `initial` snapshot，持久化 initial 先于 Runtime baseline，executor 先于 baseline，baseline 先于首次 phase 变化。完整 State/Proxy 细节见[运行时系统设计](./runtime-system.md#运行时构造)。
 
 ## Reaction 的确定顺序
 
@@ -269,7 +282,7 @@ Reaction 不依赖 Record 插入顺序。引擎按以下 canonical registration 
 ```mermaid
 flowchart TD
     A[从 initial 或 turn_end 稳定边界开始] --> B[清理上回合临时状态<br/>turnNumber + 1<br/>phase = turn_start]
-    B --> C[Rule 失效/重算<br/>执行匹配 Reaction Action<br/>直到稳定]
+    B --> C[全量扫描 Reaction watch<br/>执行匹配 Action<br/>直到稳定]
     C --> D{Action 请求 endRun?}
     D -- 是 --> Z[原子创建 terminal<br/>status = ended<br/>保留当前 phase 与结局字段]
     D -- 否 --> E[phase = event_handle<br/>运行 Action/Reaction 到稳定]
@@ -303,7 +316,7 @@ flowchart TD
 2. phase 变化使 Rule/Reaction 在当前处理单元中稳定；任何 Action 都可先把结局内容写入 `context.runState` 再调用 `context.endRun()`。
 3. 未终局时自动进入 `event_handle`，先处理该 phase 变化触发的 Reaction；稳定后再次检查终局，再计算属性、Effect、可启动卡与 active 事件 selector，等待玩家。
 4. 玩家可以处理零到多个事件。StartEvent 原子创建实例并设置 EventState 的 `activeInstanceId`；Choice、Command 与 CheckNode Action 用该 id 定位实例并直接写 `currentNodeId` 或结束 `status`，引擎补齐 `nodePath`、Reaction 切换、`endedTurn` 与 active id 清理；每个命令稳定后回到事件面板，phase 保持 `event_handle`。
-5. active 且当前节点 `required = true` 的实例阻止 `AdvanceTurn`；尚未点击的普通 enabled 事件不阻止回合结束。
+5. active 且当前节点 `required = true` 的实例阻止 `AdvanceTurn`；尚未点击的普通 enabled 事件不阻塞，但入口 TextNode required 或入口 CheckNode 候选链可达 required TextNode 的 pending 事件同样阻塞。
 6. `AdvanceTurn` 进入 `turn_end` 并稳定。存在终局请求时创建 `terminal`；否则创建 `turn_end` 检查点并自动运行下一回合到 `event_handle`。
 7. 终局可发生在任何 Action 位置，不要求经过 `turn_end`。`terminal` 保存当时的 phase、State 与 PRNG；引擎不解释结局字段。
 

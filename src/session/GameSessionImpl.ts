@@ -1,16 +1,38 @@
 import type {
 	GameSession,
+	SessionCommandErrorCode,
 	SessionCommandResult,
 	SessionView,
 	TurnRef,
 } from '../types'
-import type { AppMetadataRepository, SaveRepository } from '../persistence'
+import { publicDiagnostic } from '../diagnostics'
+import {
+	validateProfileAgainstConfig,
+	type AppMetadataRepository,
+	type SaveRepository,
+} from '../persistence'
 import { addRestartRun, type GameplayRuntimeImpl } from '../runtime'
 
 type Navigate = (path: string, options?: { replace?: boolean }) => void
 
 function resultLocation(profileId: string, source: TurnRef): string {
 	return `/result/${encodeURIComponent(profileId)}/${encodeURIComponent(source.runId)}/${encodeURIComponent(source.turnId)}`
+}
+
+function sessionFailure(
+	code: SessionCommandErrorCode,
+	error: unknown,
+	revision: number,
+): SessionCommandResult {
+	const diagnostic = publicDiagnostic(error, 'session')
+	return {
+		ok: false,
+		errorId: diagnostic.errorId,
+		code,
+		message: diagnostic.message,
+		revision,
+		committed: false,
+	}
 }
 
 /**
@@ -159,17 +181,18 @@ export class GameSessionImpl implements GameSession {
 	/** 从终局或放弃检查点创建 restart Run，并导航回游玩页。 */
 	async restartRun(): Promise<SessionCommandResult> {
 		if (this.#view.runtime.runStatus === 'active') {
-			return {
-				ok: false,
-				code: 'not-active',
-				message: 'The current run is still active',
-				revision: this.#view.runtime.revision,
-				committed: false,
-			}
+			return sessionFailure(
+				'not-active',
+				'The current run is still active',
+				this.#view.runtime.revision,
+			)
 		}
 		return this.appCommand(async () => {
 			const profile = this.runtime.getStoredProfile()
-			const next = addRestartRun(profile, this.runtime.game, profile.current)
+			const next = validateProfileAgainstConfig(
+				addRestartRun(profile, this.runtime.game, profile.current),
+				this.runtime.game.config,
+			)
 			const stored = await this.saves.put(next)
 			this.rememberRecent(stored.configId, stored.profileId)
 			this.dispose()
@@ -190,13 +213,11 @@ export class GameSessionImpl implements GameSession {
 		execute: () => Promise<SessionCommandResult>,
 	): Promise<SessionCommandResult> {
 		if (this.#view.busy) {
-			return {
-				ok: false,
-				code: 'busy',
-				message: 'Another command is still running',
-				revision: this.#view.runtime.revision,
-				committed: false,
-			}
+			return sessionFailure(
+				'busy',
+				'Another command is still running',
+				this.#view.runtime.revision,
+			)
 		}
 		this.setBusy(true)
 		try {
@@ -213,13 +234,7 @@ export class GameSessionImpl implements GameSession {
 		try {
 			return await this.command(execute)
 		} catch (error) {
-			return {
-				ok: false,
-				code: 'persistence-error',
-				message: error instanceof Error ? error.message : String(error),
-				revision: this.#view.runtime.revision,
-				committed: false,
-			}
+			return sessionFailure('persistence-error', error, this.#view.runtime.revision)
 		}
 	}
 

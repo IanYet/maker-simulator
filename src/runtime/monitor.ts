@@ -1,7 +1,8 @@
 import type { Primitive, RuntimeCommand, TurnPhase } from '../types'
 
 export type RuntimeTraceKind =
-	| 'command'
+	| 'command-start'
+	| 'command-end'
 	| 'transition'
 	| 'action'
 	| 'reaction'
@@ -11,6 +12,8 @@ export type RuntimeTraceKind =
 
 /** RuntimeMonitor 输出的单条事件，detail 只允许基础类型。 */
 export interface RuntimeTrace {
+	traceId: string
+	parentId?: string
 	at: string
 	runId: string
 	turnNumber: number
@@ -83,7 +86,11 @@ export class NoopRuntimeMonitor implements RuntimeMonitor {
 /** 向浏览器控制台输出执行轨迹，并在结束时打印会话摘要。 */
 export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 	readonly #started = performance.now()
-	readonly #records: RuntimeTrace[] = []
+	readonly #counts = new Map<RuntimeTraceKind, number>()
+	readonly #durations = new Map<RuntimeTraceKind, number>()
+	readonly #slowest: RuntimeTrace[] = []
+	readonly #recent: RuntimeTrace[] = []
+	#ruleExecutions = 0
 	#finished = false
 	readonly verbose: boolean
 	private readonly runId: string
@@ -98,7 +105,23 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 
 	trace(value: RuntimeTrace): void {
 		try {
-			this.#records.push(value)
+			this.#counts.set(value.kind, (this.#counts.get(value.kind) ?? 0) + 1)
+			this.#durations.set(
+				value.kind,
+				(this.#durations.get(value.kind) ?? 0) + value.durationMs,
+			)
+			if (value.kind === 'rule-summary' && typeof value.detail?.count === 'number') {
+				this.#ruleExecutions += value.detail.count
+			}
+			if (value.durationMs > 0) {
+				this.#slowest.push(value)
+				this.#slowest.sort((left, right) => right.durationMs - left.durationMs)
+				if (this.#slowest.length > 5) this.#slowest.length = 5
+			}
+			if (this.verbose) {
+				this.#recent.push(value)
+				if (this.#recent.length > 200) this.#recent.shift()
+			}
 			const indent = '  '.repeat(Math.max(0, value.depth))
 			const detail = value.detail
 				? Object.entries(value.detail)
@@ -106,7 +129,7 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 					.join(' ')
 				: ''
 			console.info(
-				`[maker-runtime] run=${value.runId} turn=${value.turnNumber} unit=${value.unitId} ${indent}${value.kind} ${value.name}${detail ? ` ${detail}` : ''} ${value.durationMs.toFixed(2)}ms ${value.outcome}`,
+				`[maker-runtime] trace=${value.traceId}${value.parentId ? ` parent=${value.parentId}` : ''} run=${value.runId} turn=${value.turnNumber} unit=${value.unitId} ${indent}${value.kind} ${value.name}${detail ? ` ${detail}` : ''} ${value.durationMs.toFixed(2)}ms ${value.outcome}`,
 				value.detail ?? '',
 			)
 		} catch {
@@ -118,26 +141,19 @@ export class ConsoleRuntimeMonitor implements RuntimeMonitor {
 		if (this.#finished) return
 		this.#finished = true
 		try {
-			const commands = this.#records.filter((item) => item.kind === 'command').length
-			const actions = this.#records.filter((item) => item.kind === 'action').length
-			const persistenceMs = this.#records
-				.filter((item) => item.kind === 'persistence')
-				.reduce((sum, item) => sum + item.durationMs, 0)
-			const unitMs = this.#records
-				.filter((item) => item.kind === 'transaction' && item.depth === 0)
-				.reduce((sum, item) => sum + item.durationMs, 0)
-			const slowest = [...this.#records]
-				.sort((left, right) => right.durationMs - left.durationMs)
-				.slice(0, 5)
-				.map((item) => `${item.kind}:${item.name} ${item.durationMs.toFixed(2)}ms`)
+			const slowest = this.#slowest.map(
+				(item) => `${item.kind}:${item.name} ${item.durationMs.toFixed(2)}ms`,
+			)
 			console.info('[maker-runtime] session summary', {
 				runId: this.runId,
 				durationMs: Number((performance.now() - this.#started).toFixed(2)),
-				commands,
-				actions,
-				unitMs: Number(unitMs.toFixed(2)),
-				persistenceMs: Number(persistenceMs.toFixed(2)),
+				commands: this.#counts.get('command-end') ?? 0,
+				actions: this.#counts.get('action') ?? 0,
+				ruleExecutions: this.#ruleExecutions,
+				unitMs: Number((this.#durations.get('transaction') ?? 0).toFixed(2)),
+				persistenceMs: Number((this.#durations.get('persistence') ?? 0).toFixed(2)),
 				slowest,
+				...(this.verbose ? { recent: [...this.#recent] } : {}),
 			})
 		} catch {
 			// 监控失败不能影响游戏结果。

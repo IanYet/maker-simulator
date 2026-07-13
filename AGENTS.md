@@ -11,12 +11,20 @@
 
 ## 代码与架构边界
 
-- UI 通过 `GameSession`/`SessionView` 读取状态并发出命令；不要在页面中直接操作 Profile、RunData、IndexedDB 或游戏脚本。
-- `GameplayRuntimeImpl` 是状态变更、事务、回滚、回合阶段、Reaction 和检查点的权威实现；新增状态语义先更新 `src/types` 和设计文档。
+- UI 通过 AppServices 页面 read model 或 `GameSession`/`SessionView` 读取状态并发出命令；不要在页面中直接操作 Profile、RunData、IndexedDB、具体 Runtime 实现或游戏脚本。
+- `GameplayRuntimeImpl` 是状态变更、事务、回滚、回合阶段、Reaction 和检查点的权威实现；`selectors.ts`、`reactions.ts` 与 `errors.ts` 只承接对应的纯投影、定义收集和错误协议。新增状态语义先更新 `src/types` 和设计文档。
 - `package-loader` 负责外部输入的 schema 校验、registry 校验和 linking；可信游戏包脚本通过 Rule/Action registry 接入。
-- `persistence` 负责 Profile 校验、IndexedDB 和检查点操作；写入前复制并校验数据。
+- `persistence` 负责 Profile 结构校验、IndexedDB 和检查点操作；Repository 使用 `validateStoredProfile()` 隔离未知记录，加载精确游戏包后由应用层或 Runtime 使用 `validateProfileAgainstConfig()` 完成领域校验。写入前复制并校验数据。
 - 游戏内容放在 `public/games/<id>/<version>/`，不要把具体剧情、数值或包 id 硬编码进通用 Runtime。
 - 修改 `public/games/frostbound/1.0.0/config.json` 时，优先修改 `scripts/build-frostbound-package.mjs` 后重新生成；不要手工维护生成结果。
+
+## Runtime 与存档不变量
+
+- `StoredProfile` 只保存稳定检查点；当前回合工作状态由 Runtime 单独持有。退出或切换存档时丢弃未提交工作状态，不把它写回 Profile。
+- Runtime 处理单元先稳定 draft、完成 Config 感知校验并生成 candidate snapshot；需要保存时等待 Repository 成功，随后一次性替换状态、baseline、revision 与 snapshot。持久化或 selector 失败必须保留提交前状态。
+- `advance-turn` 的 `turn_end` 是独立持久化边界。下一回合启动失败时保留并发布已提交的 `turn_end`，失败结果使用 `committed: true`，再次执行同一命令从该边界重试。
+- Rule 每次读取时直接执行，不缓存、不收集依赖；root 操作后及每个 Reaction Action 后按 canonical 顺序全量扫描当前 watch。新增优化前先用性能数据证明 eager scan 已成为瓶颈。
+- 项目处于开发阶段，不维护旧存档结构迁移或兼容分支。持久化结构变化时递增 `DATABASE_VERSION`，升级过程保留对象仓库和索引定义并清空旧 Profile 与应用元数据。
 
 ## 故事脚本默认规则
 
@@ -40,10 +48,14 @@
 
 ```bash
 node scripts/build-frostbound-package.mjs  # 修改 Frostbound authoring 时
+pnpm run test
 pnpm run build
 pnpm run lint
 git diff --check
 ```
+
+- Runtime、持久化、包加载器或纯应用命令发生变化时补充非 UI 自动回归；可以使用 Vitest、`fake-indexeddb` 和完成测试所需的第三方库。
+- 不编写 UI 自动测试；页面布局、键盘、焦点、触控目标和完整玩家流程由人工操作确认。
 
 涉及 Runtime、游戏包或存档时，额外人工检查：
 
@@ -51,7 +63,7 @@ git diff --check
 - 自动回合逻辑、Effect Reaction 和属性变化符合描述；
 - required 事件会阻止下一回合，完成后解除阻塞；
 - 单选、多选、CheckNode、随机分支、Effect 获得/激活、分支/截断和终局均可操作；
-- IndexedDB 升级兼容已有对象仓库和索引；
+- IndexedDB 升级后对象仓库与索引定义正确，开发期旧记录按约定清空；
 - `?runtimeMonitor=1` 或 `?runtimeMonitor=verbose` 下能看到具体命令、Action、Reaction 的 id、value 和参数。
 
 ## Git 与交付

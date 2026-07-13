@@ -92,10 +92,15 @@ export type PackageLoadStage =
 
 /** 对外展示的游戏包加载错误结构。 */
 export interface PackageLoadError {
+	/** 单次失败的可复制诊断编号。 */
+	errorId: string
 	stage: PackageLoadStage
 	packageId?: string
 	packageVersion?: string
-	path?: string
+	/** 发生读取或导入失败的资源位置。 */
+	resourceLocation?: string
+	/** schema、registry 或 linking 失败的 JSON Pointer。 */
+	jsonPointer?: string
 	message: string
 	cause?: unknown
 }

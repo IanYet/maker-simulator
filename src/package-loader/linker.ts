@@ -13,12 +13,16 @@ import type {
 	ValueRef,
 } from '../types'
 import { GamePackageLoadError } from './errors'
+import { idSchema } from './schemas'
 
 const hasOwn = (value: object, key: PropertyKey): boolean =>
 	Object.prototype.hasOwnProperty.call(value, key)
 
+const pointerSegment = (value: string): string =>
+	value.replaceAll('~', '~0').replaceAll('/', '~1')
+
 function fail(message: string, path: string): never {
-	throw new GamePackageLoadError('linking', message, { path })
+	throw new GamePackageLoadError('linking', message, { jsonPointer: path })
 }
 
 function assertRecordIdentity(
@@ -267,23 +271,33 @@ export function validateRegistries(
 		throw new GamePackageLoadError('registry-validation', '“actions” must be an object')
 	}
 	for (const [key, implementation] of Object.entries(rules)) {
+		if (!idSchema.safeParse(key).success) {
+			throw new GamePackageLoadError('registry-validation', `Invalid Rule key “${key}”`, {
+				jsonPointer: `/rules/${pointerSegment(key)}`,
+			})
+		}
 		if (
 			implementation === null ||
 			typeof implementation !== 'object' ||
 			(implementation as { key?: unknown }).key !== key ||
 			typeof (implementation as { calc?: unknown }).calc !== 'function'
 		) {
-			throw new GamePackageLoadError('registry-validation', `Invalid Rule implementation “${key}”`, { path: `/rules/${key}` })
+			throw new GamePackageLoadError('registry-validation', `Invalid Rule implementation “${key}”`, { jsonPointer: `/rules/${key}` })
 		}
 	}
 	for (const [key, implementation] of Object.entries(actions)) {
+		if (!idSchema.safeParse(key).success) {
+			throw new GamePackageLoadError('registry-validation', `Invalid Action key “${key}”`, {
+				jsonPointer: `/actions/${pointerSegment(key)}`,
+			})
+		}
 		if (
 			implementation === null ||
 			typeof implementation !== 'object' ||
 			(implementation as { key?: unknown }).key !== key ||
 			typeof (implementation as { exec?: unknown }).exec !== 'function'
 		) {
-			throw new GamePackageLoadError('registry-validation', `Invalid Action implementation “${key}”`, { path: `/actions/${key}` })
+			throw new GamePackageLoadError('registry-validation', `Invalid Action implementation “${key}”`, { jsonPointer: `/actions/${key}` })
 		}
 	}
 	return { rules: rules as RuleRegistry, actions: actions as ActionRegistry }

@@ -52,7 +52,7 @@ export class FetchGamePackageSource implements GamePackageSource {
 
 			return { packages, defaultVersions: catalog.defaultVersions }
 		} catch (error) {
-			throw packageError('catalog', error, { path: location })
+			throw packageError('catalog', error, { resourceLocation: location })
 		}
 	}
 

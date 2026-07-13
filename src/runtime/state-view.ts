@@ -51,12 +51,86 @@ function isRule(value: unknown): value is Rule {
 	)
 }
 
+function valueSummary(value: unknown): string {
+	if (value === null) return 'null'
+	if (Array.isArray(value)) return `array(${value.length})`
+	if (typeof value === 'object') return `object(${Object.keys(value).length} keys)`
+	if (typeof value === 'string') return JSON.stringify(value.slice(0, 80))
+	return String(value)
+}
+
+function invalidRuleResult(
+	rule: Rule,
+	path: readonly string[],
+	expected: string,
+	value: unknown,
+): never {
+	throw new Error(
+		`Rule “${rule.key}” returned an invalid value for ${path.join('.')}: expected ${expected}, received ${valueSummary(value)}`,
+	)
+}
+
+function validateDerivedRuleResult(
+	rule: Rule,
+	value: unknown,
+	environment: ViewEnvironment,
+	path: readonly string[],
+): unknown {
+	const property = path.at(-1)
+	if (['unlocked', 'enabled', 'acquired', 'actived', 'required'].includes(property ?? '')) {
+		if (typeof value !== 'boolean') invalidRuleResult(rule, path, 'boolean', value)
+		return value
+	}
+	if (property === 'weight') {
+		if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10) {
+			invalidRuleResult(rule, path, 'a finite number between 0 and 10', value)
+		}
+		return value
+	}
+	if (property === 'maxCount') {
+		if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+			invalidRuleResult(rule, path, 'a non-negative integer', value)
+		}
+		return value
+	}
+	if (property === 'choices') {
+		if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+			invalidRuleResult(rule, path, 'a Choice record', value)
+		}
+		const choicesValue = rawConfigAt(environment, [...path.slice(0, -1), 'choicesValue'])
+		if (choicesValue === null || typeof choicesValue !== 'object' || Array.isArray(choicesValue)) {
+			invalidRuleResult(rule, path, 'a Choice record backed by choicesValue', value)
+		}
+		for (const key of Object.keys(value)) {
+			if (!hasOwn(choicesValue, key)) {
+				invalidRuleResult(rule, path, `only keys declared by choicesValue (unknown “${key}”)`, value)
+			}
+			const choice = (value as Readonly<Record<string, unknown>>)[key]
+			if (
+				choice === null ||
+				typeof choice !== 'object' ||
+				(choice as Readonly<{ id?: unknown }>).id !== key
+			) {
+				invalidRuleResult(rule, path, `Choice “${key}” with matching id`, choice)
+			}
+		}
+		return value
+	}
+	return value
+}
+
 function resolveRule(
 	value: unknown,
 	environment: ViewEnvironment,
 	path: readonly string[],
 ): unknown {
-	return isRule(value) && isDerivedFieldPath(path) ? environment.evaluateRule(value) : value
+	if (!isRule(value) || !isDerivedFieldPath(path)) return value
+	return validateDerivedRuleResult(
+		value,
+		environment.evaluateRule(value),
+		environment,
+		path,
+	)
 }
 
 function configAt(environment: ViewEnvironment, path: readonly string[]): unknown {
@@ -95,7 +169,14 @@ function effectiveAt(environment: ViewEnvironment, path: readonly string[]): unk
 		return environment.turnState[path[0]]
 	}
 	const rawConfig = rawConfigAt(environment, path)
-	if (isRule(rawConfig) && isDerivedFieldPath(path)) return environment.evaluateRule(rawConfig)
+	if (isRule(rawConfig) && isDerivedFieldPath(path)) {
+		return validateDerivedRuleResult(
+			rawConfig,
+			environment.evaluateRule(rawConfig),
+			environment,
+			path,
+		)
+	}
 	for (let index = environment.layers.length - 1; index >= 0; index -= 1) {
 		const value = stateAt(environment.layers[index], path)
 		if (value !== undefined) return value
