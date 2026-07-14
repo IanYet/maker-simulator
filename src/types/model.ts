@@ -805,9 +805,7 @@ export interface ActionCheckNodeRuntime extends ActionCommonRuntime {
 }
 
 export type ActionEventNodeRuntime =
-	| ActionSingleTextNodeRuntime
-	| ActionMultipleTextNodeRuntime
-	| ActionCheckNodeRuntime
+	ActionSingleTextNodeRuntime | ActionMultipleTextNodeRuntime | ActionCheckNodeRuntime
 
 /**
  * Action 可写的 EventInstance 视图。导航与终止状态可写，派生的历史和时间字段由引擎维护。
@@ -842,9 +840,7 @@ export interface ActionRunEventRuntime extends ActionEventRuntime {
 /**
  * Action 可写的游戏内容视图。集合结构、Config 字段和引擎派生字段只读。
  */
-export interface ActionGameRuntime<
-	TEventRuntime extends ActionEventRuntime = ActionEventRuntime,
-> {
+export interface ActionGameRuntime<TEventRuntime extends ActionEventRuntime = ActionEventRuntime> {
 	readonly meta: DeepReadonly<ConfigMeta>
 	readonly characters: Readonly<Record<string, ActionCharacterRuntime>>
 	readonly effects: Readonly<Record<string, ActionEffectRuntime>>

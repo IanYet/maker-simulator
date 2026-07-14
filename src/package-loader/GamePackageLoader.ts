@@ -99,7 +99,11 @@ export class GamePackageLoader {
 			manifest.version !== location.descriptor.version ||
 			manifest.name !== location.descriptor.name
 		) {
-			throw new GamePackageLoadError('linking', 'Descriptor and manifest identity mismatch', details)
+			throw new GamePackageLoadError(
+				'linking',
+				'Descriptor and manifest identity mismatch',
+				details,
+			)
 		}
 
 		const configLocation = this.source.resolve(location.manifestLocation, manifest.entries.config)
@@ -113,7 +117,10 @@ export class GamePackageLoader {
 				throw packageError('module-import', error, { ...details, resourceLocation: rulesLocation })
 			}),
 			this.source.importTrustedModule(actionsLocation).catch((error: unknown) => {
-				throw packageError('module-import', error, { ...details, resourceLocation: actionsLocation })
+				throw packageError('module-import', error, {
+					...details,
+					resourceLocation: actionsLocation,
+				})
 			}),
 		])
 
@@ -130,13 +137,7 @@ export class GamePackageLoader {
 		let registries
 		try {
 			registries = validateRegistries(ruleModule, actionModule)
-			linkConfig(
-				location.descriptor,
-				manifest,
-				config,
-				registries.rules,
-				registries.actions,
-			)
+			linkConfig(location.descriptor, manifest, config, registries.rules, registries.actions)
 		} catch (error) {
 			throw packageError(
 				error instanceof GamePackageLoadError ? error.stage : 'linking',
@@ -152,10 +153,7 @@ export class GamePackageLoader {
 			config,
 			rules,
 			actions,
-			assetsBaseLocation: this.source.resolve(
-				location.manifestLocation,
-				manifest.assets ?? './',
-			),
+			assetsBaseLocation: this.source.resolve(location.manifestLocation, manifest.assets ?? './'),
 		})
 	}
 }

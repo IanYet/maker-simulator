@@ -14,10 +14,7 @@ import { parseProfile } from '../package-loader/schemas'
 export class SaveValidationError extends Error {
 	readonly path: string
 
-	constructor(
-		message: string,
-		path: string,
-	) {
+	constructor(message: string, path: string) {
 		super(`${message} (${path})`)
 		this.name = 'SaveValidationError'
 		this.path = path
@@ -26,12 +23,12 @@ export class SaveValidationError extends Error {
 
 function validateTurn(turn: TurnData, runId: string, turnId: string): void {
 	if (turn.turnId !== turnId) {
-		throw new SaveValidationError(
-			'Turn key/id mismatch',
-			`/runDatas/${runId}/turnDatas/${turnId}`,
-		)
+		throw new SaveValidationError('Turn key/id mismatch', `/runDatas/${runId}/turnDatas/${turnId}`)
 	}
-	if (turn.snapshot.randomState.cursor < 0 || !Number.isSafeInteger(turn.snapshot.randomState.cursor)) {
+	if (
+		turn.snapshot.randomState.cursor < 0 ||
+		!Number.isSafeInteger(turn.snapshot.randomState.cursor)
+	) {
 		throw new SaveValidationError(
 			'Invalid random cursor',
 			`/runDatas/${runId}/turnDatas/${turnId}/snapshot/randomState/cursor`,
@@ -54,7 +51,10 @@ export function validateStoredProfile(input: unknown): StoredProfile {
 		}
 		const orderSet = new Set(run.turnOrder)
 		if (orderSet.size !== run.turnOrder.length) {
-			throw new SaveValidationError('Duplicate TurnData in turnOrder', `/runDatas/${runId}/turnOrder`)
+			throw new SaveValidationError(
+				'Duplicate TurnData in turnOrder',
+				`/runDatas/${runId}/turnOrder`,
+			)
 		}
 		const dataKeys = Object.keys(run.turnDatas)
 		if (dataKeys.length !== orderSet.size || dataKeys.some((id) => !orderSet.has(id))) {
@@ -77,7 +77,10 @@ export function validateStoredProfile(input: unknown): StoredProfile {
 			)
 		}
 		if (run.status === 'ended' && (current.kind !== 'terminal' || !run.endedAt)) {
-			throw new SaveValidationError('Ended RunData must end in terminal', `/runDatas/${runId}/status`)
+			throw new SaveValidationError(
+				'Ended RunData must end in terminal',
+				`/runDatas/${runId}/status`,
+			)
 		}
 		if (run.status === 'abandoned' && (current.kind !== 'abandoned' || !run.endedAt)) {
 			throw new SaveValidationError(
@@ -110,11 +113,7 @@ function assertStateId(id: string, key: string, path: string): void {
 	if (id !== key) throw new SaveValidationError('State key/id mismatch', path)
 }
 
-function assertPrimitiveEqual(
-	actual: Primitive,
-	expected: Primitive,
-	path: string,
-): void {
+function assertPrimitiveEqual(actual: Primitive, expected: Primitive, path: string): void {
 	if (!Object.is(actual, expected)) {
 		throw new SaveValidationError('Selection value differs from Config', path)
 	}
@@ -149,7 +148,10 @@ function validateGameState(
 				(attribute.min !== undefined && attributeState.value < attribute.min) ||
 				(attribute.max !== undefined && attributeState.value > attribute.max)
 			) {
-				throw new SaveValidationError('Number Attribute value is outside Config range', `${attributePath}/value`)
+				throw new SaveValidationError(
+					'Number Attribute value is outside Config range',
+					`${attributePath}/value`,
+				)
 			}
 		}
 	}
@@ -159,7 +161,10 @@ function validateGameState(
 		if (!config.effects[effectId]) throw new SaveValidationError('Unknown Effect state', effectPath)
 		assertStateId(effectState.id, effectId, effectPath)
 		if (effectState.bindCharacterId && !config.characters[effectState.bindCharacterId]) {
-			throw new SaveValidationError('Unknown Effect character binding', `${effectPath}/bindCharacterId`)
+			throw new SaveValidationError(
+				'Unknown Effect character binding',
+				`${effectPath}/bindCharacterId`,
+			)
 		}
 		if (
 			layer !== 'runState' &&
@@ -178,10 +183,7 @@ function validateGameState(
 		if (!event) throw new SaveValidationError('Unknown Event state', eventPath)
 		assertStateId(eventState.id, eventId, eventPath)
 		if (layer !== 'runState' && (eventState.instances || eventState.activeInstanceId)) {
-			throw new SaveValidationError(
-				'Event instances are allowed only in RunState',
-				eventPath,
-			)
+			throw new SaveValidationError('Event instances are allowed only in RunState', eventPath)
 		}
 		for (const [nodeId, nodeState] of Object.entries(eventState.nodes ?? {})) {
 			const nodePath = childPath(`${eventPath}/nodes`, nodeId)
@@ -189,13 +191,22 @@ function validateGameState(
 			if (!node) throw new SaveValidationError('Unknown Event node state', nodePath)
 			assertStateId(nodeState.id, nodeId, nodePath)
 			if (nodeState.requiredValue !== undefined && node.type === 'check') {
-				throw new SaveValidationError('CheckNode cannot have required state', `${nodePath}/requiredValue`)
+				throw new SaveValidationError(
+					'CheckNode cannot have required state',
+					`${nodePath}/requiredValue`,
+				)
 			}
 			if (nodeState.selections && layer !== 'turnState') {
-				throw new SaveValidationError('Selections are allowed only in TurnState', `${nodePath}/selections`)
+				throw new SaveValidationError(
+					'Selections are allowed only in TurnState',
+					`${nodePath}/selections`,
+				)
 			}
 			if (nodeState.choicesValue && node.type === 'check') {
-				throw new SaveValidationError('CheckNode cannot have Choice state', `${nodePath}/choicesValue`)
+				throw new SaveValidationError(
+					'CheckNode cannot have Choice state',
+					`${nodePath}/choicesValue`,
+				)
 			}
 			for (const [choiceId, choiceState] of Object.entries(nodeState.choicesValue ?? {})) {
 				const choicePath = childPath(`${nodePath}/choicesValue`, choiceId)
@@ -205,7 +216,10 @@ function validateGameState(
 				assertStateId(choiceState.id, choiceId, choicePath)
 			}
 			if (nodeState.commands && node.type !== 'multiple') {
-				throw new SaveValidationError('Commands state requires a multiple node', `${nodePath}/commands`)
+				throw new SaveValidationError(
+					'Commands state requires a multiple node',
+					`${nodePath}/commands`,
+				)
 			}
 			for (const [commandId, commandState] of Object.entries(nodeState.commands ?? {})) {
 				const commandPath = childPath(`${nodePath}/commands`, commandId)
@@ -239,38 +253,59 @@ function validateRunInstances(
 				throw new SaveValidationError('EventInstance key/id mismatch', instancePath)
 			}
 			if (instance.eventId !== eventId) {
-				throw new SaveValidationError('EventInstance belongs to another Event', `${instancePath}/eventId`)
+				throw new SaveValidationError(
+					'EventInstance belongs to another Event',
+					`${instancePath}/eventId`,
+				)
 			}
 			if (!event.nodes[instance.currentNodeId]) {
 				throw new SaveValidationError('Unknown current Event node', `${instancePath}/currentNodeId`)
 			}
 			for (let index = 0; index < instance.nodePath.length; index += 1) {
 				if (!event.nodes[instance.nodePath[index]]) {
-					throw new SaveValidationError('Unknown Event node in nodePath', `${instancePath}/nodePath/${index}`)
+					throw new SaveValidationError(
+						'Unknown Event node in nodePath',
+						`${instancePath}/nodePath/${index}`,
+					)
 				}
 			}
 			if (instance.nodePath.at(-1) !== instance.currentNodeId) {
-				throw new SaveValidationError('nodePath must end at currentNodeId', `${instancePath}/nodePath`)
+				throw new SaveValidationError(
+					'nodePath must end at currentNodeId',
+					`${instancePath}/nodePath`,
+				)
 			}
 			if (instance.startedTurn > turnNumber) {
-				throw new SaveValidationError('EventInstance starts after snapshot turn', `${instancePath}/startedTurn`)
+				throw new SaveValidationError(
+					'EventInstance starts after snapshot turn',
+					`${instancePath}/startedTurn`,
+				)
 			}
 			if (instance.status === 'active') {
 				active.push(instanceId)
 				if (instance.endedTurn !== undefined) {
-					throw new SaveValidationError('Active EventInstance cannot have endedTurn', `${instancePath}/endedTurn`)
+					throw new SaveValidationError(
+						'Active EventInstance cannot have endedTurn',
+						`${instancePath}/endedTurn`,
+					)
 				}
 			} else if (
 				instance.endedTurn === undefined ||
 				instance.endedTurn < instance.startedTurn ||
 				instance.endedTurn > turnNumber
 			) {
-				throw new SaveValidationError('Invalid EventInstance endedTurn', `${instancePath}/endedTurn`)
+				throw new SaveValidationError(
+					'Invalid EventInstance endedTurn',
+					`${instancePath}/endedTurn`,
+				)
 			}
 			instances.set(instanceId, { eventId, currentNodeId: instance.currentNodeId })
 		}
 		if (active.length > 1) {
-			throw new SaveValidationError('Event has more than one active instance', `${eventPath}/instances`)
+			throw new SaveValidationError(
+				'Event has more than one active instance',
+				`${eventPath}/instances`,
+			)
 		}
 		if (eventState.activeInstanceId !== active[0]) {
 			throw new SaveValidationError(
@@ -305,7 +340,10 @@ function validateSelections(
 					throw new SaveValidationError('Selection key/id mismatch', selectionPath)
 				}
 				if (!instance || instance.eventId !== eventId || instance.currentNodeId !== nodeId) {
-					throw new SaveValidationError('Selection does not target the current Event node', selectionPath)
+					throw new SaveValidationError(
+						'Selection does not target the current Event node',
+						selectionPath,
+					)
 				}
 				for (const [choiceId, choice] of Object.entries(selection.choices)) {
 					const choicePath = childPath(`${selectionPath}/choices`, choiceId)
@@ -321,11 +359,7 @@ function validateSelections(
 	}
 }
 
-function validateSnapshot(
-	turn: TurnData,
-	config: DeepReadonly<GameConfig>,
-	path: string,
-): void {
+function validateSnapshot(turn: TurnData, config: DeepReadonly<GameConfig>, path: string): void {
 	const { snapshot } = turn
 	validateGameState(snapshot.profileState, config, `${path}/snapshot/profileState`, 'profileState')
 	validateGameState(snapshot.runState, config, `${path}/snapshot/runState`, 'runState')
@@ -337,7 +371,11 @@ function validateSnapshot(
 		`${path}/snapshot/runState`,
 	)
 	validateSelections(snapshot.turnState, config, instances, `${path}/snapshot/turnState`)
-	if (turn.kind === 'terminal' && turn.endingEventInstanceId && !instances.has(turn.endingEventInstanceId)) {
+	if (
+		turn.kind === 'terminal' &&
+		turn.endingEventInstanceId &&
+		!instances.has(turn.endingEventInstanceId)
+	) {
 		throw new SaveValidationError(
 			'endingEventInstanceId does not exist in snapshot RunState',
 			`${path}/endingEventInstanceId`,
@@ -369,21 +407,26 @@ export function validateProfileAgainstConfig(
 			const turnPath = childPath(`${runPath}/turnDatas`, turnId)
 			const turnNumber = turn.snapshot.turnState.turnNumber
 			if (turnNumber < previousTurnNumber) {
-				throw new SaveValidationError('Checkpoint turn numbers must be monotonic', `${turnPath}/snapshot/turnState/turnNumber`)
+				throw new SaveValidationError(
+					'Checkpoint turn numbers must be monotonic',
+					`${turnPath}/snapshot/turnState/turnNumber`,
+				)
 			}
 			previousTurnNumber = turnNumber
 			validateSnapshot(turn, config, turnPath)
 		}
 		if (run.origin) {
-			const source = profile.runDatas[run.origin.source.runId]
-				?.turnDatas[run.origin.source.turnId]
+			const source = profile.runDatas[run.origin.source.runId]?.turnDatas[run.origin.source.turnId]
 			if (
 				source &&
 				(run.origin.kind === 'branch'
 					? source.kind !== 'initial' && source.kind !== 'turn_end'
 					: source.kind !== 'terminal' && source.kind !== 'abandoned')
 			) {
-				throw new SaveValidationError('Run origin points to an incompatible checkpoint kind', `${runPath}/origin/source`)
+				throw new SaveValidationError(
+					'Run origin points to an incompatible checkpoint kind',
+					`${runPath}/origin/source`,
+				)
 			}
 		}
 	}

@@ -1,9 +1,4 @@
-import type {
-	ActionRegistry,
-	DeepReadonly,
-	GameConfig,
-	RuleRegistry,
-} from './model'
+import type { ActionRegistry, DeepReadonly, GameConfig, RuleRegistry } from './model'
 
 /** 宿主可发现的游戏包目录。 */
 export interface GameCatalog {

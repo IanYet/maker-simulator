@@ -76,10 +76,7 @@ export function projectNodeView(
 	return { ...common, type: 'multiple', choices, commands }
 }
 
-function projectEndingEvent(
-	run: RunData,
-	runtime: TurnRuntime,
-): { endingEvent?: EndingEventView } {
+function projectEndingEvent(run: RunData, runtime: TurnRuntime): { endingEvent?: EndingEventView } {
 	const terminal = run.turnDatas[run.currentTurnId]
 	if (terminal.kind !== 'terminal' || !terminal.endingEventInstanceId) return {}
 	for (const event of Object.values(runtime.events)) {
@@ -119,23 +116,26 @@ export function projectRuntimeSnapshot(options: {
 				.flatMap((attributeConfig) => {
 					const attribute = character.attributes[attributeConfig.id]
 					if (!attribute.visible || !attribute.unlocked) return []
-					return [{
-						characterId: character.id,
-						characterDisplayName: character.displayName,
-						attributeId: attribute.id,
-						displayName: attribute.displayName,
-						type: attribute.type,
-						value: attribute.value,
-						displayValue: attribute.type === 'enum'
-							? attribute.valueDisplay[attribute.value]
-							: String(attribute.value),
-						...(attribute.type === 'number' && attribute.min !== undefined
-							? { min: attribute.min }
-							: {}),
-						...(attribute.type === 'number' && attribute.max !== undefined
-							? { max: attribute.max }
-							: {}),
-					}]
+					return [
+						{
+							characterId: character.id,
+							characterDisplayName: character.displayName,
+							attributeId: attribute.id,
+							displayName: attribute.displayName,
+							type: attribute.type,
+							value: attribute.value,
+							displayValue:
+								attribute.type === 'enum'
+									? attribute.valueDisplay[attribute.value]
+									: String(attribute.value),
+							...(attribute.type === 'number' && attribute.min !== undefined
+								? { min: attribute.min }
+								: {}),
+							...(attribute.type === 'number' && attribute.max !== undefined
+								? { max: attribute.max }
+								: {}),
+						},
+					]
 				})
 		})
 	const effects: EffectView[] = Object.values(config.effects)
@@ -143,24 +143,24 @@ export function projectRuntimeSnapshot(options: {
 		.flatMap((effectConfig) => {
 			const effect = runtime.effects[effectConfig.id]
 			if (!effect.visible || !effect.unlocked || !effect.acquired) return []
-			const bound = effect.bindCharacterId
-				? runtime.characters[effect.bindCharacterId]
-				: undefined
-			return [{
-				effectId: effect.id,
-				displayName: effect.displayName,
-				...(effect.description ? { description: effect.description } : {}),
-				actived: effect.actived,
-				manuallyActivatable: effectConfig.manuallyActivatable,
-				canActivate:
-					effectConfig.manuallyActivatable &&
-					!effect.actived &&
-					effect.enabled &&
-					run.status === 'active' &&
-					runtime.phase === 'event_handle',
-				...(effect.bindCharacterId ? { bindCharacterId: effect.bindCharacterId } : {}),
-				...(bound ? { bindCharacterDisplayName: bound.displayName } : {}),
-			}]
+			const bound = effect.bindCharacterId ? runtime.characters[effect.bindCharacterId] : undefined
+			return [
+				{
+					effectId: effect.id,
+					displayName: effect.displayName,
+					...(effect.description ? { description: effect.description } : {}),
+					actived: effect.actived,
+					manuallyActivatable: effectConfig.manuallyActivatable,
+					canActivate:
+						effectConfig.manuallyActivatable &&
+						!effect.actived &&
+						effect.enabled &&
+						run.status === 'active' &&
+						runtime.phase === 'event_handle',
+					...(effect.bindCharacterId ? { bindCharacterId: effect.bindCharacterId } : {}),
+					...(bound ? { bindCharacterDisplayName: bound.displayName } : {}),
+				},
+			]
 		})
 	const eventCards = []
 	const activeEvents: ActiveEventView[] = []
@@ -192,7 +192,9 @@ export function projectRuntimeSnapshot(options: {
 			event.visible &&
 			event.unlocked &&
 			event.enabled &&
-			!Object.values(event.instances).some((instance) => instance.startedTurn === runtime.turnNumber)
+			!Object.values(event.instances).some(
+				(instance) => instance.startedTurn === runtime.turnNumber,
+			)
 		) {
 			const required = pendingEventRequired(event)
 			eventCards.push({

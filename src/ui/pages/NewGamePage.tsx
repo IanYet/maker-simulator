@@ -26,9 +26,18 @@ export function NewGamePage() {
 		<PageChrome>
 			<p className={styles.eyebrow}>Creating profile</p>
 			<h1 className={styles.title}>正在建立新的时间线。</h1>
-			{error
-				? <div className={styles.statusWrap}><StatusBanner tone="error">创建失败：{error}</StatusBanner><div className={styles.pageActions}><ButtonLink variant="secondary" to={`/games/${encodeURIComponent(gameId)}`}>返回</ButtonLink></div></div>
-				: <StatusBanner tone="loading">正在校验脚本、创建初始检查点并保存…</StatusBanner>}
+			{error ? (
+				<div className={styles.statusWrap}>
+					<StatusBanner tone="error">创建失败：{error}</StatusBanner>
+					<div className={styles.pageActions}>
+						<ButtonLink variant="secondary" to={`/games/${encodeURIComponent(gameId)}`}>
+							返回
+						</ButtonLink>
+					</div>
+				</div>
+			) : (
+				<StatusBanner tone="loading">正在校验脚本、创建初始检查点并保存…</StatusBanner>
+			)}
 		</PageChrome>
 	)
 }

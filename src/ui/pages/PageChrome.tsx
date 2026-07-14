@@ -10,7 +10,9 @@ export function PageChrome({ children, action }: { children: ReactNode; action?:
 		<main className={styles.page}>
 			<header className={styles.topbar}>
 				<div className={styles.brandGroup}>
-					<Link className={styles.brand} to="/games">MAKER SIMULATOR</Link>
+					<Link className={styles.brand} to="/games">
+						MAKER SIMULATOR
+					</Link>
 					<a
 						className={styles.githubLink}
 						href="https://github.com/IanYet/maker-simulator"

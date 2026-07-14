@@ -1,10 +1,5 @@
 import { z } from 'zod'
-import type {
-	GameCatalog,
-	GameConfig,
-	GamePackageManifest,
-	StoredProfile,
-} from '../types'
+import type { GameCatalog, GameConfig, GamePackageManifest, StoredProfile } from '../types'
 
 /** 游戏包、Config 和 State 共享的安全标识符规则。 */
 export const idSchema = z

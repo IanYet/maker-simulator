@@ -50,7 +50,10 @@ function initialRunState(game: LoadedGamePackage): GameState {
 		state.characters[character.id] = {
 			...commonState(character),
 			attributes: Object.fromEntries(
-				Object.values(character.attributes).map((attribute) => [attribute.id, commonState(attribute)]),
+				Object.values(character.attributes).map((attribute) => [
+					attribute.id,
+					commonState(attribute),
+				]),
 			),
 		}
 	}

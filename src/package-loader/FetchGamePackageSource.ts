@@ -1,8 +1,4 @@
-import type {
-	GamePackageSource,
-	LocatedGameCatalog,
-	LocatedGamePackage,
-} from '../types'
+import type { GamePackageSource, LocatedGameCatalog, LocatedGamePackage } from '../types'
 import { packageError } from './errors'
 import { parseCatalog } from './schemas'
 
@@ -33,9 +29,7 @@ export class FetchGamePackageSource implements GamePackageSource {
 				return {
 					descriptor,
 					manifestLocation: this.resolve(location, descriptor.manifest),
-					coverLocation: descriptor.cover
-						? this.resolve(location, descriptor.cover)
-						: undefined,
+					coverLocation: descriptor.cover ? this.resolve(location, descriptor.cover) : undefined,
 				}
 			})
 

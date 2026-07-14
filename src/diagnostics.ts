@@ -10,10 +10,7 @@ function existingErrorId(error: unknown): string | undefined {
 }
 
 /** 将未知边界错误转换为不含堆栈的公开摘要，并复用已有错误编号。 */
-export function publicDiagnostic(
-	error: unknown,
-	prefix = 'error',
-): PublicDiagnostic {
+export function publicDiagnostic(error: unknown, prefix = 'error'): PublicDiagnostic {
 	const errorId = existingErrorId(error) ?? `${prefix}-${crypto.randomUUID()}`
 	const summary = error instanceof Error ? error.message : String(error)
 	return {

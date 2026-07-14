@@ -20,16 +20,34 @@ export function GameMenuPage() {
 	useEffect(() => {
 		let active = true
 		services.getGameMenu(gameId).then(
-			(view) => { if (active) setState({ status: 'ready', view }) },
-			(error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : String(error) }) },
+			(view) => {
+				if (active) setState({ status: 'ready', view })
+			},
+			(error: unknown) => {
+				if (active)
+					setState({
+						status: 'error',
+						message: error instanceof Error ? error.message : String(error),
+					})
+			},
 		)
-		return () => { active = false }
+		return () => {
+			active = false
+		}
 	}, [gameId, services])
 
 	return (
-		<PageChrome action={<ButtonLink variant="tertiary" to="/games">返回游戏列表</ButtonLink>}>
+		<PageChrome
+			action={
+				<ButtonLink variant="tertiary" to="/games">
+					返回游戏列表
+				</ButtonLink>
+			}
+		>
 			{state.status === 'loading' && <StatusBanner tone="loading">正在装载游戏脚本…</StatusBanner>}
-			{state.status === 'error' && <StatusBanner tone="error">无法打开游戏：{state.message}</StatusBanner>}
+			{state.status === 'error' && (
+				<StatusBanner tone="error">无法打开游戏：{state.message}</StatusBanner>
+			)}
 			{state.status === 'ready' && (
 				<Surface tone="lilac" className={`${styles.menuHero} ${styles.fullBleed}`}>
 					<div>
@@ -40,9 +58,13 @@ export function GameMenuPage() {
 					<div className={styles.pageActions}>
 						<ButtonLink to={`/games/${encodeURIComponent(gameId)}/new`}>新游戏</ButtonLink>
 						{state.view.recentLocation && state.view.recentLabel && (
-							<ButtonLink variant="secondary" to={state.view.recentLocation}>{state.view.recentLabel}</ButtonLink>
+							<ButtonLink variant="secondary" to={state.view.recentLocation}>
+								{state.view.recentLabel}
+							</ButtonLink>
 						)}
-						<ButtonLink variant="secondary" to={`/games/${encodeURIComponent(gameId)}/saves`}>查看存档</ButtonLink>
+						<ButtonLink variant="secondary" to={`/games/${encodeURIComponent(gameId)}/saves`}>
+							查看存档
+						</ButtonLink>
 					</div>
 				</Surface>
 			)}

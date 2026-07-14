@@ -1,8 +1,5 @@
 import { SaveValidationError } from '../persistence'
-import type {
-	RuntimeCommandErrorCode,
-	RuntimeCommandResult,
-} from '../types'
+import type { RuntimeCommandErrorCode, RuntimeCommandResult } from '../types'
 
 /** 将未知异常转换为无堆栈的单行消息。 */
 export function errorMessage(error: unknown): string {
@@ -58,7 +55,8 @@ export class ScriptExecutionError extends Error {
 		this.errorId = errorId
 		this.summary = summary
 		this.callChain = callChain
-		this.jsonPointer = nested?.jsonPointer ?? (error instanceof SaveValidationError ? error.path : undefined)
+		this.jsonPointer =
+			nested?.jsonPointer ?? (error instanceof SaveValidationError ? error.path : undefined)
 	}
 }
 

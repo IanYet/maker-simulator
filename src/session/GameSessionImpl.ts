@@ -92,7 +92,11 @@ export class GameSessionImpl implements GameSession {
 
 	/** 聚焦某个 active EventInstance，供事件入口和节点区域同步。 */
 	focusEvent(eventInstanceId?: string): void {
-		if (eventInstanceId && !this.#view.runtime.activeEvents.some((event) => event.eventInstanceId === eventInstanceId)) return
+		if (
+			eventInstanceId &&
+			!this.#view.runtime.activeEvents.some((event) => event.eventInstanceId === eventInstanceId)
+		)
+			return
 		this.#view = {
 			...this.#view,
 			focusedEventInstanceId: eventInstanceId,
@@ -111,8 +115,14 @@ export class GameSessionImpl implements GameSession {
 	}
 
 	/** 提交当前单选节点的 Choice。 */
-	chooseSingle(eventInstanceId: string, nodeId: string, choiceId: string): Promise<SessionCommandResult> {
-		return this.command(() => this.runtime.dispatch({ type: 'choose-single', eventInstanceId, nodeId, choiceId }))
+	chooseSingle(
+		eventInstanceId: string,
+		nodeId: string,
+		choiceId: string,
+	): Promise<SessionCommandResult> {
+		return this.command(() =>
+			this.runtime.dispatch({ type: 'choose-single', eventInstanceId, nodeId, choiceId }),
+		)
 	}
 
 	/** 更新多选节点中某个 Choice 的数量。 */
@@ -122,13 +132,15 @@ export class GameSessionImpl implements GameSession {
 		choiceId: string,
 		count: number,
 	): Promise<SessionCommandResult> {
-		return this.command(() => this.runtime.dispatch({
-			type: 'set-multiple-choice',
-			eventInstanceId,
-			nodeId,
-			choiceId,
-			count,
-		}))
+		return this.command(() =>
+			this.runtime.dispatch({
+				type: 'set-multiple-choice',
+				eventInstanceId,
+				nodeId,
+				choiceId,
+				count,
+			}),
+		)
 	}
 
 	/** 执行多选节点的 NodeCommand。 */
@@ -137,12 +149,14 @@ export class GameSessionImpl implements GameSession {
 		nodeId: string,
 		commandId: string,
 	): Promise<SessionCommandResult> {
-		return this.command(() => this.runtime.dispatch({
-			type: 'execute-node-command',
-			eventInstanceId,
-			nodeId,
-			commandId,
-		}))
+		return this.command(() =>
+			this.runtime.dispatch({
+				type: 'execute-node-command',
+				eventInstanceId,
+				nodeId,
+				commandId,
+			}),
+		)
 	}
 
 	/** 通过 required 门禁并进入下一回合。 */
@@ -213,11 +227,7 @@ export class GameSessionImpl implements GameSession {
 		execute: () => Promise<SessionCommandResult>,
 	): Promise<SessionCommandResult> {
 		if (this.#view.busy) {
-			return sessionFailure(
-				'busy',
-				'Another command is still running',
-				this.#view.runtime.revision,
-			)
+			return sessionFailure('busy', 'Another command is still running', this.#view.runtime.revision)
 		}
 		this.setBusy(true)
 		try {
@@ -248,15 +258,21 @@ export class GameSessionImpl implements GameSession {
 		if (this.#disposed) return
 		const runtime = this.runtime.getSnapshot()
 		const currentFocus = this.#view.focusedEventInstanceId
-		const focusedEventInstanceId = currentFocus && runtime.activeEvents.some((event) => event.eventInstanceId === currentFocus)
-			? currentFocus
-			: runtime.activeEvents[0]?.eventInstanceId
+		const focusedEventInstanceId =
+			currentFocus && runtime.activeEvents.some((event) => event.eventInstanceId === currentFocus)
+				? currentFocus
+				: runtime.activeEvents[0]?.eventInstanceId
 		this.#view = {
 			...this.#view,
 			runtime,
 			focusedEventInstanceId,
 			...(runtime.runStatus !== 'active'
-				? { resultLocation: resultLocation(this.#view.profileId, this.runtime.getCurrentCheckpoint()) }
+				? {
+						resultLocation: resultLocation(
+							this.#view.profileId,
+							this.runtime.getCurrentCheckpoint(),
+						),
+					}
 				: { resultLocation: undefined }),
 		}
 		this.notify()

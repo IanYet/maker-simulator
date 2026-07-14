@@ -18,20 +18,17 @@ import { idSchema } from './schemas'
 const hasOwn = (value: object, key: PropertyKey): boolean =>
 	Object.prototype.hasOwnProperty.call(value, key)
 
-const pointerSegment = (value: string): string =>
-	value.replaceAll('~', '~0').replaceAll('/', '~1')
+const pointerSegment = (value: string): string => value.replaceAll('~', '~0').replaceAll('/', '~1')
 
 function fail(message: string, path: string): never {
 	throw new GamePackageLoadError('linking', message, { jsonPointer: path })
 }
 
-function assertRecordIdentity(
-	record: Readonly<Record<string, CommonConfig>>,
-	path: string,
-): void {
+function assertRecordIdentity(record: Readonly<Record<string, CommonConfig>>, path: string): void {
 	const orders = new Map<number, string>()
 	for (const [key, value] of Object.entries(record)) {
-		if (key !== value.id) fail(`Record key “${key}” does not match id “${value.id}”`, `${path}/${key}`)
+		if (key !== value.id)
+			fail(`Record key “${key}” does not match id “${value.id}”`, `${path}/${key}`)
 		const previous = orders.get(value.order)
 		if (previous) fail(`Order ${value.order} is also used by “${previous}”`, `${path}/${key}/order`)
 		orders.set(value.order, key)
@@ -73,7 +70,13 @@ interface StaticResolution {
 }
 
 function isRuleValue(value: unknown): value is Rule {
-	return value !== null && typeof value === 'object' && !Array.isArray(value) && 'key' in value && 'args' in value
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		!Array.isArray(value) &&
+		'key' in value &&
+		'args' in value
+	)
 }
 
 function resolveStatic(root: unknown, path: readonly string[]): StaticResolution {
@@ -90,12 +93,7 @@ function resolveStatic(root: unknown, path: readonly string[]): StaticResolution
 		: { exists: true, derived: false, value: cursor }
 }
 
-function assertValueRef(
-	ref: ValueRef,
-	self: unknown,
-	config: GameConfig,
-	path: string,
-): void {
+function assertValueRef(ref: ValueRef, self: unknown, config: GameConfig, path: string): void {
 	const root: unknown = ref.source === 'self' ? self : config
 	if (ref.source === 'turnState' && ['turnNumber', 'phase'].includes(ref.path[0])) {
 		return
@@ -175,11 +173,17 @@ export function linkConfig(
 			const attributePath = `${base}/attributes/${attributeId}`
 			visitCommon(attribute, rules, attributePath)
 			if (attribute.type === 'number') {
-				if (attribute.min !== undefined && attribute.max !== undefined && attribute.min > attribute.max) {
+				if (
+					attribute.min !== undefined &&
+					attribute.max !== undefined &&
+					attribute.min > attribute.max
+				) {
 					fail('Attribute min must not exceed max', attributePath)
 				}
-				if (attribute.min !== undefined && attribute.value < attribute.min) fail('Value is below min', `${attributePath}/value`)
-				if (attribute.max !== undefined && attribute.value > attribute.max) fail('Value is above max', `${attributePath}/value`)
+				if (attribute.min !== undefined && attribute.value < attribute.min)
+					fail('Value is below min', `${attributePath}/value`)
+				if (attribute.max !== undefined && attribute.value > attribute.max)
+					fail('Value is above max', `${attributePath}/value`)
 			} else if (attribute.value >= attribute.valueDisplay.length) {
 				fail('Enum value is outside valueDisplay', `${attributePath}/value`)
 			}
@@ -213,7 +217,8 @@ export function linkConfig(
 			if (node.type === 'check') {
 				assertAction(node.check, actions, `${nodePath}/check`)
 				for (const candidate of Object.keys(node.candidateNodes)) {
-					if (!event.nodes[candidate]) fail(`Unknown candidate node “${candidate}”`, `${nodePath}/candidateNodes/${candidate}`)
+					if (!event.nodes[candidate])
+						fail(`Unknown candidate node “${candidate}”`, `${nodePath}/candidateNodes/${candidate}`)
 				}
 				continue
 			}
@@ -233,8 +238,14 @@ export function linkConfig(
 				if (node.type === 'single') {
 					if (!choice.action) fail('Single choice requires an Action', `${choicePath}/action`)
 					assertAction(choice.action, actions, `${choicePath}/action`)
-				}
-				else assertDerivedPair(choice.maxCountValue, choice.maxCount, rules, `${choicePath}/maxCount`, true)
+				} else
+					assertDerivedPair(
+						choice.maxCountValue,
+						choice.maxCount,
+						rules,
+						`${choicePath}/maxCount`,
+						true,
+					)
 			}
 			if (node.type === 'multiple') {
 				assertRecordIdentity(node.commands, `${nodePath}/commands`)
@@ -282,7 +293,11 @@ export function validateRegistries(
 			(implementation as { key?: unknown }).key !== key ||
 			typeof (implementation as { calc?: unknown }).calc !== 'function'
 		) {
-			throw new GamePackageLoadError('registry-validation', `Invalid Rule implementation “${key}”`, { jsonPointer: `/rules/${key}` })
+			throw new GamePackageLoadError(
+				'registry-validation',
+				`Invalid Rule implementation “${key}”`,
+				{ jsonPointer: `/rules/${key}` },
+			)
 		}
 	}
 	for (const [key, implementation] of Object.entries(actions)) {
@@ -297,7 +312,11 @@ export function validateRegistries(
 			(implementation as { key?: unknown }).key !== key ||
 			typeof (implementation as { exec?: unknown }).exec !== 'function'
 		) {
-			throw new GamePackageLoadError('registry-validation', `Invalid Action implementation “${key}”`, { jsonPointer: `/actions/${key}` })
+			throw new GamePackageLoadError(
+				'registry-validation',
+				`Invalid Action implementation “${key}”`,
+				{ jsonPointer: `/actions/${key}` },
+			)
 		}
 	}
 	return { rules: rules as RuleRegistry, actions: actions as ActionRegistry }

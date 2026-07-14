@@ -11,7 +11,12 @@ export function Button({
 	className = '',
 	...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; icon?: boolean }) {
-	return <button className={`${styles.button} ${styles[variant]} ${icon ? styles.icon : ''} ${className}`} {...props} />
+	return (
+		<button
+			className={`${styles.button} ${styles[variant]} ${icon ? styles.icon : ''} ${className}`}
+			{...props}
+		/>
+	)
 }
 
 /** 使用同一套按钮样式渲染 React Router 链接。 */
@@ -26,5 +31,9 @@ export function ButtonLink({
 	variant?: ButtonVariant
 	className?: string
 }) {
-	return <Link className={`${styles.button} ${styles[variant]} ${className}`} to={to}>{children}</Link>
+	return (
+		<Link className={`${styles.button} ${styles[variant]} ${className}`} to={to}>
+			{children}
+		</Link>
+	)
 }
