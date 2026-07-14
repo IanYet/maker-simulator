@@ -70,7 +70,7 @@ pin 只保护自动保留策略。玩家确认后可以手动删除任意 TurnDa
 
 删除非当前 TurnData 不改变恢复游标。删除当前 TurnData 时，`currentTurnId` 与 `StoredProfile.current` 退回该 RunData 最后一个剩余检查点，并根据其 kind 恢复 `active`、`ended` 或 `abandoned` 生命周期。删除 RunData 的最后一个 TurnData 会删除该 RunData；删除当前 RunData 时改为指向按 `updatedAt`、`createdAt` 和 `runId` 稳定排序后最近的剩余 RunData。StoredProfile 不允许保留空的 `runDatas`，删除最后一条 RunData 等同删除整个 Profile。
 
-检查点和时间线删除先在副本上更新容器、游标、生命周期和时间戳，通过结构校验后按 `storageRevision` 原子写回；Profile 删除在同一 IndexedDB 删除事务中比较预期 revision。精确游戏包不可用时仍允许手动删除，因为该操作只收缩已通过结构校验的容器，不解释或修改 snapshot 内容。
+检查点和时间线删除先在副本上更新容器、游标、生命周期和时间戳，通过结构校验后在单个 IndexedDB 事务中写回；Profile 删除同样使用独立的删除事务。精确游戏包不可用时仍允许手动删除，因为该操作只收缩已通过结构校验的容器，不解释或修改 snapshot 内容。
 
 ### 保存边界与兼容
 
@@ -313,8 +313,6 @@ interface StoredProfile {
     profileId: string;
     /** 玩家设置的可选存档显示名。 */
     label?: string;
-    /** 成功写入后递增，用于拒绝并发覆盖。 */
-    storageRevision: number;
     configId: string;
     configVersion: string;
     createdAt: Timestamp;
@@ -391,7 +389,7 @@ type TurnData = TurnDataBase & (
 
 `profileId` 是存档 id，`label` 是玩家可修改的可选显示名。`configId` 与 `configVersion` 精确确定该存档所需的内容包；`runDatas` 保存该存档的所有时间线；`current` 指向最后提交或由玩家选择继续的检查点。该检查点为 `terminal` 或 `abandoned` 时只能恢复结果界面。
 
-`storageRevision` 是持久化并发令牌。新对象从 `0` 开始；Repository 仅在它等于数据库当前值时接受写入，并把返回对象递增一位，删除 Profile 前也必须比较预期值。它不表示存档结构或游戏内容版本。`createdAt` 在新游戏时写入，`updatedAt` 在修改 label、提交回合、结束 RunData、创建分支、修改 pin 或手动删除子项后更新。`current` 必须指向 `runDatas` 中存在的 RunData 与 TurnData。查看历史记录、展开分支或在界面中选中检查点不会修改 `current`。
+`createdAt` 在新游戏时写入，`updatedAt` 在修改 label、提交回合、结束 RunData、创建分支、修改 pin 或手动删除子项后更新。`current` 必须指向 `runDatas` 中存在的 RunData 与 TurnData。查看历史记录、展开分支或在界面中选中检查点不会修改 `current`。
 
 #### RunData
 

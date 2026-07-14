@@ -284,7 +284,6 @@ const runDataSchema = z.strictObject({
 export const profileSchema = z.strictObject({
 	profileId: idSchema,
 	label: z.string().min(1).optional(),
-	storageRevision: z.number().int().nonnegative().safe(),
 	configId: idSchema,
 	configVersion: z.string().min(1),
 	createdAt: z.string().datetime({ offset: true }),

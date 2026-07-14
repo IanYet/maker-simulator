@@ -122,7 +122,7 @@ interface GamePackageManifest {
 
 `entries` 与 `assets` 都相对 manifest 所在位置解析。`assets` 省略时使用 manifest 所在目录。引擎保留原始 Config 中的资源引用，由包资源解析器在读取时将它们相对 `assetsBaseLocation` 解析，不为了绝对路径而改写或复制 Config。
 
-Descriptor、manifest 和 `config.meta` 中的 `id`、`version` 与 `name` 必须分别相同；descriptor 提供 `background` 时还必须等于 `config.meta.background`。Manifest 的 `schemaVersion` 选择 manifest 解析器，`config.meta.version` 是精确内容版本。StoredProfile 不保存结构迁移版本，只保存 `configId`、`configVersion` 和用于并发写入的 `storageRevision`。
+Descriptor、manifest 和 `config.meta` 中的 `id`、`version` 与 `name` 必须分别相同；descriptor 提供 `background` 时还必须等于 `config.meta.background`。Manifest 的 `schemaVersion` 选择 manifest 解析器，`config.meta.version` 是精确内容版本。StoredProfile 不保存结构迁移版本，只保存用于精确加载内容的 `configId` 与 `configVersion`。
 
 ## Rule 与 Action Module
 

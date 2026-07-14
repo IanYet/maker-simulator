@@ -883,8 +883,6 @@ export interface StoredProfile {
 	profileId: string
 	/** 玩家设置的可选存档显示名。 */
 	label?: string
-	/** 持久化并发版本；每次成功写入后递增。 */
-	storageRevision: number
 	/** 对应 ConfigMeta.id。 */
 	configId: string
 	/** 对应 ConfigMeta.version。 */

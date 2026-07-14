@@ -240,7 +240,7 @@ linking 至少检查：
 
 ### 8.1 数据库结构
 
-数据库名：`maker-simulator`，当前 database version：`3`。
+数据库名：`maker-simulator`，当前 database version：`4`。
 
 | Object store | key | index | 内容 |
 | --- | --- | --- | --- |
@@ -249,7 +249,7 @@ linking 至少检查：
 
 `app-metadata` 至少支持 `recent-profile:<configId> -> profileId`。页面展开、事件 focus、确认框和存档预览选中项不持久化。
 
-每次稳定保存直接写入完整 StoredProfile record。这样可以让 RunData、TurnData、恢复游标、pin 和 `storageRevision` 位于同一个 IndexedDB transaction 中；Runtime 的未提交工作 State 不进入该 record。增量快照和拆表优化不在本轮范围。
+每次稳定保存直接写入完整 StoredProfile record。这样可以让 RunData、TurnData、恢复游标和 pin 位于同一个 IndexedDB transaction 中；Runtime 的未提交工作 State 不进入该 record。增量快照和拆表优化不在本轮范围。
 
 项目处于开发阶段，不维护旧存档结构迁移。数据库结构升级时清空旧 `profiles` 与 `app-metadata` 记录，再按当前 schema 创建新数据。
 
@@ -265,15 +265,15 @@ interface SaveRepository {
     }>;
     get(profileId: string): Promise<StoredProfile | undefined>;
     put(profile: StoredProfile): Promise<StoredProfile>;
-    delete(profileId: string, expectedStorageRevision: number): Promise<void>;
+    delete(profileId: string): Promise<void>;
 }
 ```
 
-`put` 必须在同一个读写事务中读取现有记录、比较 `storageRevision`、写入递增后的对象并等待 `tx.done`，之后才返回已保存对象。`delete` 在删除整个 Profile 前执行相同的 revision 比较。版本不匹配时抛出冲突，不能覆盖或误删另一个页面的新记录。运行时 draft、Proxy、LoadedGamePackage 和函数不得传入 repository。写入前以 `structuredClone` 产生纯数据副本并执行结构校验；精确 Config 领域校验在应用层或 Runtime 进入 Repository 前完成。列表查询逐条隔离坏记录，不能因单条损坏数据阻断其它存档。
+`put` 与 `delete` 必须分别在单个读写事务中完成并等待 `tx.done`，之后才向调用方报告成功。运行时 draft、Proxy、LoadedGamePackage 和函数不得传入 repository。写入前以 `structuredClone` 产生纯数据副本并执行结构校验；精确 Config 领域校验在应用层或 Runtime 进入 Repository 前完成。列表查询逐条隔离坏记录，不能因单条损坏数据阻断其它存档。
 
 `validateStoredProfile(unknown)` 负责 schema、游标、检查点集合和 RunData 生命周期等不依赖游戏内容的约束。`validateProfileAgainstConfig(profile, config)` 负责 Config 身份、全部 State key/id、EventInstance、选择、Effect 绑定、终局引用、回合单调性和 State 层级约束。存档列表可以只执行第一层；标记可继续状态以及任何继续、分支、截断、restart、Runtime 打开或候选检查点写入前必须加载精确包并执行第二层。手动删除只收缩容器并在写回前执行第一层，因此精确游戏包不可用时仍可清理。领域错误携带 JSON Pointer，原始记录保持不变。
 
-不得在已开启的 IndexedDB transaction 中等待 fetch、脚本执行或 UI Promise。先在内存中完成整个候选 StoredProfile，再开启短事务完成 revision 比较和一次写入。
+不得在已开启的 IndexedDB transaction 中等待 fetch、脚本执行或 UI Promise。先在内存中完成整个候选 StoredProfile，再开启短事务完成一次写入。
 
 ### 8.3 保存边界
 
@@ -283,7 +283,7 @@ interface SaveRepository {
 - `endRun()`：队列稳定后创建 terminal 并立即保存；
 - 放弃：创建 abandoned 并立即保存；
 - pin、branch、truncate、restart：新 Profile 副本完整校验后原子保存；
-- 手动删除 TurnData/RunData：忽略 pin，在副本上修复游标后结构校验并原子保存；删到空 Profile 时使用 revision-aware delete；
+- 手动删除 TurnData/RunData：忽略 pin，在副本上修复游标后结构校验并原子保存；删到空 Profile 时使用独立删除事务；
 - 退出或打开存档：丢弃当前未提交工作状态，不保存。
 
 保存失败时保留数据库原记录和最近稳定 UI snapshot，不进行页面跳转。
@@ -690,7 +690,7 @@ pnpm run lint
 git diff --check
 ```
 
-当前自动用例覆盖依赖图缓存、State 字段与集合依赖、嵌套失效传播、动态分支依赖替换、异常不缓存、事务图回滚、无关 Reaction 不重算、TextNode observer 生命周期、Reaction canonical 顺序与循环上限、required blocker、Config 感知坏档、Rule 返回契约、selector/持久化失败回滚、`advance-turn` 部分提交、branch/truncate 独立性、历史检查点生命周期投影、确定性 PRNG、嵌套脚本调用链、构造失败时的 monitor 回收、IndexedDB 开发期清理、CAS 冲突、坏记录隔离和 monitor 因果链。测试使用纯内存 Repository 与 `fake-indexeddb`，不依赖现有游戏包，也不包含 UI 测试。
+当前自动用例覆盖依赖图缓存、State 字段与集合依赖、嵌套失效传播、动态分支依赖替换、异常不缓存、事务图回滚、无关 Reaction 不重算、TextNode observer 生命周期、Reaction canonical 顺序与循环上限、required blocker、Config 感知坏档、Rule 返回契约、selector/持久化失败回滚、`advance-turn` 部分提交、branch/truncate 独立性、历史检查点生命周期投影、确定性 PRNG、嵌套脚本调用链、构造失败时的 monitor 回收、IndexedDB 开发期清理、Profile 删除、坏记录隔离和 monitor 因果链。测试使用纯内存 Repository 与 `fake-indexeddb`，不依赖现有游戏包，也不包含 UI 测试。
 
 最终仍需在开发服务器和 production preview 各人工验收一次：
 

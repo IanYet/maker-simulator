@@ -18,7 +18,6 @@ import {
 	deleteCheckpoint,
 	deleteRun,
 	IndexedDbSaveRepository,
-	SaveConflictError,
 	truncateAndContinue,
 	validateProfileAgainstConfig,
 	type SaveListResult,
@@ -242,19 +241,12 @@ class MemorySaveRepository implements SaveRepository {
 	}
 
 	async put(profile: StoredProfile): Promise<StoredProfile> {
-		const stored = structuredClone({
-			...profile,
-			storageRevision: profile.storageRevision + 1,
-		})
+		const stored = structuredClone(profile)
 		this.profiles.set(stored.profileId, stored)
 		return structuredClone(stored)
 	}
 
-	async delete(profileId: string, expectedStorageRevision: number): Promise<void> {
-		const existing = this.profiles.get(profileId)
-		if (!existing || existing.storageRevision !== expectedStorageRevision) {
-			throw new SaveConflictError()
-		}
+	async delete(profileId: string): Promise<void> {
 		this.profiles.delete(profileId)
 	}
 }
@@ -960,17 +952,17 @@ test('Runtime construction failures still finish the allocated monitor session',
 })
 
 /**
- * 串行验证 IndexedDB 三项存档边界：开发期升级清库、revision CAS 冲突，
+ * 串行验证 IndexedDB 三项存档边界：开发期升级清库、Profile 删除，
  * 以及结构损坏记录与有效存档的隔离。
  */
 test.sequential(
-	'IndexedDB upgrade clears development data, CAS rejects stale writes, and bad records are isolated',
+	'IndexedDB upgrade clears development data, profiles can be deleted, and bad records are isolated',
 	async () => {
 		const game = makeGame()
 		const legacy = createProfile(game)
 		// 手工建立旧版本数据库并写入数据，随后由当前 Repository 触发升级。
 		await new Promise<void>((resolve, reject) => {
-			const request = indexedDB.open('maker-simulator', 2)
+			const request = indexedDB.open('maker-simulator', 3)
 			request.onupgradeneeded = () => {
 				const database = request.result
 				const profiles = database.createObjectStore('profiles', { keyPath: 'profileId' })
@@ -993,11 +985,7 @@ test.sequential(
 
 		const saves = new IndexedDbSaveRepository()
 		assert.equal((await saves.listByConfigId(game.config.meta.id)).profiles.length, 0)
-		const first = await saves.put(createProfile(game))
-		const stale = structuredClone(first)
-		const current = await saves.put(first)
-		assert.equal(current.storageRevision, 2)
-		await expect(saves.put(stale)).rejects.toBeInstanceOf(SaveConflictError)
+		const stored = await saves.put(createProfile(game))
 
 		const database = await getDatabase()
 		await database.put('profiles', {
@@ -1009,10 +997,7 @@ test.sequential(
 		const listed = await saves.listByConfigId(game.config.meta.id)
 		assert.equal(listed.profiles.length, 1)
 		assert.equal(listed.invalid.length, 1)
-		await expect(saves.delete(current.profileId, stale.storageRevision)).rejects.toBeInstanceOf(
-			SaveConflictError,
-		)
-		await saves.delete(current.profileId, current.storageRevision)
-		assert.equal(await saves.get(current.profileId), undefined)
+		await saves.delete(stored.profileId)
+		assert.equal(await saves.get(stored.profileId), undefined)
 	},
 )

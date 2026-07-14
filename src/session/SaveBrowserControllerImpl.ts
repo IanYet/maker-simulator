@@ -63,7 +63,7 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 				}
 			}
 			if (command.type === 'delete-profile') {
-				await this.saves.delete(profile.profileId, profile.storageRevision)
+				await this.saves.delete(profile.profileId)
 				return { ok: true, revision: 0 }
 			}
 
@@ -92,7 +92,7 @@ export class SaveBrowserControllerImpl implements SaveBrowserController {
 					break
 			}
 			if (!next) {
-				await this.saves.delete(profile.profileId, profile.storageRevision)
+				await this.saves.delete(profile.profileId)
 				return { ok: true, revision: 0 }
 			}
 			const stored = await this.saves.put(

@@ -142,7 +142,6 @@ export function createProfile(game: LoadedGamePackage): StoredProfile {
 	const { run, ref } = makeInitialRun(game, profileState)
 	return {
 		profileId: createId('profile'),
-		storageRevision: 0,
 		configId: game.config.meta.id,
 		configVersion: game.config.meta.version,
 		createdAt,

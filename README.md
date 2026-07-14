@@ -141,7 +141,7 @@ GamePackageLoader → schema/linker → LoadedGamePackage
 - Session 管理 busy、事件焦点、导航与应用命令。
 - Runtime 分开持有稳定存档和未提交工作状态，管理事务、脚本执行、事件图和回合状态机。
 - Package loader 负责外部输入校验与静态链接。
-- Persistence 只接收可序列化、已校验的稳定存档，并用 `storageRevision` 拒绝并发覆盖。
+- Persistence 只接收可序列化、已校验的稳定存档，并在单个 IndexedDB 事务中完成写入或删除。
 
 ## 计划
 

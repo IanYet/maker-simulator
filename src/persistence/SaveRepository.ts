@@ -14,20 +14,12 @@ export interface SaveListResult {
 	readonly invalid: readonly InvalidSaveRecord[]
 }
 
-/** 存档已被另一个页面更新时抛出的并发冲突。 */
-export class SaveConflictError extends Error {
-	constructor(message = 'The save was updated elsewhere; reload it before trying again') {
-		super(message)
-		this.name = 'SaveConflictError'
-	}
-}
-
 /** 稳定存档持久化边界；实现可以是 IndexedDB、测试内存或其他存储。 */
 export interface SaveRepository {
 	listByConfigId(configId: string): Promise<SaveListResult>
 	get(profileId: string): Promise<StoredProfile | undefined>
 	put(profile: StoredProfile): Promise<StoredProfile>
-	delete(profileId: string, expectedStorageRevision: number): Promise<void>
+	delete(profileId: string): Promise<void>
 }
 
 function invalidRecord(record: unknown, error: unknown): InvalidSaveRecord {
@@ -69,43 +61,20 @@ export class IndexedDbSaveRepository implements SaveRepository {
 		return record === undefined ? undefined : validateStoredProfile(record)
 	}
 
-	/**
-	 * 克隆并校验存档，在同一事务中比较 storageRevision 后写入下一版本。
-	 *
-	 * @throws {SaveConflictError} 调用方使用的存档不是数据库中的最新版本。
-	 */
+	/** 克隆并校验存档，在单个 IndexedDB 事务中完成原子写入。 */
 	async put(profile: StoredProfile): Promise<StoredProfile> {
 		const candidate = validateStoredProfile(structuredClone(profile))
 		const database = await getDatabase()
 		const transaction = database.transaction('profiles', 'readwrite')
-		const existingRecord = await transaction.store.get(candidate.profileId)
-		if (existingRecord === undefined) {
-			if (candidate.storageRevision !== 0) throw new SaveConflictError()
-		} else {
-			const existing = validateStoredProfile(existingRecord)
-			if (existing.storageRevision !== candidate.storageRevision) throw new SaveConflictError()
-		}
-		const stored = validateStoredProfile({
-			...candidate,
-			storageRevision: candidate.storageRevision + 1,
-		})
-		await transaction.store.put(stored)
+		await transaction.store.put(candidate)
 		await transaction.done
-		return structuredClone(stored)
+		return structuredClone(candidate)
 	}
 
-	/**
-	 * 在同一事务中比较 storageRevision 后删除存档。
-	 *
-	 * @throws {SaveConflictError} 存档已经被删除或调用方持有旧版本。
-	 */
-	async delete(profileId: string, expectedStorageRevision: number): Promise<void> {
+	/** 在单个 IndexedDB 事务中按 Profile id 删除存档。 */
+	async delete(profileId: string): Promise<void> {
 		const database = await getDatabase()
 		const transaction = database.transaction('profiles', 'readwrite')
-		const existingRecord = await transaction.store.get(profileId)
-		if (existingRecord === undefined) throw new SaveConflictError()
-		const existing = validateStoredProfile(existingRecord)
-		if (existing.storageRevision !== expectedStorageRevision) throw new SaveConflictError()
 		await transaction.store.delete(profileId)
 		await transaction.done
 	}
