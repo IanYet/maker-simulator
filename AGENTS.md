@@ -4,6 +4,7 @@
 
 ## 任务开始前
 
+- 检查当前分支是否是main分支，如果是main分支，给出告警提示并询问当前在main分支，是否继续开发，得到肯定的提示后再继续
 - 先阅读与任务相关的 `docs/`、`docs/game-design/`、`README.md` 和现有实现，再修改代码。
 - 处理故事脚本或游戏包时，使用 `.codex/skills/write-story-script/SKILL.md`；按该 skill 指向的文档逐步校验。
 - 保留用户已有改动，只修改当前任务需要的文件；不要使用破坏性 Git 命令覆盖未提交内容。
