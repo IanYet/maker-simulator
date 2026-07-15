@@ -2,6 +2,13 @@
   "schemaVersion": 1,
   "games": [
     {
+      "id": "blank-game",
+      "version": "1.0.0",
+      "name": "空白状态实验场",
+      "background": "一个只定义角色和属性的最小游戏包，用于观察回合推进与存档流程。",
+      "manifest": "./blank-game/1.0.0/manifest.json"
+    },
+    {
       "id": "example-game",
       "version": "1.0.0",
       "name": "事件网络示例",
@@ -18,6 +25,7 @@
     }
   ],
   "defaultVersions": {
+    "blank-game": "1.0.0",
     "example-game": "1.0.0",
     "frostbound": "1.0.0"
   }

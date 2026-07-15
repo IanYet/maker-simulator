@@ -100,6 +100,8 @@ node scripts/build-frostbound-package.mjs
 
 生成器必须通过数量、节点可达性和跨事件 Effect 依赖审计。新游戏包没有专用生成器时，至少用加载器 schema/linking、应用启动和人工事件路线检查来验证。
 
+游戏脚本内容（Config、Rule、Action、manifest、catalog）变更默认无需新增测试文件；使用加载器 schema/linking、应用启动或资源 smoke check、已有验证命令和人工路线检查完成校验。只有用户明确要求，或同时修改 Runtime、持久化、包加载器或应用命令语义时，才按项目规范补充非 UI 自动回归。
+
 ### 6. 验证与交付
 
 运行：
@@ -110,6 +112,8 @@ pnpm run build
 pnpm run lint
 git diff --check
 ```
+
+脚本内容变更不要求创建新的测试文件；如需验证包行为，优先复用加载器、应用启动和现有测试设施。
 
 人工验收至少覆盖：新游戏、首回合自动逻辑、required 事件、单选、多选、CheckNode、随机分支、Effect 获得/激活、下一回合、分支/截断和所有结局入口。开发环境可使用 `?runtimeMonitor=1` 或 `?runtimeMonitor=verbose`，确认 command、Action、Reaction 的具体 id、value 和参数。
 

@@ -77,7 +77,8 @@ export function PlayPage() {
 	useEffect(() => {
 		let active = true
 		let opened: GameSession | undefined
-		services.openSession(profileId, navigate).then(
+		const controller = new AbortController()
+		services.openSession(profileId, navigate, controller.signal).then(
 			(session) => {
 				opened = session
 				if (active) setState({ status: 'ready', session })
@@ -93,6 +94,7 @@ export function PlayPage() {
 		)
 		return () => {
 			active = false
+			controller.abort()
 			opened?.dispose()
 		}
 	}, [navigate, profileId, services])
