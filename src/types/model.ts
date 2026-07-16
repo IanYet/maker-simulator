@@ -360,8 +360,8 @@ export interface NodeSelection {
 /**
  * Config 对象 State 共享的基础字段。
  *
- * `xxxValue` 在新 Run 初始化时由 Config 物化到 RunState；ProfileState
- * 与 TurnState 仍可按既有层级规则覆盖对应字段。
+ * `xxxValue` 在新 Run 初始化时由 ProfileState 覆盖 Config 后物化到
+ * RunState；TurnState 仍可按既有层级规则覆盖对应字段。
  */
 export interface CommonState {
 	/** 对应同层 Config 对象的 id。 */

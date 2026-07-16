@@ -25,66 +25,96 @@ export function emptyGameState(): GameState {
 	return { characters: {}, effects: {}, events: {} }
 }
 
-function commonState(config: DeepReadonly<CommonConfig>): CommonState {
+/** ProfileState 未提供覆盖时回退到 Config 的基础初始值。 */
+function inheritedValue<T>(profileValue: T | undefined, configValue: T): T {
+	return profileValue === undefined ? configValue : profileValue
+}
+
+function commonState(
+	config: DeepReadonly<CommonConfig>,
+	profileState?: DeepReadonly<CommonState>,
+): CommonState {
 	return {
 		id: config.id,
-		weightValue: config.weightValue,
-		unlockedValue: config.unlockedValue,
-		enabledValue: config.enabledValue,
+		weightValue: inheritedValue(profileState?.weightValue, config.weightValue),
+		unlockedValue: inheritedValue(profileState?.unlockedValue, config.unlockedValue),
+		enabledValue: inheritedValue(profileState?.enabledValue, config.enabledValue),
 	}
 }
 
-function choiceState(choice: DeepReadonly<SingleChoice | MultipleChoice>): ChoiceState {
+function choiceState(
+	choice: DeepReadonly<SingleChoice | MultipleChoice>,
+	profileState?: DeepReadonly<ChoiceState>,
+): ChoiceState {
 	return {
-		...commonState(choice),
+		...commonState(choice, profileState),
 		...('maxCountValue' in choice && choice.maxCountValue !== undefined
-			? { maxCountValue: choice.maxCountValue }
+			? {
+					maxCountValue: inheritedValue(profileState?.maxCountValue, choice.maxCountValue),
+				}
 			: {}),
 	}
 }
 
-/** 根据 Config 的基础值构造首个 RunState；Rule 只在运行时计算有效值。 */
-function initialRunState(game: LoadedGamePackage): GameState {
+/** 根据 ProfileState 覆盖 Config 后的基础值构造首个 RunState。 */
+function initialRunState(
+	game: LoadedGamePackage,
+	profileState: DeepReadonly<GameState>,
+): GameState {
 	const state = emptyGameState()
 	for (const character of Object.values(game.config.characters)) {
+		const characterProfile = profileState.characters[character.id]
 		state.characters[character.id] = {
-			...commonState(character),
+			...commonState(character, characterProfile),
 			attributes: Object.fromEntries(
 				Object.values(character.attributes).map((attribute) => [
 					attribute.id,
-					commonState(attribute),
+					commonState(attribute, characterProfile?.attributes?.[attribute.id]),
 				]),
 			),
 		}
 	}
 	for (const effect of Object.values(game.config.effects)) {
+		const effectProfile = profileState.effects[effect.id]
+		const acquiredValue = inheritedValue(effectProfile?.acquiredValue, effect.acquiredValue)
+		const activedValue = inheritedValue(effectProfile?.activedValue, effect.activedValue)
 		const effectState: EffectState = {
-			...commonState(effect),
-			acquiredValue: effect.acquiredValue,
-			activedValue: effect.activedValue,
-			...(effect.acquiredValue ? { acquiredTurn: 0 } : {}),
-			...(effect.activedValue ? { activedTurn: 0 } : {}),
+			...commonState(effect, effectProfile),
+			acquiredValue,
+			activedValue,
+			...(acquiredValue ? { acquiredTurn: 0 } : {}),
+			...(activedValue ? { activedTurn: 0 } : {}),
 		}
 		state.effects[effect.id] = effectState
 	}
 	for (const event of Object.values(game.config.events)) {
+		const eventProfile = profileState.events[event.id]
 		const eventState = {
-			...commonState(event),
+			...commonState(event, eventProfile),
 			nodes: {} as Record<string, EventNodeState>,
 		}
 		for (const node of Object.values(event.nodes)) {
+			const nodeProfile = eventProfile?.nodes?.[node.id]
 			const nodeState: EventNodeState = {
-				...commonState(node),
+				...commonState(node, nodeProfile),
 			}
 			if (node.type !== 'check') {
-				if (node.requiredValue !== undefined) nodeState.requiredValue = node.requiredValue
+				if (node.requiredValue !== undefined) {
+					nodeState.requiredValue = inheritedValue(nodeProfile?.requiredValue, node.requiredValue)
+				}
 				nodeState.choicesValue = Object.fromEntries(
-					Object.values(node.choicesValue).map((choice) => [choice.id, choiceState(choice)]),
+					Object.values(node.choicesValue).map((choice) => [
+						choice.id,
+						choiceState(choice, nodeProfile?.choicesValue?.[choice.id]),
+					]),
 				)
 			}
 			if (node.type === 'multiple') {
 				nodeState.commands = Object.fromEntries(
-					Object.values(node.commands).map((command) => [command.id, commonState(command)]),
+					Object.values(node.commands).map((command) => [
+						command.id,
+						commonState(command, nodeProfile?.commands?.[command.id]),
+					]),
 				)
 			}
 			eventState.nodes[node.id] = nodeState
@@ -108,7 +138,7 @@ function makeInitialRun(
 	const createdAt = timestamp()
 	const runId = createId('run')
 	const turnId = createId('turn')
-	const runState = initialRunState(game)
+	const runState = initialRunState(game, profileState)
 	const turnState = initialTurnState()
 	const randomState = { seed: crypto.randomUUID(), cursor: 0 }
 	const snapshot: StateSnapshot = {
