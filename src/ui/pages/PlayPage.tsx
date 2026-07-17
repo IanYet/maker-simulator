@@ -529,6 +529,7 @@ function EventNode({
 								</Button>
 								<span className={styles.count} aria-live="polite">
 									{choice.count}
+									{choice.maxCount !== undefined ? ` / ${choice.maxCount}` : ''}
 								</span>
 								<Button
 									icon
