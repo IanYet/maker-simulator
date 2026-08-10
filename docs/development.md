@@ -68,6 +68,7 @@ UI 只读取页面专用 read model 或不可变 `SessionView`/`RuntimeSnapshot`
 
 | 路径 | 用途 |
 | --- | --- |
+| `/arts` | Arts Gallery 占位页面 |
 | `/games` | 读取 catalog，展示可用游戏包 |
 | `/games/:gameId` | 游戏菜单、最近存档和存档入口 |
 | `/games/:gameId/new` | 创建 Profile、初始 RunData 和初始检查点 |

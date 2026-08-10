@@ -65,6 +65,7 @@ pnpm preview
 应用的主要路由：
 
 ```text
+/arts                              Arts Gallery
 /games                              游戏列表
 /games/:gameId                      游戏菜单
 /games/:gameId/new                  创建新 Profile

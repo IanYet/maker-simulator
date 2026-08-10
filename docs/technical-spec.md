@@ -496,6 +496,7 @@ interface RuntimeTrace {
 使用 `BrowserRouter` Declarative Mode，并设置 `basename={import.meta.env.BASE_URL}`。部署环境必须把非资源路径 fallback 到 `index.html`。
 
 ```text
+/arts                               Arts Gallery
 /games                              游戏列表
 /games/:gameId                      游戏菜单
 /games/:gameId/new                  新游戏入口（MVP 直接创建）
