@@ -1,0 +1,65 @@
+.page {
+	position: relative;
+	min-height: 100svh;
+	overflow: hidden;
+	background: #071a23;
+	color: #f3c893;
+	isolation: isolate;
+}
+
+.page::after {
+	position: absolute;
+	z-index: 2;
+	inset: 14px;
+	border: 1px solid rgb(242 197 143 / 42%);
+	content: '';
+	pointer-events: none;
+}
+
+.heading {
+	position: absolute;
+	z-index: 3;
+	top: clamp(30px, 5vw, 66px);
+	left: clamp(30px, 5vw, 70px);
+	margin: 0;
+	color: #f5c995;
+	font-size: clamp(12px, 1.25vw, 17px);
+	font-weight: 520;
+	letter-spacing: 0.16em;
+	line-height: 1;
+	text-shadow: 0 1px 12px rgb(3 18 24 / 65%);
+	text-transform: uppercase;
+}
+
+.studyLabel {
+	position: absolute;
+	z-index: 3;
+	right: clamp(30px, 5vw, 70px);
+	bottom: clamp(30px, 5vw, 66px);
+	margin: 0;
+	color: rgb(244 202 151 / 84%);
+	font-family: var(--font-mono);
+	font-size: clamp(9px, 0.9vw, 12px);
+	font-weight: 450;
+	letter-spacing: 0.12em;
+	line-height: 1.6;
+	text-align: right;
+	text-shadow: 0 1px 10px rgb(3 18 24 / 70%);
+	text-transform: uppercase;
+}
+
+@media (max-width: 640px) {
+	.page::after {
+		inset: 8px;
+	}
+
+	.heading {
+		top: 24px;
+		left: 24px;
+	}
+
+	.studyLabel {
+		right: 24px;
+		bottom: 24px;
+	}
+}

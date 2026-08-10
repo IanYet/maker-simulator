@@ -16,6 +16,7 @@ Maker Simulator 是一个面向*网状叙事的事件驱动的构建 roguelike �
 - 支持 Profile、RunData、TurnData 和 `initial`、`turn_end`、`terminal`、`abandoned` 检查点。
 - 使用 IndexedDB 原子保存，支持继续、创建分支、截断、pin、分层手动删除、放弃和 restart。
 - 提供游戏列表、游戏菜单、存档树、游戏界面与通用结果页，并适配桌面和窄屏。
+- 提供独立懒加载的 Arts Gallery，以固定机位 Three.js 场景展示视觉与特效实验。
 - 提供可选 RuntimeMonitor，在开发者控制台输出命令、Action、Reaction、事务、Rule 重算/依赖汇总和持久化耗时。
 - 创建新 Run 时，Config 的 `xxxValue` 会先叠加 ProfileState（新游戏为空，restart 取来源检查点），再将基础值物化到 RunState；`xxx` 字段始终通过 Rule 计算有效值。
 
