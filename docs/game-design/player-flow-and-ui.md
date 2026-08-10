@@ -277,7 +277,7 @@ Effect 按 Config `order` 排序。绑定 Character 时可以显示所属 Charac
 
 ### 节点展示
 
-- TextNode 展示 `content` 和当前有效的 Choice 或 Command。
+- TextNode 展示 `content` 和当前有效的 Choice 或 Command；多选 Choice 配置 `maxCount` 时，数量步进器以“当前数量 / 最大数量”展示选择上限。
 - Choice 与 Command 分别应用其有效 `visible`、`unlocked` 和 `enabled`。
 - CheckNode 不展示；进入后由引擎自动执行检查，直到到达 TextNode、事件结束、Run 进入 `ended` 或发生错误。
 - 同一时刻只聚焦一个 EventInstance，但可以存在多个 active EventInstance。

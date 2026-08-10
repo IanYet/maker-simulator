@@ -1,12 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "example-game",
+  "id": "blank-game",
   "version": "1.0.0",
-  "name": "事件网络示例",
+  "name": "空白状态实验场",
   "entries": {
     "config": "./config.json",
     "rules": "./rules.js",
     "actions": "./actions.js"
-  },
-  "assets": "./assets/"
+  }
 }

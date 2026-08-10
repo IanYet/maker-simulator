@@ -24,7 +24,7 @@ import {
 	type SaveRepository,
 } from '../src/persistence'
 import { getDatabase } from '../src/persistence/database'
-import { GameplayRuntimeImpl, createProfile } from '../src/runtime'
+import { GameplayRuntimeImpl, addRestartRun, createProfile } from '../src/runtime'
 import type { RuntimeMonitor, RuntimeTrace } from '../src/runtime/monitor'
 import { nextRandom } from '../src/runtime/random'
 import { collectReactionDefinitions } from '../src/runtime/reactions'
@@ -277,6 +277,145 @@ class RecordingRuntimeMonitor implements RuntimeMonitor {
 function emptyState(): GameState {
 	return { characters: {}, effects: {}, events: {} }
 }
+
+/** restart 应将来源检查点的 Profile 基础值带入新 Run 的所有 Config 路径。 */
+test('restart materializes Profile base overrides across every Config path', () => {
+	const profileCommon = (id: string) => ({
+		id,
+		weightValue: 0,
+		unlockedValue: false,
+		enabledValue: false,
+	})
+	const config = makeConfig()
+	const requiredNode = config.events.requiredEvent.nodes.requiredNode
+	if (requiredNode.type !== 'single') throw new Error('requiredNode must be a single-choice node')
+	requiredNode.choicesValue.continue = {
+		...common('continue', 0),
+		action: { key: 'check.noop', args: [] },
+	}
+	config.events.requiredEvent.nodes.multipleNode = {
+		...common('multipleNode', 2),
+		type: 'multiple',
+		content: 'multiple',
+		requiredValue: true,
+		required: rule('constant.true'),
+		choicesValue: {
+			supplies: {
+				...common('supplies', 0),
+				value: 'supplies',
+				maxCountValue: 2,
+				maxCount: rule('constant.weight'),
+			},
+		},
+		choices: rule('choices.required'),
+		commands: {
+			submit: {
+				...common('submit', 0),
+				action: { key: 'check.noop', args: [] },
+			},
+		},
+	}
+	config.effects.turnEffect.activedValue = true
+
+	const game = makeGame(config)
+	const profile = createProfile(game)
+	const source = { ...profile.current }
+	const sourceRun = profile.runDatas[source.runId]
+	const sourceTurn = sourceRun.turnDatas[source.turnId]
+	sourceTurn.snapshot.profileState = {
+		characters: {
+			hero: {
+				...profileCommon('hero'),
+				visible: false,
+				attributes: {
+					score: {
+						...profileCommon('score'),
+						value: 7,
+					},
+				},
+			},
+		},
+		effects: {
+			turnEffect: {
+				...profileCommon('turnEffect'),
+				acquiredValue: true,
+				activedValue: false,
+				bindCharacterId: 'hero',
+			},
+		},
+		events: {
+			requiredEvent: {
+				...profileCommon('requiredEvent'),
+				nodes: {
+					requiredNode: {
+						...profileCommon('requiredNode'),
+						requiredValue: false,
+						choicesValue: {
+							continue: profileCommon('continue'),
+						},
+					},
+					multipleNode: {
+						...profileCommon('multipleNode'),
+						requiredValue: false,
+						choicesValue: {
+							supplies: {
+								...profileCommon('supplies'),
+								maxCountValue: 0,
+							},
+						},
+						commands: {
+							submit: profileCommon('submit'),
+						},
+					},
+				},
+			},
+		},
+	}
+	sourceRun.status = 'ended'
+	sourceRun.endedAt = sourceTurn.createdAt
+	sourceRun.turnDatas[source.turnId] = { ...sourceTurn, kind: 'terminal' }
+	validateProfileAgainstConfig(profile, game.config)
+
+	const original = structuredClone(profile)
+	const restarted = addRestartRun(profile, game, source)
+	validateProfileAgainstConfig(restarted, game.config)
+	assert.deepEqual(profile, original)
+
+	const initial = restarted.runDatas[restarted.current.runId].turnDatas[restarted.current.turnId]
+	assert.deepEqual(initial.snapshot.profileState, sourceTurn.snapshot.profileState)
+	const runState = initial.snapshot.runState
+	const requiredState = runState.events.requiredEvent.nodes?.requiredNode
+	const multipleState = runState.events.requiredEvent.nodes?.multipleNode
+	for (const state of [
+		runState.characters.hero,
+		runState.characters.hero.attributes?.score,
+		runState.effects.turnEffect,
+		runState.events.requiredEvent,
+		requiredState,
+		requiredState?.choicesValue?.continue,
+		multipleState,
+		multipleState?.choicesValue?.supplies,
+		multipleState?.commands?.submit,
+	]) {
+		assert.deepInclude(state, {
+			weightValue: 0,
+			unlockedValue: false,
+			enabledValue: false,
+		})
+	}
+	assert.equal(runState.characters.hero.visible, undefined)
+	assert.equal(runState.characters.hero.attributes?.score.value, undefined)
+	assert.deepInclude(runState.effects.turnEffect, {
+		acquiredValue: true,
+		activedValue: false,
+		acquiredTurn: 0,
+	})
+	assert.equal(runState.effects.turnEffect.activedTurn, undefined)
+	assert.equal(runState.effects.turnEffect.bindCharacterId, undefined)
+	assert.equal(requiredState?.requiredValue, false)
+	assert.equal(multipleState?.requiredValue, false)
+	assert.equal(multipleState?.choicesValue?.supplies.maxCountValue, 0)
+})
 
 /** 合法 Profile 通过校验后注入幽灵实体，验证错误能定位到精确 JSON Pointer。 */
 test('Config-aware validation rejects ghost State keys with a JSON Pointer', () => {

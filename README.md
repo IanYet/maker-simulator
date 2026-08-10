@@ -17,9 +17,13 @@ Maker Simulator 是一个面向*网状叙事的事件驱动的构建 roguelike �
 - 使用 IndexedDB 原子保存，支持继续、创建分支、截断、pin、分层手动删除、放弃和 restart。
 - 提供游戏列表、游戏菜单、存档树、游戏界面与通用结果页，并适配桌面和窄屏。
 - 提供可选 RuntimeMonitor，在开发者控制台输出命令、Action、Reaction、事务、Rule 重算/依赖汇总和持久化耗时。
-- Config 中的 `xxxValue` 基础值会物化到 RunState，`xxx` 字段始终通过 Rule 计算有效值。
+- 创建新 Run 时，Config 的 `xxxValue` 会先叠加 ProfileState（新游戏为空，restart 取来源检查点），再将基础值物化到 RunState；`xxx` 字段始终通过 Rule 计算有效值。
 
 ## 内置游戏包
+
+### 空白状态实验场
+
+`blank-game@1.0.0` 是只定义角色和属性的最小游戏包，包含 1 个角色、2 个属性、0 个 Effect 与 0 个 Event，用于检查没有事件网络时的新局创建、回合推进和存档流程。
 
 ### 白夜余烬
 
@@ -35,7 +39,7 @@ Maker Simulator 是一个面向*网状叙事的事件驱动的构建 roguelike �
 
 游戏包源文件位于 [`public/games/frostbound/1.0.0`](./public/games/frostbound/1.0.0)，可重复生成并执行可达性审计的 authoring 脚本位于 [`scripts/build-frostbound-package.mjs`](./scripts/build-frostbound-package.mjs)。
 
-仓库同时提供较小的 `example-game@1.0.0`，用于快速检查运行时基本流程。
+仓库同时提供较小的 `blank-game@1.0.0`，用于快速检查运行时基本流程。
 
 ## 本地运行
 

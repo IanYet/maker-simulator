@@ -50,7 +50,7 @@ Action 写入哪个 State 视图，就决定状态的保存范围：写入 `cont
 
 ## Config
 
-Config 中的 `xxxValue` 字段是创建 State 时使用的基础初始值，`xxx` 字段始终是根据 State 基础值计算有效值的 Rule。运行中的实际值、存档范围和合并方式由[运行时系统设计](./runtime-system.md#state)定义。
+Config 中的 `xxxValue` 字段是没有 ProfileState 覆盖时的基础初始值；创建新 Run 时，两者解析后的值会物化到 RunState。`xxx` 字段始终是根据 State 基础值计算有效值的 Rule。运行中的实际值、存档范围和合并方式由[运行时系统设计](./runtime-system.md#state)定义。
 
 ### Meta
 

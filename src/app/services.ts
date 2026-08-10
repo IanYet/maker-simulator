@@ -21,6 +21,18 @@ import { GameSessionImpl, SaveBrowserControllerImpl } from '../session'
 
 type Navigate = (path: string, options?: { replace?: boolean }) => void
 
+/** 创建可被页面生命周期识别的 Session 打开取消错误。 */
+function sessionOpenAborted(): Error {
+	const error = new Error('Opening the game session was cancelled')
+	error.name = 'AbortError'
+	return error
+}
+
+/** 在异步打开 Session 的关键边界检查页面是否已经取消本次请求。 */
+function assertSessionOpenNotAborted(signal?: AbortSignal): void {
+	if (signal?.aborted) throw sessionOpenAborted()
+}
+
 /** 游戏列表页使用的最小只读模型。 */
 export interface GameListItem {
 	readonly gameId: string
@@ -291,14 +303,33 @@ export class AppServices {
 		return { profileId: stored.profileId }
 	}
 
-	/** 按存档的精确游戏包版本恢复可交互 Session。 */
-	async openSession(profileId: string, navigate: Navigate): Promise<GameSession> {
+	/**
+	 * 按存档的精确游戏包版本恢复可交互 Session；页面取消期间会放弃后续加载，
+	 * 若 Runtime 已经构造则先释放它再抛出 AbortError。
+	 */
+	async openSession(
+		profileId: string,
+		navigate: Navigate,
+		signal?: AbortSignal,
+	): Promise<GameSession> {
+		assertSessionOpenNotAborted(signal)
 		const profile = await this.#saves.get(profileId)
+		assertSessionOpenNotAborted(signal)
 		if (!profile) throw new Error('The requested save does not exist')
 		const game = await this.#packages.loadExact(profile.configId, profile.configVersion)
+		assertSessionOpenNotAborted(signal)
 		const runtime = await GameplayRuntimeImpl.open(game, profile, this.#saves, this.#monitorFactory)
+		if (signal?.aborted) {
+			runtime.dispose()
+			throw sessionOpenAborted()
+		}
+		const session = new GameSessionImpl(runtime, this.#saves, this.#metadata, navigate)
+		if (signal?.aborted) {
+			session.dispose()
+			throw sessionOpenAborted()
+		}
 		this.rememberRecent(profile.configId, profile.profileId)
-		return new GameSessionImpl(runtime, this.#saves, this.#metadata, navigate)
+		return session
 	}
 
 	/** 构造存档浏览器 read model，并标记当前 catalog 中不可用的精确版本。 */

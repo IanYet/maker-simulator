@@ -60,6 +60,8 @@ GamePackageLoader → schema → linker → Rule/Action registry
 
 UI 只读取页面专用 read model 或不可变 `SessionView`/`RuntimeSnapshot`，不取得 Profile、RunData、Repository、游戏包或具体 Runtime。游戏脚本通过 `ActionContext` 和 `RuleContext` 访问运行时视图；持久化边界由 Runtime 与 Persistence 共同维护。
 
+游玩页打开 Session 时使用 `AbortController` 绑定页面生命周期；路由切换或组件卸载会取消尚未完成的 `openSession`，若 Runtime 已经构造则先释放，避免过期请求继续创建可观察的运行时。
+
 ## 3. 本地启动与页面流程
 
 开发服务器启动后，从 `/games` 进入游戏列表。应用路由如下：
