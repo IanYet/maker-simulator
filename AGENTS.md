@@ -1,97 +1,73 @@
-# 仓库协作指南
+# Maker Simulator 项目协作规范
 
-## 项目概况
+这些规则适用于仓库根目录及其所有子目录。更深层目录中的 `AGENTS.md` 可以补充本文件；发生冲突时，以更具体目录的规则为准。
 
-本仓库是使用 React 19、TypeScript 和 Vite 构建的回合制事件驱动游戏玩法验证项目。游戏内容由 JSON 描述，领域模型以 `src/types/model.ts` 为类型契约，系统规则以 `docs/system/` 为依据，具体实现以 `docs/design/technical-specification.md` 为准。
+## 任务开始前
 
-当前阶段优先验证玩法闭环，不引入服务端、账号系统、路由库、外部状态管理库或无明确需求的抽象层。
+- 检查当前分支是否是main分支，如果是main分支，给出告警提示并询问当前在main分支，是否继续开发，得到肯定的提示后再继续
+- 先阅读与任务相关的 `docs/`、`docs/game-design/`、`README.md` 和现有实现，再修改代码。
+- 处理故事脚本或游戏包时，使用 `.codex/skills/write-story-script/SKILL.md`；按该 skill 指向的文档逐步校验。
+- 保留用户已有改动，只修改当前任务需要的文件；不要使用破坏性 Git 命令覆盖未提交内容。
+- 修改 `todo.md` 中的任务时，按原有顺序完成并同步勾选对应条目；不要删除尚未完成的条目。
 
-## 目录职责
+## 代码与架构边界
 
-```text
-src/
-  components/  React 展示组件
-  game/        内容加载、规则引擎、状态机、随机数和持久化
-  types/       游戏领域类型
-  App.tsx      应用状态和模块组装
-  main.tsx     浏览器入口
-docs/
-  system/      游戏模型和运行规则
-  design/      技术规格
-  example/     模型示例数据
-public/
-  example/     浏览器运行时直接加载的内容 JSON
+- UI 通过 AppServices 页面 read model 或 `GameSession`/`SessionView` 读取状态并发出命令；不要在页面中直接操作 Profile、RunData、IndexedDB、具体 Runtime 实现或游戏脚本。
+- `GameplayRuntimeImpl` 是状态变更、事务、回滚、回合阶段、Reaction 和检查点的权威实现；`selectors.ts`、`reactions.ts`、`reactivity.ts` 与 `errors.ts` 分别承接纯投影、Reaction 定义、依赖图和错误协议。新增状态语义先更新 `src/types` 和设计文档。
+- `package-loader` 负责外部输入的 schema 校验、registry 校验和 linking；可信游戏包脚本通过 Rule/Action registry 接入。
+- `persistence` 负责 Profile 结构校验、IndexedDB 和检查点操作；Repository 使用 `validateStoredProfile()` 隔离未知记录，加载精确游戏包后由应用层或 Runtime 使用 `validateProfileAgainstConfig()` 完成领域校验。写入前复制并校验数据。
+- 游戏内容放在 `public/games/<id>/<version>/`，不要把具体剧情、数值或包 id 硬编码进通用 Runtime。
+- 修改 `public/games/frostbound/1.0.0/config.json` 时，优先修改 `scripts/build-frostbound-package.mjs` 后重新生成；不要手工维护生成结果。
+
+## Runtime 与存档不变量
+
+- `StoredProfile` 只保存稳定检查点；当前回合工作状态由 Runtime 单独持有。退出或切换存档时丢弃未提交工作状态，不把它写回 Profile。
+- Runtime 处理单元先稳定 draft、完成 Config 感知校验并生成 candidate snapshot；需要保存时等待 Repository 成功，随后一次性替换状态、响应式依赖图、baseline、revision 与 snapshot。持久化或 selector 失败必须保留提交前状态。
+- `advance-turn` 的 `turn_end` 是独立持久化边界。下一回合启动失败时保留并发布已提交的 `turn_end`，失败结果使用 `committed: true`，再次执行同一命令从该边界重试。
+- Rule 计算节点通过 State Proxy 的 `get`、`ownKeys` 与集合成员读取收集动态依赖；成功重算替换旧依赖，基础类型结果缓存，异常不缓存。State 写入只失效反向可达节点，Reaction 与 Effect 生命周期只处理 dirty observer，禁止退回全量 watch 扫描。
+- 项目处于开发阶段，不维护旧存档结构迁移或兼容分支。持久化结构变化时递增 `DATABASE_VERSION`，升级过程保留对象仓库和索引定义并清空旧 Profile 与应用元数据。
+
+## 故事脚本默认规则
+
+- 不需要玩家点击事件卡、会随回合或状态变化自动执行的 Reaction，优先放在 Effect 上，并在 Effect 的 `displayName`/`description` 中说明影响。
+- Event 用于叙事内容、玩家选择和事件分支；EventConfig Reaction 用于事件内容自身的持续响应，TextNode Reaction 用于 active 节点局部逻辑。
+- `required` 是回合门禁。待处理事件入口、CheckNode 候选链或 active 节点链上存在 required 内容时，`advance-turn` 必须保持阻塞。
+- Rule 保持纯计算；Action 通过 `ActionContext` 写入允许的 State 视图，随机数使用 `context.random()`，终局使用 `context.endRun()`。
+- 事件节点、Effect 前置、结局条件和资源循环必须可达且能形成可理解的叙事闭环；用生成器审计和人工路线验收共同确认。
+- 这些是策划默认规则，不在通用 Runtime 中增加强制的“Reaction 只能声明在哪一层”限制。
+
+## 注释与文档
+
+- 公开类、函数、接口和关键状态转换使用中文 JSDoc，说明职责、参数、返回值、异常或生命周期边界。
+- 复杂私有逻辑注释其设计原因、不变量和回滚/顺序约束，避免逐行复述代码。
+- 文档内容从 A 改为 B 时直接替换为 B，不添加“不是 A 而是 B”一类历史对比措辞，除非用户明确要求保留对比。
+- 代码行为、Config 字段、运行流程发生变化时同步更新 `docs/development.md` 或对应 `docs/game-design/` 文档。
+
+## 验证流程
+
+提交前运行：
+
+```bash
+node scripts/build-frostbound-package.mjs  # 修改 Frostbound authoring 时
+pnpm run test
+pnpm run build
+pnpm run lint
+git diff --check
 ```
 
-`docs/` 和 `src/types/` 是现有模型契约，不得移动或删除。修改模型时，必须同步更新类型、系统说明、技术规格和相关示例。`public/example/` 中供应用加载的数据应与对应的 `docs/example/` 内容保持一致。
+- Runtime、持久化、包加载器或纯应用命令发生变化时补充非 UI 自动回归；可以使用 Vitest、`fake-indexeddb` 和完成测试所需的第三方库。
+- 不编写 UI 自动测试；页面布局、键盘、焦点、触控目标和完整玩家流程由人工操作确认。
 
-`src/game/` 按职责使用少量直接模块：
+涉及 Runtime、游戏包或存档时，额外人工检查：
 
-- `content.ts`：加载内容 JSON。
-- `validation.ts`：运行时模型校验。
-- `engine.ts`：回合流程和事件状态机。
-- `rules.ts`：值表达式、条件、动作、Selector 和候选池。
-- `rng.ts`：确定性随机数。
-- `persistence.ts`：IndexedDB 存档和快照。
+- 新游戏能创建并进入首回合；
+- 自动回合逻辑、Effect Reaction 和属性变化符合描述；
+- required 事件会阻止下一回合，完成后解除阻塞；
+- 单选、多选、CheckNode、随机分支、Effect 获得/激活、分支/截断和终局均可操作；
+- IndexedDB 升级后对象仓库与索引定义正确，开发期旧记录按约定清空；
+- `?runtimeMonitor=1` 或 `?runtimeMonitor=verbose` 下能看到具体命令、Action、Reaction 的 id、value 和参数。
 
-不要为每种条件、动作、节点或效果建立类。使用判别联合和穷尽 `switch` 处理规则。
+## Git 与交付
 
-## 开发命令
-
-统一使用 `pnpm`：
-
-- `pnpm install`：按锁文件安装依赖。
-- `pnpm dev`：启动 Vite 开发服务器。
-- `pnpm build`：执行 TypeScript 检查并生成生产构建。
-- `pnpm lint`：运行 ESLint。
-- `pnpm preview`：本地预览生产构建。
-
-提交前至少执行 `pnpm lint` 和 `pnpm build`。
-
-## 编码规范
-
-- TypeScript 和 TSX 使用两空格缩进、单引号、无分号，并在支持的位置保留尾随逗号。
-- React 组件和接口使用 PascalCase，函数和变量使用 camelCase。
-- JSON 判别值和内容 ID 使用 `snake_case`。
-- React UI 不得直接修改 `GameModelData`；所有领域状态修改必须通过游戏引擎完成。
-- 游戏引擎不得依赖 React、DOM 或 IndexedDB。
-- 模型数组是持久化的唯一数据源；ID Map 只能作为单次命令内的临时索引。
-- 不使用 `Math.random()`；所有玩法随机必须推进 `meta.seed`。
-- 不使用 `dangerouslySetInnerHTML` 渲染内容 JSON。
-
-Effect `kind` 和 Event/Node `visibility` 只用于分类和 UI 样式，不得作为隐藏实体或改变执行逻辑的条件。玩法验证界面应保留全部效果和事件的可见状态。
-
-## 数据与运行规则
-
-- 默认数据、玩家存档和局内数据必须通过深拷贝隔离。
-- 未声明动作作用域时默认修改局内数据。
-- 一条玩家命令必须整体成功或整体失败，不能提交部分修改。
-- 候选池只负责筛选和抽取，抽取后的修改由调用方动作负责。
-- 事件是否自动启动由 `startMode` 决定；是否需要玩家输入由节点 `type` 决定。
-- 每回合结束保存完整局内快照，持久化使用 IndexedDB。
-
-如实现细节与现有文档冲突，先澄清并同步文档，不要在代码中引入未记录的隐式行为。
-
-## 检查要求
-
-当前没有独立的自动化测试框架。变更后应：
-
-1. 运行 `pnpm lint`。
-2. 运行 `pnpm build`。
-3. 涉及模型时，确认 `docs/example/` 与 `public/example/` 中相关 JSON 可以解析。
-4. 涉及 UI 时，通过 `pnpm dev` 检查受影响流程。
-
-暂时不引入任何测试相关的类库与代码。
-
-## 提交与合并要求
-
-提交信息使用 Conventional Commits，例如 `feat:`、`fix:`、`refactor:`、`docs:`、`chore:`。主题使用简洁的祈使句，一个提交只处理一个逻辑目标；必要时在正文说明关键设计决策、迁移内容和验证结果。
-
-Pull Request 应说明：
-
-- 变更目的和主要实现。
-- 重要的模型或运行语义决策。
-- 已执行的检查。
-- 对文档、示例数据或存档兼容性的影响。
-
-可见 UI 变更应附截图或录屏；关联任务存在时应链接对应 Issue。
+- 用户明确要求时才创建 commit；commit message 使用简洁的 Conventional Commit 风格，例如 `feat: ...`、`fix: ...`、`docs: ...`。
+- 最终回复说明结果、关键文件、验证命令和仍需人工确认的事项；不要声称未执行的测试已经通过。

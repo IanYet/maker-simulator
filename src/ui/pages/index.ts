@@ -1,0 +1,6 @@
+export * from './GameMenuPage'
+export * from './GamesPage'
+export * from './NewGamePage'
+export * from './PlayPage'
+export * from './ResultPage'
+export * from './SavesPage'

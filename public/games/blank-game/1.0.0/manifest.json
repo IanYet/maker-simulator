@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "blank-game",
+  "version": "1.0.0",
+  "name": "空白状态实验场",
+  "entries": {
+    "config": "./config.json",
+    "rules": "./rules.js",
+    "actions": "./actions.js"
+  }
+}

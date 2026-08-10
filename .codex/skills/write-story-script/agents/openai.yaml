@@ -1,0 +1,4 @@
+interface:
+  display_name: "故事脚本编写"
+  short_description: "编写结构完整、可校验、可游玩的网状叙事游戏包故事脚本"
+  default_prompt: "Use $write-story-script to design or update a playable story game package in this repository."

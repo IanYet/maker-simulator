@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
 
-/** Vite 开发服务器和生产构建配置。 */
+// https://vite.dev/config/
 export default defineConfig({
-  /** 启用 React 插件以支持 JSX 与 Fast Refresh。 */
-  plugins: [react()],
+  plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
 })

@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "id": "blank-game",
+    "name": "空白状态实验场",
+    "version": "1.0.0",
+    "background": "一个只定义角色和属性的最小游戏包，用于观察回合推进与存档流程。",
+    "maxTurnCountPerRun": 8
+  },
+  "characters": {
+    "observer": {
+      "id": "observer",
+      "displayName": "观测员",
+      "tags": [
+        "player"
+      ],
+      "description": "在静默观测站中记录每一回合的状态。",
+      "order": 1,
+      "weightValue": 1,
+      "weight": {
+        "key": "state.value",
+        "args": [
+          "characters",
+          "observer",
+          "weightValue"
+        ]
+      },
+      "visible": true,
+      "unlockedValue": true,
+      "unlocked": {
+        "key": "state.value",
+        "args": [
+          "characters",
+          "observer",
+          "unlockedValue"
+        ]
+      },
+      "enabledValue": true,
+      "enabled": {
+        "key": "state.value",
+        "args": [
+          "characters",
+          "observer",
+          "enabledValue"
+        ]
+      },
+      "attributes": {
+        "focus": {
+          "id": "focus",
+          "displayName": "专注",
+          "tags": [
+            "status"
+          ],
+          "description": "观测员保持记录时的稳定专注度。",
+          "order": 1,
+          "weightValue": 1,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "observer",
+              "attributes",
+              "focus",
+              "weightValue"
+            ]
+          },
+          "visible": true,
+          "unlockedValue": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "observer",
+              "attributes",
+              "focus",
+              "unlockedValue"
+            ]
+          },
+          "enabledValue": true,
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "observer",
+              "attributes",
+              "focus",
+              "enabledValue"
+            ]
+          },
+          "type": "number",
+          "value": 6,
+          "min": 0,
+          "max": 10
+        },
+        "signal": {
+          "id": "signal",
+          "displayName": "信号强度",
+          "tags": [
+            "status"
+          ],
+          "description": "观测站接收到的远方信号强度。",
+          "order": 2,
+          "weightValue": 1,
+          "weight": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "observer",
+              "attributes",
+              "signal",
+              "weightValue"
+            ]
+          },
+          "visible": true,
+          "unlockedValue": true,
+          "unlocked": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "observer",
+              "attributes",
+              "signal",
+              "unlockedValue"
+            ]
+          },
+          "enabledValue": true,
+          "enabled": {
+            "key": "state.value",
+            "args": [
+              "characters",
+              "observer",
+              "attributes",
+              "signal",
+              "enabledValue"
+            ]
+          },
+          "type": "number",
+          "value": 4,
+          "min": 0,
+          "max": 10
+        }
+      }
+    }
+  },
+  "effects": {},
+  "events": {}
+}
