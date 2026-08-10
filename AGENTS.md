@@ -69,5 +69,9 @@ git diff --check
 
 ## Git 与交付
 
+- `dev` 是日常集成分支，`main` 是 Production 分支；禁止直接在 `main` 上开发。
+- 所有功能分支（`feat/*` 或 `feat-*`）必须基于最新 `dev` 创建；开发期间需要同步上游变更时，从 `dev` 获取代码。
+- 功能开发完成并通过分支验证后，只能通过 PR 合入 `dev`；禁止功能分支直接合入或向 `main` 提交 PR。
+- `dev` 合并功能后必须完成自动验证和所需人工检查；确认无问题后，再由 `dev` 向 `main` 提交 PR。合入 `main` 后触发 Production 部署。
 - 用户明确要求时才创建 commit；commit message 使用简洁的 Conventional Commit 风格，例如 `feat: ...`、`fix: ...`、`docs: ...`。
 - 最终回复说明结果、关键文件、验证命令和仍需人工确认的事项；不要声称未执行的测试已经通过。

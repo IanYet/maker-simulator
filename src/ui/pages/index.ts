@@ -1,3 +1,4 @@
+export * from './ArtsPage'
 export * from './GameMenuPage'
 export * from './GamesPage'
 export * from './NewGamePage'
