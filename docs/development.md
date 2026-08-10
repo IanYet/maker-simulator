@@ -76,7 +76,7 @@ UI 只读取页面专用 read model 或不可变 `SessionView`/`RuntimeSnapshot`
 | `/play/:profileId` | 从稳定检查点恢复并游玩 |
 | `/result/:profileId/:runId/:turnId` | 查看终局/放弃检查点并重新开始 |
 
-`AppServices` 是应用层组合根，创建包加载器、IndexedDB Repository、RuntimeMonitor，并将服务门面注入 React Context。列表、菜单、存档和结果页只调用查询方法取得各自的 read model；游玩页只持有 `GameSession` 接口。页面不自行创建数据库连接、加载游戏包或取得具体 Runtime。
+路由页面使用 `React.lazy()` 按页面拆分；`/arts` 位于游戏路由布局之外。`GameLayout` 只在游戏路由匹配时加载，通过 `AppServicesProvider` 创建应用层组合根并用 `Outlet` 承载当前游戏页面，因此 Arts 页面不会加载包加载器、IndexedDB Repository、Runtime 或 Session。列表、菜单、存档和结果页只调用查询方法取得各自的 read model；游玩页只持有 `GameSession` 接口。页面不自行创建数据库连接、加载游戏包或取得具体 Runtime。
 
 ## 4. 游戏包开发
 

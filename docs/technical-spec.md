@@ -495,6 +495,8 @@ interface RuntimeTrace {
 
 使用 `BrowserRouter` Declarative Mode，并设置 `basename={import.meta.env.BASE_URL}`。部署环境必须把非资源路径 fallback 到 `index.html`。
 
+页面通过 `React.lazy()` 直接导入各自模块，不从页面 barrel 同步导入。`/arts` 独立于游戏布局；游戏路由以 `GameLayout` 作为无路径父路由，通过 `Outlet` 共享同一个 `AppServicesProvider`。Arts、游戏服务和各页面的专属资源分别进入异步 chunk，入口只保留 React、Router 与公共样式。
+
 ```text
 /arts                               Arts Gallery
 /games                              游戏列表
@@ -509,7 +511,7 @@ URL 只保存可分享的页面定位，不保存事件 focus、弹窗或存档�
 
 ### 10.2 AppServices
 
-应用根创建并注入单例 AppServices。它私有持有：
+`GameLayout` 在游戏路由首次匹配时创建并注入单例 AppServices；游戏子路由之间切换时复用该实例，离开游戏路由后随布局卸载。它私有持有：
 
 - FetchGamePackageSource；
 - GamePackageLoader 与包内存缓存；
