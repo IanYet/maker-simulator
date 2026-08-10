@@ -9,13 +9,6 @@
       "manifest": "./blank-game/1.0.0/manifest.json"
     },
     {
-      "id": "example-game",
-      "version": "1.0.0",
-      "name": "事件网络示例",
-      "background": "用于验证事件、选择、Reaction、随机检查点与终局流程的最小示例包。",
-      "manifest": "./example-game/1.0.0/manifest.json"
-    },
-    {
       "id": "frostbound",
       "version": "1.0.0",
       "name": "白夜余烬",
@@ -26,7 +19,6 @@
   ],
   "defaultVersions": {
     "blank-game": "1.0.0",
-    "example-game": "1.0.0",
     "frostbound": "1.0.0"
   }
 }

@@ -39,7 +39,7 @@ Maker Simulator 是一个面向*网状叙事的事件驱动的构建 roguelike �
 
 游戏包源文件位于 [`public/games/frostbound/1.0.0`](./public/games/frostbound/1.0.0)，可重复生成并执行可达性审计的 authoring 脚本位于 [`scripts/build-frostbound-package.mjs`](./scripts/build-frostbound-package.mjs)。
 
-仓库同时提供较小的 `example-game@1.0.0`，用于快速检查运行时基本流程。
+仓库同时提供较小的 `blank-game@1.0.0`，用于快速检查运行时基本流程。
 
 ## 本地运行
 
