@@ -212,3 +212,42 @@ git diff --check
 `pnpm run test` 只运行 Runtime、持久化、包边界和纯应用操作的非 UI 自动测试；页面布局、键盘、焦点、触控目标和完整玩家流程继续按人工清单验收。
 
 同时人工验收：创建新游戏、处理 required 事件、推进回合、获得/失去 Effect、创建分支和截断、查看终局，以及在控制台确认 Action/Reaction 参数完整。
+
+## 9. 分支协作与 Vercel 部署
+
+### 9.1 分支流转
+
+`dev` 是日常集成分支，`main` 是 Production 分支。所有功能分支必须从最新 `dev` 创建，完成后先通过 PR 合入 `dev`；`dev` 完成自动验证和所需人工检查后，再通过 PR 合入 `main`。
+
+```text
+dev → feat/<description> → PR 到 dev → dev 验证 → PR 到 main → Production
+```
+
+开始功能开发前先更新本地 `dev`：
+
+```bash
+git switch dev
+git pull --ff-only origin dev
+git switch -c feat/<description>
+```
+
+功能分支不得直接合入或向 `main` 提交 PR，也不得绕过 `dev` 的集成验证。合入 `dev` 前运行与改动范围匹配的自动检查；从 `dev` 向 `main` 提交 PR 前，运行本项目完整验证流程并完成人工检查清单中的相关项目。
+
+### 9.2 Vercel 部署行为
+
+项目由 Vercel GitHub Integration 自动部署。`main` 作为 Production 分支，`dev` 和功能分支作为 Preview 分支；仓库中没有单独的 GitHub Actions 部署工作流。
+
+| Git 操作 | Vercel 行为 | 更新正式域名 |
+| --- | --- | --- |
+| push 或 merge 到 `main` | Production 构建与部署 | 是 |
+| push 到 `dev`、`feat/*` 或 `feat-*` | Preview 构建与部署 | 否 |
+| PR 的后续提交 | 更新对应分支的 Preview 部署 | 否 |
+| 在 Vercel Dashboard 手动 Promote 或 Redeploy | 可以生成 Production 部署 | 视具体操作而定 |
+
+Vercel 自动识别该项目为 Vite 应用，根据 `pnpm-lock.yaml` 安装依赖，执行 `pnpm run build`（即 `tsc -b && vite build`），并发布 `dist/`。根目录 `vercel.json` 只配置 SPA 路由回退到 `index.html`，不定义 Production 分支或构建触发条件。
+
+Production Branch、Ignored Build Step、Node.js 版本和环境变量可以在 Vercel Dashboard 中覆盖仓库默认行为。修改部署设置时同时检查：
+
+- `Settings → Environments → Production → Branch Tracking`；
+- `Settings → Build and Deployment`；
+- `Settings → Environment Variables`。
