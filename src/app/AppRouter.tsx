@@ -4,6 +4,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 const ArtsPage = lazy(() =>
 	import('../ui/pages/ArtsPage').then(({ ArtsPage }) => ({ default: ArtsPage })),
 )
+const RetrofuturismPoolPage = lazy(() =>
+	import('../ui/pages/RetrofuturismPoolPage').then(({ RetrofuturismPoolPage }) => ({
+		default: RetrofuturismPoolPage,
+	})),
+)
 const GameLayout = lazy(() => import('./GameLayout'))
 const GamesPage = lazy(() =>
 	import('../ui/pages/GamesPage').then(({ GamesPage }) => ({ default: GamesPage })),
@@ -31,6 +36,7 @@ export function AppRouter() {
 			<Suspense fallback={null}>
 				<Routes>
 					<Route path="/arts" element={<ArtsPage />} />
+					<Route path="/arts/retrofuturism-pool" element={<RetrofuturismPoolPage />} />
 					<Route element={<GameLayout />}>
 						<Route path="/games" element={<GamesPage />} />
 						<Route path="/games/:gameId" element={<GameMenuPage />} />

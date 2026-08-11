@@ -1,65 +1,95 @@
 .page {
-	position: relative;
 	min-height: 100svh;
+	color: var(--color-black);
+	background: var(--color-cream);
+}
+
+.grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: clamp(var(--space-xl), 4vw, 64px);
+}
+
+.card {
+	min-width: 0;
+}
+
+.cardLink {
+	display: block;
+	border-radius: var(--radius-lg);
+	color: var(--color-black);
+	text-decoration: none;
+}
+
+.coverFrame {
+	position: relative;
+	aspect-ratio: 4 / 5;
 	overflow: hidden;
-	background: #071a23;
-	color: #f3c893;
-	isolation: isolate;
+	border-radius: var(--radius-lg);
+	background: var(--color-surface-soft);
 }
 
-.page::after {
-	position: absolute;
-	z-index: 2;
-	inset: 14px;
-	border: 1px solid rgb(242 197 143 / 42%);
-	content: '';
-	pointer-events: none;
+.cover {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	transition: transform var(--motion-standard) var(--ease-emphasized);
 }
 
-.heading {
-	position: absolute;
-	z-index: 3;
-	top: clamp(30px, 5vw, 66px);
-	left: clamp(30px, 5vw, 70px);
+.cardMeta {
+	border-bottom: 1px solid var(--color-coral);
+	padding: var(--space-md) 0 18px;
+}
+
+.cardTitle {
 	margin: 0;
-	color: #f5c995;
-	font-size: clamp(12px, 1.25vw, 17px);
-	font-weight: 520;
-	letter-spacing: 0.16em;
-	line-height: 1;
-	text-shadow: 0 1px 12px rgb(3 18 24 / 65%);
-	text-transform: uppercase;
+	font-size: 24px;
+	font-weight: 700;
+	letter-spacing: 0;
+	line-height: 1.45;
 }
 
-.studyLabel {
+.tags {
 	position: absolute;
-	z-index: 3;
-	right: clamp(30px, 5vw, 70px);
-	bottom: clamp(30px, 5vw, 66px);
+	top: var(--space-md);
+	left: var(--space-md);
+	display: flex;
+	max-width: calc(100% - (var(--space-md) * 2));
+	flex-wrap: wrap;
+	gap: var(--space-xs);
+	padding: 0;
 	margin: 0;
-	color: rgb(244 202 151 / 84%);
+	list-style: none;
+}
+
+.tag {
+	border-radius: var(--radius-pill);
+	padding: var(--space-xs) var(--space-sm);
+	color: var(--color-black);
+	background: var(--color-white);
 	font-family: var(--font-mono);
-	font-size: clamp(9px, 0.9vw, 12px);
-	font-weight: 450;
-	letter-spacing: 0.12em;
-	line-height: 1.6;
-	text-align: right;
-	text-shadow: 0 1px 10px rgb(3 18 24 / 70%);
+	font-size: 12px;
+	font-weight: 400;
+	letter-spacing: 0.6px;
+	line-height: 1;
 	text-transform: uppercase;
 }
 
-@media (max-width: 640px) {
-	.page::after {
-		inset: 8px;
+@media (hover: hover) {
+	.cardLink:hover .cover {
+		transform: scale(1.012);
 	}
+}
 
-	.heading {
-		top: 24px;
-		left: 24px;
+@media (max-width: 768px) {
+	.grid {
+		grid-template-columns: minmax(0, 1fr);
 	}
+}
 
-	.studyLabel {
-		right: 24px;
-		bottom: 24px;
+@media (prefers-reduced-motion: reduce) {
+	.cover {
+		transition: none;
 	}
 }

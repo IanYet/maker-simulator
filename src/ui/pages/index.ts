@@ -1,4 +1,5 @@
 export * from './ArtsPage'
+export * from './RetrofuturismPoolPage'
 export * from './GameMenuPage'
 export * from './GamesPage'
 export * from './NewGamePage'
