@@ -29,7 +29,7 @@
 3. 本文：代码组织、技术选型和交付顺序；
 4. `DESIGN.md`：视觉 token、组件造型、排版和响应式表现。
 
-`DESIGN.md` 是视觉参考，不改变游戏运行时语义。其 Figma 专有字体使用默认无衬线字体
+`DESIGN.md` 定义 Desktop Web 与 Mobile Web 原型的视觉与布局；游戏运行时语义由领域类型和游戏设计文档定义。
 
 ## 3. 技术栈与预装依赖
 
@@ -546,7 +546,7 @@ React 页面通过 `useSyncExternalStore(session.subscribe, session.getView)` �
 
 ### 11.1 样式基础
 
-从 `DESIGN.md` 提取 CSS custom properties，至少包括：
+视觉取值参考 `DESIGN.md`。实现使用 CSS custom properties，当前包含：
 
 - 黑、白、hairline、surface-soft；
 - lime、lilac、cream、pink、mint、coral、navy、magenta；
@@ -591,12 +591,10 @@ import '@fontsource-variable/jetbrains-mono/wght.css';
 
 ### 11.4 响应式
 
-沿用 `DESIGN.md` 关键断点：960、768、560px。
+响应式目标遵循 `DESIGN.md`，仅定义 Desktop Web 与 Mobile Web 两种布局，以 960px 为分界：
 
-- `>= 960px`：完整两栏游戏布局；
-- `768–959px`：游戏布局改为上下区域，事件详情优先；
-- `< 768px`：色块贴边并减少圆角，底部操作区保持可见；
-- `< 560px`：主 CTA 可全宽，按钮组纵向排列，展示字号降至约 48px；
+- Desktop Web（`>= 960px`）：完整两栏游戏布局，普通页面居中，游戏卡两列排列；
+- Mobile Web（`< 960px`）：游戏内容按事件详情、属性、效果的顺序纵向排列，游戏卡单列，主要按钮全宽；
 - 所有触控目标至少 44px；正文不得因固定面板产生水平滚动。
 
 ### 11.5 可访问性
@@ -729,7 +727,7 @@ git diff --check
 ### UI
 
 - 页面视觉遵循 `DESIGN.md` 的黑白骨架、单一 pastel block、pill CTA 和字体层级；
-- 1440px、960px、768px、560px 宽度下无关键操作遮挡或水平溢出；
+- Desktop Web（1440px）、Mobile Web（390px）及 960px 分界两侧均无关键操作遮挡或正文水平溢出；
 - 全流程只用键盘可操作；Dialog 能锁定和恢复焦点；
 - busy/disabled/required/active 状态有文本或语义表达；
 - 节点更新、终局和推进失败有屏幕阅读器状态通知；
