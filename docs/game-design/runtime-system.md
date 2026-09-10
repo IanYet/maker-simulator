@@ -1,6 +1,6 @@
 # 运行时系统设计
 
-本文面向引擎与系统开发者，定义 State、存档、回合快照、分支恢复和响应式执行机制。外部包的加载与 linking 见[外部游戏包与加载](./game-package.md)，RuntimeCommand 和单回合编排见[游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)，策划 API 见[游戏脚本编写指南](./script-authoring.md)，领域类型见 [model.ts](../../src/types/model.ts)。
+本文面向引擎与系统开发者，定义 State、存档、回合快照、分支恢复和响应式执行机制。外部包的加载与 linking 见[外部游戏包与加载](./game-package.md)，Game 命令 和单回合编排见[游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)，策划 API 见[游戏脚本编写指南](./script-authoring.md)，领域类型见 [model.ts](../../src/gameplay/types/model.ts)。
 
 ## 数据
 
@@ -19,7 +19,7 @@ Config 是只读内容源。StoredProfile 与 RunData 只保存稳定时间线�
 
 Config 的 `xxxValue` 是没有 State 覆盖时的基础初始值；State 中的 `xxxValue` 是当前可持久化事实。ProfileState、RunState 与 TurnState 依次覆盖更低层的同名基础值。创建新 Run 时，引擎先按 Config、ProfileState 解析同名基础值，再将结果物化到 RunState。当前 Run 已物化的 RunState 保持独立；局内新增的 ProfileState 值会保存在检查点中，以该检查点创建 restart 时进入新 RunState。
 
-Config 的 `xxx` 始终是 Rule，读取时执行 `calc` 并返回有效值。Rule 不能被直接写入；Action 和 RuntimeCommand 只能修改对应 State 视图中的 `xxxValue`。Rule 计算结果不会保存或缓存，检查点只保存基础 State 与其它可序列化事实。
+Config 的 `xxx` 始终是 Rule，读取时执行 `calc` 并返回有效值。Rule 不能被直接写入；Action 和 Game 命令 只能修改对应 State 视图中的 `xxxValue`。Rule 计算结果不写入检查点；未失效的基础类型结果在运行内存中缓存。检查点只保存基础 State 与其它可序列化事实。
 
 Action 写入 `context` 中的哪个 State 视图，就决定结果的生命周期：写入 `context.profileState` 的值跨 RunData 保留；写入 `context.runState` 的值只属于当前时间线；写入 `context.turnState` 的值只属于当前回合。局外成长写入 ProfileState，本局属性、Effect、EventInstance 与游戏包定义的结局写入 RunState，多选临时选择写入 TurnState。阶段和 EventInstance 的派生字段由引擎维护。
 
@@ -110,7 +110,7 @@ RandomState 只存在于 Runtime 工作状态和每个 StateSnapshot 中，不�
 1. 根据 Config 创建 ProfileState、RunState 与 TurnState 顶层集合，生成 id、时间、PRNG seed，并设置 `turnNumber = 0`、`phase = 'initializing'`。新游戏直接使用 Config 的 `xxxValue`；restart 先用来源检查点的 ProfileState 覆盖同名基础值，再物化到新 Run 的 RunState。静态展示字段、Rule 和 Action 不复制到 State。
 2. 根据物化后的基础值保存必须存在的回合 `0` 生命周期事实，例如初始 `acquired`、`actived` Effect 的发生回合。
 3. 校验初始 State，构造 `initial` TurnData、RunData 与 StoredProfile，并持久化；这是创建新存档的成功边界。
-4. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，创建事务管理器、PRNG draft、Config/State 合并 Proxy、依赖图与绑定执行器。
+4. 打开 Runtime，从 `initial` snapshot 克隆唯一工作状态，创建事务管理器、PRNG draft、Config/State 合并 Proxy、依赖图与绑定执行器。
 5. 按确定顺序注册 Effect 生命周期、EffectConfig、EventConfig 与当前节点 observer，只计算基准值；baseline 失败时关闭 Runtime，已保存的 `initial` 保持不变。
 6. Rule 计算节点已可供 baseline 和 UI 读取使用；未失效的基础类型结果直接复用缓存，不执行 Action。
 7. 引擎以 `initial` 为回滚边界，把 `turnNumber` 增加到 `1`，进入 `turn_start`，运行到 `event_handle` 稳定输入点后发布首个 UI snapshot。首回合脚本失败时同样保留完整 `initial`，报告错误并允许修复包后重试，不留下半提交的回合状态。
@@ -225,11 +225,11 @@ Rule 字段不能保存同名 State 值，Action 必须改写对应的 `xxxValue
 
 初始化之后任一字段从 `false` 变为 `true` 时，引擎写入当前回合数；`actived` 再次进入 `true` 时更新 `activedTurn`。载入、branch 与截断恢复保留 snapshot 中的 EffectState，也不会重复执行已经发生过的生命周期 Action。
 
-`EffectConfig.manuallyActivatable` 是 Config 中的静态能力声明，不进入 EffectState。它为 `true` 且 Effect 已获得、尚未激活时，`activate-effect` RuntimeCommand 才能在 `event_handle` 阶段被接受。Runtime 在同一处理单元中校验 `visible`、`unlocked`、`enabled`、`acquired` 与 `actived`，通过可写 RunState 视图将 `activedValue` 设为 `true`，然后运行正常的 Reaction 稳定流程。手动激活不限制 `actived` Rule 的形式。
+`EffectConfig.manuallyActivatable` 是 Config 中的静态能力声明，不进入 EffectState。它为 `true` 且 Effect 已获得、尚未激活时，`activate-effect` Game 命令 才能在 `event_handle` 阶段被接受。Runtime 在同一处理单元中校验 `visible`、`unlocked`、`enabled`、`acquired` 与 `actived`，通过可写 RunState 视图将 `activedValue` 设为 `true`，然后运行正常的 Reaction 稳定流程。手动激活不限制 `actived` Rule 的形式。
 
 ### 事件状态
 
-每次成功执行宿主 `StartEvent` RuntimeCommand 都创建一个 EventInstance，并在同一个处理单元中把它存入当前 RunState 对应 EventState 的 `instances[instanceId]`，同时把 `activeInstanceId` 设为该 `instanceId`：
+每次成功执行宿主 `startEvent()` Game 命令 都创建一个 EventInstance，并在同一个处理单元中把它存入当前 RunState 对应 EventState 的 `instances[instanceId]`，同时把 `activeInstanceId` 设为该 `instanceId`：
 
 ```ts
 interface EventInstance {
@@ -245,7 +245,7 @@ interface EventInstance {
 
 `instanceId` 在所属 RunData 内唯一，并且必须与 `instances` 的 key 相同；`eventId` 引用 EventConfig，并与所属 EventState.id 相同。省略 `activeInstanceId` 表示该 EventConfig 当前没有 active 实例；存在时必须解析到 `instances` 中唯一一个 `status = 'active'` 的实例。每个实例独立记录当前节点和实际访问路径；进入节点时把 node id 追加到 `nodePath`。实例完成或放弃后仍保留在 `instances` 中，Rule 可以据此结合 Config 中的 event tag 计算完成次数等派生值。
 
-`StartEvent` 只在 `event_handle` 接受，重新校验 Event 的有效 `unlocked` 与 `enabled`，并在 `activeInstanceId` 已存在或本回合已成功创建过实例时拒绝启动。该命令属于 UI 到引擎的公开协议，不解析 ActionRegistry 中的特殊 key。跨回合事件继续使用 `activeInstanceId` 指向的同一个实例；UI 始终为该实例提供入口。实例结束后可以从下一逻辑回合起再次创建。
+`startEvent()` 只在 `event_handle` 接受，重新校验 Event 的有效 `unlocked` 与 `enabled`，并在 `activeInstanceId` 已存在或本回合已成功创建过实例时拒绝启动。该命令属于 UI 到引擎的公开协议，不解析 ActionRegistry 中的特殊 key。跨回合事件继续使用 `activeInstanceId` 指向的同一个实例；UI 始终为该实例提供入口。实例结束后可以从下一逻辑回合起再次创建。
 
 `ActivateEffect` 只在 `event_handle` 接受。它不调用游戏包 Action，而是执行通用的 Effect 生命周期写入；写入完成后，EffectConfig 的 Reaction 按普通 State 变化触发。激活命令和 Reaction 共用一个处理单元，退出当前游玩页时仍遵循普通事件操作的回合内存边界。
 
@@ -299,7 +299,7 @@ interface TurnState extends GameState {
 
 玩家只通过 `AdvanceTurn` 表达结束当前回合的意图，UI 不发送 `SetPhase`。引擎状态机自动执行 `turn_start → event_handle`，并在 `AdvanceTurn` 通过 required 门禁后执行 `event_handle → turn_end → 下一 turn_start`。依赖 phase 的 Rule 与 Reaction 按普通状态变化处理；Action 可以读取 phase，但直接赋值会被拒绝。创建 branch、执行截断和建立 Reaction 基准不会额外执行阶段 Action。
 
-`SetMultipleChoice` RuntimeCommand 将临时选择写入 `context.turnState.events[eventId].nodes[nodeId].selections[eventInstanceId].choices[choiceId]` 对应的 TurnState 路径。每层 object 的 key 都是对应对象的 id。`count` 必须是非负整数，`0` 表示删除记录；对应 MultipleChoice 配置了 `maxCount` 时不能超过其已解析值。同一 EventInstance、节点和 choice 组合只保留一条记录。Command Action 成功、退出节点或事件结束时由引擎清除对应记录。新回合初始化时清理上一回合未继续使用的临时选择。
+`setChoiceCount()` Game 命令 将临时选择写入 `context.turnState.events[eventId].nodes[nodeId].selections[eventInstanceId].choices[choiceId]` 对应的 TurnState 路径。每层 object 的 key 都是对应对象的 id。`count` 必须是非负整数，`0` 表示删除记录；对应 MultipleChoice 配置了 `maxCount` 时不能超过其已解析值。同一 EventInstance、节点和 choice 组合只保留一条记录。Command Action 成功、退出节点或事件结束时由引擎清除对应记录。新回合初始化时清理上一回合未继续使用的临时选择。
 
 ### 存档容器
 
@@ -345,7 +345,7 @@ interface RunData {
     turnDatas: Record<string, TurnData>;
 }
 
-/** 仅存在于 GameplayRuntime 内存中的当前工作对象。 */
+/** 仅存在于 Runtime 内存中的当前工作对象。 */
 interface RuntimeState {
     profile: StoredProfile;
     working: StateSnapshot;
@@ -405,7 +405,7 @@ branch 会把可用来源的 snapshot 连同 RandomState 复制到新 RunData �
 
 `createdAt` 在创建时间线时写入，`updatedAt` 在提交检查点、结束时间线、修改其中的 pin 或手动删除检查点时更新，`endedAt` 在 status 变为 `ended` 或 `abandoned` 时写入。`maxTurnCount` 必须是正整数。
 
-RunData 不保存 `state`、`turnState` 或 `randomState` 工作副本。GameplayRuntime 从当前 snapshot 克隆一个 `StateSnapshot` 作为唯一工作状态；Action 只修改其事务 draft。检查点提交成功后，新的稳定状态写入新 snapshot 并成为 current。运行过程中发生崩溃时，从最后一个 current snapshot 恢复。
+RunData 不保存 `state`、`turnState` 或 `randomState` 工作副本。Runtime 从当前 snapshot 克隆一个 `StateSnapshot` 作为唯一工作状态；Action 只修改其事务 draft。检查点提交成功后，新的稳定状态写入新 snapshot 并成为 current。运行过程中发生崩溃时，从最后一个 current snapshot 恢复。
 
 `turnOrder` 按提交顺序保存 turn id，`turnDatas` 用于按 id 定位检查点，二者必须包含相同的 turn id 集合。新 RunData 的首个检查点创建成功后，才会被加入 Profile。
 
@@ -421,7 +421,7 @@ TurnData 是稳定状态的检查点。`initial` 在创建 RunData 时生成，`
 
 从非最新的 `initial` 或 `turn_end` 继续并保留后续数据时，引擎用 snapshot 创建 branch RunData 及其 `initial` 检查点，源 RunData 保持不变。从该检查点继续并删除后续数据时，引擎原子删除 `turnOrder` 中位于它之后的 id 及 `turnDatas` 对应记录、恢复 active 状态，并更新恢复游标、RunData.updatedAt 与 StoredProfile.updatedAt；下次打开 Runtime 时直接从该 snapshot 克隆工作状态。
 
-提交新 TurnData 时，引擎先完成 Action 与 Reaction 队列，再从工作状态创建包含 RandomState 的 snapshot，随后更新 `RunData.currentTurnId`、`StoredProfile.current` 和时间戳，形成候选稳定存档。Repository 成功写入候选对象后，Runtime 才替换内存中的 StoredProfile、工作状态、revision 和 RuntimeSnapshot。
+提交新 TurnData 时，引擎先完成 Action 与 Reaction 队列，再从工作状态创建包含 RandomState 的 snapshot，随后更新 `RunData.currentTurnId`、`StoredProfile.current` 和时间戳，形成候选稳定存档。Repository 成功写入候选对象后，Runtime 才替换内存中的 StoredProfile、工作状态、revision 和 GameSnapshot。
 
 逻辑上每个 snapshot 都能够独立恢复。物理实现采用增量或结构共享时，序列化层负责重建完整 snapshot，不能让该优化改变 Rule、Action 或存档加载看到的数据结构。
 
@@ -448,7 +448,7 @@ TurnData 是稳定状态的检查点。`initial` 在创建 RunData 时生成，`
 
 Rule 只能读取只读 State/Config 并调用其他 Rule。同一输入必须得到同一结果；RuleContext 不提供 `action` 或 `random`，脚本契约也禁止真实时间、I/O 与外部副作用。
 
-RuntimeCommand 或自动状态转换开启一个受控处理单元。命令/状态机写入、root Action、嵌套 Action 和由变化触发的 Reaction Action 共用 copy-on-write State、RandomState 与终局请求 draft。`context.config` 仅用于查询静态定义；`context.profileState`、`context.runState` 与 `context.turnState` 是解析后的 State 视图；`context.random()` 推进 PRNG draft；`context.endRun()` 记录无参数终局请求。Action 可以通过 `runState` 写 active EventInstance 的 `currentNodeId` 或结束 `status`，不能修改其派生字段、阶段或 RunData 容器元数据。
+Game 命令 或自动状态转换开启一个受控处理单元。命令/状态机写入、root Action、嵌套 Action 和由变化触发的 Reaction Action 共用 copy-on-write State、RandomState 与终局请求 draft。`context.config` 仅用于查询静态定义；`context.profileState`、`context.runState` 与 `context.turnState` 是解析后的 State 视图；`context.random()` 推进 PRNG draft；`context.endRun()` 记录无参数终局请求。Action 可以通过 `runState` 写 active EventInstance 的 `currentNodeId` 或结束 `status`，不能修改其派生字段、阶段或 RunData 容器元数据。
 
 命令、internal transition 或 Action 写入当前 draft 后，引擎都在同一处理单元中按以下顺序工作：
 
@@ -459,8 +459,8 @@ RuntimeCommand 或自动状态转换开启一个受控处理单元。命令/状�
 5. 对匹配变化条件的 Reaction 调度其 Action；
 6. Reaction Action 继续写同一 draft，重复上述过程，直到状态稳定；
 7. 队列稳定后检查待处理终局请求，存在请求时把 `terminal` 与 `ended` 生命周期加入候选结果，否则形成普通候选结果或对应检查点；
-8. 完成 draft、校验并生成候选 RuntimeSnapshot；若包含稳定检查点，则先等待 Repository 原子写入；
-9. 写入成功后一次性替换 Runtime 状态、依赖图、Reaction baseline、revision 与 RuntimeSnapshot，再通知订阅者；任一前置步骤失败时丢弃候选结果，UI 继续使用此前发布的稳定 snapshot。
+8. 完成 draft、校验并生成候选 GameSnapshot；若包含稳定检查点，则先等待 Repository 原子写入；
+9. 写入成功后一次性替换 Runtime 状态、依赖图、Reaction baseline、revision 与 GameSnapshot，再通知订阅者；任一前置步骤失败时丢弃候选结果，UI 继续使用此前发布的稳定 snapshot。
 
 每个处理单元从稳定依赖图克隆事务副本；成功发布时一并替换，Action、selector 或持久化失败时直接丢弃，因此缓存和动态依赖不会越过回滚边界。已经入队但执行前离开作用域的 Reaction 会被跳过。引擎为自动 Action 链维护队列并检测同步 Rule 递归或超出重算上限的情况。待处理的终局请求不会跳过已由本次状态变化触发的 Reaction 队列。
 

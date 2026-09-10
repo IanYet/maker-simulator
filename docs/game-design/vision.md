@@ -15,10 +15,10 @@
 - [外部游戏包与加载](./game-package.md)：定义 catalog、manifest、可信 JavaScript、registry、加载校验与初始化衔接。
 - [运行时系统设计](./runtime-system.md)：面向开发，定义 State、Profile、RunData、TurnData、快照分支和响应式引擎。
 - [终局与结局](./endings.md)：定义 Action 结束 RunData 的协议，以及与游戏包结局数据的边界。
-- [游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)：定义 RuntimeCommand、状态机、局级初始化、UI 绑定与单回合流程。
+- [游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)：定义 Game 命令、状态机、局级初始化、UI 绑定与单回合流程。
 - [玩家流程与界面设计](./player-flow-and-ui.md)：定义游戏列表、存档分支、游戏布局、按钮语义与开发前建议。
 - [MVP 技术规格](../technical-spec.md)：定义可直接进入开发的技术栈、目录、模块边界、开发顺序和人工验收要求。
-- [TypeScript 类型声明](../../src/types/index.ts)：领域模型、游戏包、RuntimeCommand 与 UI read model 的统一类型出口。
+- [TypeScript 类型声明](../../src/gameplay/index.ts)：领域模型、游戏包、Game 命令 与 UI read model 的统一类型出口。
 
 ## 数据分层
 

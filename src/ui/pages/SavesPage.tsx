@@ -1,57 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import type {
-	SaveBrowserView,
-	SaveCheckpointPreview,
-	SaveCheckpointView,
-	SaveRunView,
-} from '../../app/services'
-import type { SaveCommand, SessionCommandResult, TurnRef } from '../../types'
-import { useAppServices } from '../../app/useAppServices'
+import { useParams } from 'react-router'
+import type { SaveCheckpoint, SaveRun, GameSnapshot, CheckpointRef } from '../../gameplay'
+import { useSaves } from '../hooks/useSaves'
+import { checkpointKey, attributeRows } from '../presentation'
+import { resultLocation } from '../app/routes'
 import { Button, ButtonLink, ConfirmDialog, StatusBanner } from '../components'
 import { PageChrome } from './PageChrome'
 import styles from './pages.module.css'
-
-type SavesState =
-	| { status: 'loading' }
-	| { status: 'error'; message: string }
-	| { status: 'ready'; view: SaveBrowserView }
-
-interface TruncateTarget {
-	profileId: string
-	source: TurnRef
-	removedCount: number
-	pinnedCount: number
-}
-
-type DeleteTarget =
-	| {
-			kind: 'checkpoint'
-			profileId: string
-			source: TurnRef
-			label: string
-			pinned: boolean
-	  }
-	| {
-			kind: 'run'
-			profileId: string
-			runId: string
-			checkpointCount: number
-			pinnedCount: number
-	  }
-	| {
-			kind: 'profile'
-			profileId: string
-			label: string
-			runCount: number
-			checkpointCount: number
-			pinnedCount: number
-	  }
-
-type PreviewState =
-	| { status: 'loading'; key: string }
-	| { status: 'error'; key: string; message: string }
-	| { status: 'ready'; key: string; preview: SaveCheckpointPreview }
 
 function formatDate(value: string): string {
 	return new Intl.DateTimeFormat('zh-CN', {
@@ -60,7 +14,7 @@ function formatDate(value: string): string {
 	}).format(new Date(value))
 }
 
-function kindLabel(turn: SaveCheckpointView): string {
+function kindLabel(turn: SaveCheckpoint): string {
 	return turn.kind === 'initial'
 		? '初始检查点'
 		: turn.kind === 'turn_end'
@@ -70,19 +24,32 @@ function kindLabel(turn: SaveCheckpointView): string {
 				: '放弃记录'
 }
 
-function checkpointKey(profileId: string, source: TurnRef): string {
-	return `${profileId}:${source.runId}:${source.turnId}`
+function checkpointDomId(source: CheckpointRef): string {
+	return `checkpoint-${encodeURIComponent(source.profileId)}-${encodeURIComponent(source.runId)}-${encodeURIComponent(source.turnId)}`
 }
 
-function checkpointDomId(profileId: string, source: TurnRef): string {
-	return `checkpoint-${encodeURIComponent(profileId)}-${encodeURIComponent(source.runId)}-${encodeURIComponent(source.turnId)}`
+function checkpointPreviewDomId(source: CheckpointRef): string {
+	return `${checkpointDomId(source)}-preview`
 }
 
-function checkpointPreviewDomId(profileId: string, source: TurnRef): string {
-	return `${checkpointDomId(profileId, source)}-preview`
-}
-
-function CheckpointPreviewPanel({ preview }: { preview: SaveCheckpointPreview }) {
+function CheckpointPreviewPanel({ snapshot }: { snapshot: GameSnapshot }) {
+	const preview = {
+		...snapshot,
+		runStatus: snapshot.status,
+		attributes: attributeRows(snapshot),
+		pendingEvents: snapshot.events.available,
+		activeEvents: snapshot.events.active.map((event) => ({
+			...event,
+			nodeDisplayName: event.currentNode.displayName,
+		})),
+		ending: snapshot.endingEvent
+			? {
+					displayName: snapshot.endingEvent.displayName,
+					nodeDisplayName: snapshot.endingEvent.currentNode.displayName,
+					content: snapshot.endingEvent.currentNode.content,
+				}
+			: undefined,
+	}
 	return (
 		<div className={styles.checkpointPreview}>
 			<p className={styles.previewHeading}>
@@ -160,137 +127,27 @@ function CheckpointPreviewPanel({ preview }: { preview: SaveCheckpointPreview })
 /** 存档浏览页：只消费应用 read model，并通过应用命令操作稳定检查点。 */
 export function SavesPage() {
 	const { gameId = '' } = useParams()
-	const services = useAppServices()
-	const navigate = useNavigate()
-	const [state, setState] = useState<SavesState>({ status: 'loading' })
-	const [selectedId, setSelectedId] = useState<string>()
-	const [message, setMessage] = useState<string>()
-	const [truncateTarget, setTruncateTarget] = useState<TruncateTarget>()
-	const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>()
-	const [previewState, setPreviewState] = useState<PreviewState>()
-	const [expandedPreviewKey, setExpandedPreviewKey] = useState<string>()
-	const previewRequest = useRef(0)
+	const {
+		state,
+		selected,
+		selectedId,
+		message,
+		busy,
+		services,
+		runCommand,
+		truncateTarget,
+		setTruncateTarget,
+		truncateSummary,
+		deleteTarget,
+		setDeleteTarget,
+		deleteDialog,
+		previewState,
+		expandedPreviewKey,
+		selectProfile,
+		toggleCheckpointPreview,
+	} = useSaves(gameId)
 
-	const load = useCallback(() => {
-		let active = true
-		previewRequest.current += 1
-		services.getSaveBrowser(gameId).then(
-			(view) => {
-				if (!active) return
-				setState({ status: 'ready', view })
-				setExpandedPreviewKey(undefined)
-				setPreviewState(undefined)
-				setSelectedId((current) =>
-					current && view.profiles.some((profile) => profile.profileId === current)
-						? current
-						: view.profiles[0]?.profileId,
-				)
-			},
-			(error: unknown) => {
-				if (active)
-					setState({
-						status: 'error',
-						message: error instanceof Error ? error.message : String(error),
-					})
-			},
-		)
-		return () => {
-			active = false
-		}
-	}, [gameId, services])
-
-	useEffect(() => load(), [load])
-
-	const selected =
-		state.status === 'ready'
-			? state.view.profiles.find((profile) => profile.profileId === selectedId)
-			: undefined
-
-	async function runCommand(
-		profileId: string,
-		command: SaveCommand,
-		navigateAfter = false,
-	): Promise<SessionCommandResult> {
-		setMessage(undefined)
-		const result = await services.executeSaveCommand(profileId, command)
-		if (!result.ok) {
-			setMessage(result.message)
-			return result
-		}
-		if (navigateAfter) navigate(`/play/${encodeURIComponent(profileId)}`)
-		else load()
-		return result
-	}
-
-	const truncateSummary = useMemo(
-		() =>
-			truncateTarget
-				? `将永久删除其后的 ${truncateTarget.removedCount} 个检查点，其中 ${truncateTarget.pinnedCount} 个已固定。此操作不可撤销。`
-				: '',
-		[truncateTarget],
-	)
-	const deleteDialog = useMemo(() => {
-		if (!deleteTarget) return { title: '', description: '', confirmLabel: '删除' }
-		if (deleteTarget.kind === 'checkpoint') {
-			return {
-				title: '删除检查点？',
-				description: `将永久删除“${deleteTarget.label}”。${deleteTarget.pinned ? '该检查点已固定，但固定状态不会阻止手动删除。' : '固定状态不会影响手动删除。'}若这是时间线的最后一个检查点，将同时删除该时间线；存档因此为空时也会一并删除。`,
-				confirmLabel: '删除检查点',
-			}
-		}
-		if (deleteTarget.kind === 'run') {
-			return {
-				title: '删除时间线？',
-				description: `将永久删除这条时间线及其 ${deleteTarget.checkpointCount} 个检查点，其中 ${deleteTarget.pinnedCount} 个已固定。固定状态不会阻止手动删除；若这是最后一条时间线，将同时删除整个存档。`,
-				confirmLabel: '删除时间线',
-			}
-		}
-		return {
-			title: '删除存档？',
-			description: `将永久删除“${deleteTarget.label}”中的 ${deleteTarget.runCount} 条时间线和 ${deleteTarget.checkpointCount} 个检查点，其中 ${deleteTarget.pinnedCount} 个已固定。固定状态不会阻止手动删除，此操作不可撤销。`,
-			confirmLabel: '删除存档',
-		}
-	}, [deleteTarget])
-
-	function selectProfile(profileId: string): void {
-		previewRequest.current += 1
-		setExpandedPreviewKey(undefined)
-		setPreviewState(undefined)
-		setSelectedId(profileId)
-	}
-
-	function toggleCheckpointPreview(profileId: string, source: TurnRef): void {
-		const key = checkpointKey(profileId, source)
-		if (expandedPreviewKey === key) {
-			previewRequest.current += 1
-			setExpandedPreviewKey(undefined)
-			return
-		}
-
-		setExpandedPreviewKey(key)
-		if (previewState?.key === key && previewState.status === 'ready') return
-
-		const request = ++previewRequest.current
-		setPreviewState({ status: 'loading', key })
-		services.getCheckpointPreview(profileId, source).then(
-			(preview) => {
-				if (previewRequest.current === request) {
-					setPreviewState({ status: 'ready', key, preview })
-				}
-			},
-			(error: unknown) => {
-				if (previewRequest.current === request) {
-					setPreviewState({
-						status: 'error',
-						key,
-						message: error instanceof Error ? error.message : String(error),
-					})
-				}
-			},
-		)
-	}
-
-	function renderRun(run: SaveRunView, runIndex: number) {
+	function renderRun(run: SaveRun, runIndex: number) {
 		if (!selected) return null
 		const missingOrigin = Boolean(run.origin && !run.origin.resolved)
 		const pinnedCount = run.checkpoints.filter((checkpoint) => checkpoint.pinned).length
@@ -311,6 +168,7 @@ export function SavesPage() {
 						</span>
 					</h2>
 					<Button
+						disabled={busy}
 						className={styles.smallButton}
 						variant="danger"
 						onClick={() =>
@@ -327,10 +185,7 @@ export function SavesPage() {
 					</Button>
 				</div>
 				{run.origin?.resolved && (
-					<a
-						className={styles.originLink}
-						href={`#${checkpointDomId(selected.profileId, run.origin.source)}`}
-					>
+					<a className={styles.originLink} href={`#${checkpointDomId(run.origin.source)}`}>
 						来源：第 {run.origin.sourceTurnNumber} 回合的 {run.origin.sourceKind}
 					</a>
 				)}
@@ -342,14 +197,14 @@ export function SavesPage() {
 				)}
 				<div className={styles.timeline}>
 					{run.checkpoints.map((turn, turnIndex) => {
-						const key = checkpointKey(selected.profileId, turn.source)
+						const key = checkpointKey(turn.source)
 						const preview = previewState?.key === key ? previewState : undefined
 						const previewExpanded = expandedPreviewKey === key
-						const previewId = checkpointPreviewDomId(selected.profileId, turn.source)
+						const previewId = checkpointPreviewDomId(turn.source)
 						return (
 							<article
 								className={`${styles.turnCard} ${turn.current ? styles.turnCurrent : ''}`}
-								id={checkpointDomId(selected.profileId, turn.source)}
+								id={checkpointDomId(turn.source)}
 								key={turn.source.turnId}
 							>
 								<div className={styles.turnHeader}>
@@ -365,21 +220,18 @@ export function SavesPage() {
 										aria-controls={previewId}
 										aria-expanded={previewExpanded}
 										className={styles.smallButton}
-										disabled={!selected.available}
+										disabled={busy || !selected.available}
 										variant="secondary"
-										onClick={() => toggleCheckpointPreview(selected.profileId, turn.source)}
+										onClick={() => toggleCheckpointPreview(turn.source)}
 									>
 										{previewExpanded ? '收起预览' : '预览'}
 									</Button>
 									{turn.canContinue && (
 										<Button
+											disabled={busy}
 											className={styles.smallButton}
 											onClick={() =>
-												void runCommand(
-													selected.profileId,
-													{ type: 'continue-checkpoint', source: turn.source },
-													true,
-												)
+												void runCommand(() => services.continueGame(turn.source), true)
 											}
 										>
 											继续
@@ -387,20 +239,16 @@ export function SavesPage() {
 									)}
 									{turn.canBranch && (
 										<Button
+											disabled={busy}
 											className={styles.smallButton}
-											onClick={() =>
-												void runCommand(
-													selected.profileId,
-													{ type: 'create-branch', source: turn.source },
-													true,
-												)
-											}
+											onClick={() => void runCommand(() => services.branchGame(turn.source), true)}
 										>
 											创建分支
 										</Button>
 									)}
 									{turn.canTruncate && (
 										<Button
+											disabled={busy}
 											className={styles.smallButton}
 											variant="tertiary"
 											onClick={() =>
@@ -415,30 +263,27 @@ export function SavesPage() {
 											删除后续并继续
 										</Button>
 									)}
-									{turn.resultLocation && (
+									{turn.canViewResult && (
 										<ButtonLink
 											className={styles.smallButton}
 											variant={turn.kind === 'abandoned' ? 'secondary' : 'primary'}
-											to={turn.resultLocation}
+											to={resultLocation(turn.source)}
 										>
 											{turn.kind === 'abandoned' ? '查看记录' : '查看结局'}
 										</ButtonLink>
 									)}
 									<Button
 										className={styles.smallButton}
-										disabled={!selected.available}
+										disabled={busy || !selected.available}
 										variant="secondary"
 										onClick={() =>
-											void runCommand(selected.profileId, {
-												type: 'set-checkpoint-pinned',
-												source: turn.source,
-												pinned: !turn.pinned,
-											})
+											void runCommand(() => services.setPinned(turn.source, !turn.pinned))
 										}
 									>
 										{turn.pinned ? '取消固定' : '固定'}
 									</Button>
 									<Button
+										disabled={busy}
 										className={styles.smallButton}
 										variant="danger"
 										onClick={() =>
@@ -472,7 +317,7 @@ export function SavesPage() {
 													<StatusBanner tone="error">无法预览：{preview.message}</StatusBanner>
 												)}
 												{preview.status === 'ready' && (
-													<CheckpointPreviewPanel preview={preview.preview} />
+													<CheckpointPreviewPanel snapshot={preview.preview} />
 												)}
 											</div>
 										)}
@@ -527,6 +372,7 @@ export function SavesPage() {
 							<button
 								className={`${styles.profileCard} ${profile.profileId === selectedId ? styles.profileCardActive : ''}`}
 								key={profile.profileId}
+								disabled={busy}
 								onClick={() => selectProfile(profile.profileId)}
 								type="button"
 							>
@@ -554,6 +400,7 @@ export function SavesPage() {
 									{selected.runs.length} 条时间线 · 更新于 {formatDate(selected.updatedAt)}
 								</p>
 								<Button
+									disabled={busy}
 									className={styles.smallButton}
 									variant="danger"
 									onClick={() => {
@@ -600,12 +447,8 @@ export function SavesPage() {
 				onConfirm={async () => {
 					const target = truncateTarget
 					if (!target) return
-					const result = await runCommand(
-						target.profileId,
-						{ type: 'truncate-and-continue', source: target.source },
-						true,
-					)
-					if (result.ok) setTruncateTarget(undefined)
+					const result = await runCommand(() => services.truncateGame(target.source), true)
+					if (result?.ok) setTruncateTarget(undefined)
 				}}
 			/>
 			<ConfirmDialog
@@ -618,14 +461,14 @@ export function SavesPage() {
 				onConfirm={async () => {
 					const target = deleteTarget
 					if (!target) return
-					const command: SaveCommand =
+					const result = await runCommand(() =>
 						target.kind === 'checkpoint'
-							? { type: 'delete-checkpoint', source: target.source }
+							? services.deleteCheckpoint(target.source)
 							: target.kind === 'run'
-								? { type: 'delete-run', runId: target.runId }
-								: { type: 'delete-profile' }
-					const result = await runCommand(target.profileId, command)
-					if (result.ok) setDeleteTarget(undefined)
+								? services.deleteRun({ profileId: target.profileId, runId: target.runId })
+								: services.deleteProfile(target.profileId),
+					)
+					if (result?.ok) setDeleteTarget(undefined)
 				}}
 			/>
 		</PageChrome>

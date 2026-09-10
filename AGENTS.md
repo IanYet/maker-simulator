@@ -28,8 +28,9 @@
 
 ## 代码与架构边界
 
-- UI 通过 AppServices 页面 read model 或 `GameSession`/`SessionView` 读取状态并发出命令；不要在页面中直接操作 Profile、RunData、IndexedDB、具体 Runtime 实现或游戏脚本。
-- `GameplayRuntimeImpl` 是状态变更、事务、回滚、回合阶段、Reaction 和检查点的权威实现；`selectors.ts`、`reactions.ts`、`reactivity.ts` 与 `errors.ts` 分别承接纯投影、Reaction 定义、依赖图和错误协议。新增状态语义先更新 `src/types` 和设计文档。
+- 宏观分为 UI 与 Gameplay。UI 仅从 `src/gameplay/index.ts` 导入 Gameplay、Game 与只读数据；负责用户操作、确认、pending、焦点、导航和展示转换。不要在页面直接操作 Profile、RunData、Repository、具体 Runtime 或脚本。
+- Runtime 直接实现 Game，是状态变更、事务、回滚、阶段、Reaction 与检查点的唯一权威。Gameplay 协调包与存档用例，不返回页面路由。历史投影共用 rules/state-view/snapshot，不创建 Runtime 或持续 observer。新增状态语义先更新 `src/gameplay/types` 与设计文档。
+- Gameplay 不反向依赖 UI、React、路由或 DOM；HTTP/IndexedDB 限定在 I/O 模块，环境选项由 UI 启动代码传入。类按职责命名，不使用 Impl 后缀；内部直接导入，公共入口显式导出。
 - `package-loader` 负责外部输入的 schema 校验、registry 校验和 linking；可信游戏包脚本通过 Rule/Action registry 接入。
 - `persistence` 负责 Profile 结构校验、IndexedDB 和检查点操作；Repository 使用 `validateStoredProfile()` 隔离未知记录，加载精确游戏包后由应用层或 Runtime 使用 `validateProfileAgainstConfig()` 完成领域校验。写入前复制并校验数据。
 - 游戏内容放在 `public/games/<id>/<version>/`，不要把具体剧情、数值或包 id 硬编码进通用 Runtime。
@@ -59,8 +60,8 @@
 
 ## 文档原则
 
-- 按职责查阅和维护权威资料：`src/types` 定义跨模块公共数据结构和命令协议；`docs/game-design/` 定义游戏、运行时、存档、终局和玩家流程语义；`docs/technical-spec.md` 定义架构、技术选型和交付顺序；`DESIGN.md` 定义视觉与响应式表现；`docs/development.md` 定义开发流程和仓库约定；`README.md` 提供项目入口、当前能力和常用命令。
-- 规范优先级遵循 `docs/technical-spec.md`：`src/types` → `docs/game-design/` → `docs/technical-spec.md` → `DESIGN.md`。开发文档和 README 应与对应权威资料保持一致，不得静默覆盖上层规范。
+- 按职责查阅和维护权威资料：`src/gameplay/types` 定义跨模块公共数据结构和命令协议；`docs/game-design/` 定义游戏、运行时、存档、终局和玩家流程语义；`docs/technical-spec.md` 定义架构、技术选型和交付顺序；`DESIGN.md` 定义视觉与响应式表现；`docs/development.md` 定义开发流程和仓库约定；`README.md` 提供项目入口、当前能力和常用命令。
+- 规范优先级遵循 `docs/technical-spec.md`：`src/gameplay/types` → `docs/game-design/` → `docs/technical-spec.md` → `DESIGN.md`。开发文档和 README 应与对应权威资料保持一致，不得静默覆盖上层规范。
 - 文档发生冲突时，明确指出冲突；预期行为清楚时，在同一变更中同步更新对应权威资料；需要作出新的产品决策时先向用户确认。
 - 使用清晰、直接、通用易懂的语言；技术术语只在提高准确性时使用。保持链接、命令、文件路径和项目状态描述准确、有效。
 - 文档内容从 A 改为 B 时直接替换为 B，不添加“不是 A 而是 B”一类历史对比措辞，除非用户明确要求保留对比。

@@ -18,13 +18,13 @@
 
 本轮：不设计内容迁移模块、难度参数、通用媒体字段、稳定的外部 SaveRepository API 或完整调试工具协议。实现内部可以建立满足 MVP 的最小服务，但不把它们承诺为游戏包公共 API。
 
-自动化测试代码暂不在范围内。开发期间仍必须通过 TypeScript 构建和 ESLint；功能验收按本文末尾的人工验收清单执行。
+Runtime、包加载、存档与纯 Gameplay 用例使用非 UI 自动回归。开发期间必须通过测试、TypeScript 构建和 ESLint；页面交互按本文末尾的人工清单验收。
 
 ## 2. 规范优先级
 
 发生描述差异时按以下顺序处理：
 
-1. `src/types`：跨模块公共数据结构和命令协议；
+1. `src/gameplay/types`：跨模块公共数据结构和命令协议；
 2. `docs/game-design`：运行时、存档、终局和玩家流程语义；
 3. 本文：代码组织、技术选型和交付顺序；
 4. `DESIGN.md`：视觉 token、组件造型、排版和响应式表现。
@@ -51,7 +51,7 @@ pnpm add react-router zod idb immer @headlessui/react
 
 MVP 不引入以下依赖：
 
-- 不使用 Redux、Zustand 等状态库；运行时和 Session 已经是 external store，React 使用 `useSyncExternalStore` 订阅。
+- 不使用 Redux、Zustand 等状态库；Game 已经是 external store，React 使用 `useSyncExternalStore` 订阅。
 - 不使用 Tailwind、CSS-in-JS 或带视觉主题的 UI 组件库；使用原生 CSS、CSS Modules 和 Headless UI。
 - 不使用日期、UUID、随机数或图标库；分别使用 `Date`、`crypto.randomUUID()`、项目内确定性 PRNG 和现有 SVG sprite。
 - 不引入动画库；过渡使用 CSS，并尊重 `prefers-reduced-motion`。
@@ -60,93 +60,42 @@ MVP 不引入以下依赖：
 
 ## 4. 总体架构
 
-```mermaid
-flowchart LR
-    UI[React pages/components] --> App[AppServices read models / commands]
-    UI --> Session[GameSession interface]
-    App --> Session
-    App --> Saves[SaveRepository]
-    App --> Packages[GamePackageLoader]
-    Session --> Runtime[GameplayRuntime]
-    Runtime --> Saves
-    Runtime --> Engine[transaction + reactive + state machine]
-    Engine --> Package[LoadedGamePackage]
-    Saves --> IDB[(IndexedDB)]
-    Packages --> Fetch[FetchGamePackageSource]
-    Fetch --> Public[public/games]
+```text
+UI（页面、用户操作、展示）
+  → Gameplay 公共接口（Gameplay / Game / 只读数据）
+    → Runtime（规则、工作状态、事务、检查点）
+    → PackageLoader（加载、校验、linking、缓存）
+    → Persistence（稳定存档校验、纯变换、IndexedDB）
 ```
 
-分层约束：
+UI 负责确认、pending、焦点、导航、数字格式、动画和通用文案；Gameplay 返回已求值的角色、属性、Effect、事件、门禁与身份引用。UI 只从 `src/gameplay/index.ts` 导入，不取得 Profile、RunData、Repository、具体 Runtime 或脚本。
 
-- UI 只依赖页面 read model、`GameSession` 接口与 `SessionView`；不取得游戏包、存档领域对象、Repository、具体 Runtime 或 Runtime Proxy。
-- AppServices 组合查询和应用命令，对页面隐藏 PackageLoader、Repository、controller 和具体 Runtime。
-- Session 负责 busy、focus、导航、确认和服务编排；不实现 Rule/Action 语义。
-- GameplayRuntime 只接收完成 linking 的 `LoadedGamePackage` 和工作 State。
-- 引擎核心不依赖 React、DOM、IndexedDB 或 fetch。
-- package loader 不创建 Profile；SaveRepository 不执行游戏脚本。
-- 领域层不得从 `src/ui`、`src/app` 反向导入。
+Gameplay 管理跨局查询与存档用例；Runtime 直接实现 Game 的具名方法和快照订阅。GameSnapshot 是唯一可订阅的游戏状态，UI 使用 `useSyncExternalStore`。Gameplay 内部不导入 UI、React、路由或 DOM；HTTP/IndexedDB 访问限制在各自 I/O 模块。
 
-## 5. 建议目录结构
+## 5. 目录结构
 
 ```text
-public/
-  games/
-    catalog.json
-    example-game/
-      1.0.0/
-        manifest.json
-        config.json
-        rules.js
-        actions.js
-        assets/
-
 src/
-  app/
-    AppRouter.tsx
-    AppServices.tsx
-    routes.ts
-  package-loader/
-    schemas/
-    FetchGamePackageSource.ts
-    GamePackageLoader.ts
-    linker.ts
-    module-loader.ts
-    errors.ts
-  persistence/
-    database.ts
-    SaveRepository.ts
-    AppMetadataRepository.ts
-  runtime/
-    GameplayRuntimeImpl.ts
-    errors.ts
-    monitor.ts
-    profile-factory.ts
-    random.ts
-    reactivity.ts
-    reactions.ts
-    selectors.ts
-    state-view.ts
-  session/
-    GameSessionImpl.ts
-    SaveBrowserControllerImpl.ts
-    session-store.ts
+  main.tsx
   ui/
-    pages/
-    layouts/
-    components/
-    hooks/
+    app/              路由、Provider、启动与环境选项
+    pages/            页面与局部展示
+    components/       UI 组件
+    hooks/            usePlay、useSaves 用户交互与生命周期
+    presentation.ts   多处使用的展示转换
+    assets/
     styles/
-      tokens.css
-      global.css
-      utilities.css
-  types/
-    index.ts
-    model.ts
-    package.ts
-    runtime.ts
+  gameplay/
+    index.ts          显式公共入口
+    gameplay.ts       目录、打开、创建和存档用例
+    diagnostics.ts    诊断信息
+    types/            model、package、game、saves
+    runtime/          Runtime、rules、state-view、reactivity、reactions、snapshot
+    package-loader/   PackageLoader、HttpPackageSource、schemas、linker
+    persistence/      SaveRepository、database、validation、profile-operations
 ```
 
-单个文件只承担一个主要职责。跨模块只从该模块的 `index.ts` 导出稳定入口，禁止 UI 深层导入引擎内部文件。
+类按实际职责命名，不使用 Impl 后缀。Game 由 Runtime 直接实现，不建立转发实例。内部使用直接导入；公共入口显式导出，领域存储对象和实现细节不导出给 UI。只保留有实际替代实现的 I/O 接口，不引入通用命令框架或依赖注入容器。
 
 ## 6. 游戏包交付与 fetch 协议
 
@@ -177,13 +126,13 @@ catalog 固定为相对 Vite base 的 `games/catalog.json`。实现不得写死�
 
 `public/games/example-game/1.0.0` 必须随第一阶段开发一并建立。它不是自动化测试 fixture，而是贯穿人工验收的最小可玩包。
 
-### 6.2 FetchGamePackageSource
+### 6.2 HttpPackageSource
 
-`FetchGamePackageSource` 实现现有 `GamePackageSource`：
+`HttpPackageSource` 实现现有 `GamePackageSource`：
 
 - `list()`：fetch catalog，检查 HTTP 状态后以 Zod 解析；
 - `readJson(location)`：fetch 文本，先捕获 JSON 语法错误，再返回 `unknown`；调用方负责具体 schema；
-- `resolve(base, reference)`：使用 `new URL(reference, base)`，拒绝非 `http:`、`https:` 或本地开发允许的同源协议；
+- `resolve(base, reference)`：使用 `new URL(reference, base)`，只接受同源的 `http:` 或 `https:` URL；
 - catalog、manifest、config 和资源通过 fetch 获取；
 - 开发环境使用 `cache: 'no-cache'`，生产环境使用浏览器默认缓存；已成功加载的 `(id, version)` 在内存中复用。
 
@@ -191,14 +140,14 @@ catalog 固定为相对 Vite base 的 `games/catalog.json`。实现不得写死�
 
 ### 6.3 JavaScript module 加载
 
-`fetch()` 只能取得 module 文本，不能直接得到函数。为了满足游戏包资源由 fetch 获取的前提，`module-loader.ts` 采用以下流程：
+`HttpPackageSource.importTrustedModule()` 获取并执行可信 JavaScript 模块；PackageLoader 负责后续 registry 校验。加载流程如下：
 
 1. fetch `rules.js` 或 `actions.js` 文本；
 2. 检查响应状态与 JavaScript MIME；
 3. 用 `Blob([source], { type: 'text/javascript' })` 创建临时 module URL；
 4. 使用 `import(/* @vite-ignore */ blobUrl)` 执行可信模块；
-5. 校验导出的 `rules` 或 `actions`；
-6. import settle 后立即 `URL.revokeObjectURL(blobUrl)`。
+5. import settle 后立即 `URL.revokeObjectURL(blobUrl)`；
+6. PackageLoader 校验导出的 `rules` 或 `actions`。
 
 MVP 的 `rules.js` 与 `actions.js` 必须是自包含的单文件 ESM，不允许相对 import。原因是 blob module 没有原文件目录可用于解析相对依赖。游戏包需要拆分源码时，应在发布前 bundle 成这两个入口文件。
 
@@ -222,7 +171,7 @@ linking 至少检查：
 
 ## 7. Schema 与类型策略
 
-`src/types` 继续作为公共 TypeScript 声明。Zod schema 与领域类型必须保持一一对应，但外部数据的真实来源是 schema 解析结果。
+`src/gameplay/types` 继续作为公共 TypeScript 声明。Zod schema 与领域类型必须保持一一对应，但外部数据的真实来源是 schema 解析结果。
 
 实现规则：
 
@@ -292,7 +241,7 @@ interface SaveRepository {
 
 ### 9.1 工作对象
 
-每个 GameplayRuntime 实例持有：
+每个 Runtime 实例持有：
 
 - 一个只读 `LoadedGamePackage`；
 - 当前 StoredProfile 的内存副本；
@@ -301,7 +250,7 @@ interface SaveRepository {
 - Rule/Action executor；
 - 可事务复制的 Rule 依赖图、计算缓存和 Effect 生命周期 observer；
 - 当前 Reaction 注册表、baseline 和 FIFO；
-- 当前不可变 RuntimeSnapshot 与 revision；
+- 当前不可变 GameSnapshot 与 revision；
 - 串行 command queue；
 - 当前 Run 独立的 RuntimeMonitor。
 
@@ -335,7 +284,7 @@ interface TransactionRoot {
 
 Action Proxy 把不同 context scope 的写入路由到 `working` 中对应的 State draft。嵌套 Action、Reaction Action、EventInstance 派生写入、PRNG，以及检查点提交时的 Profile/RunData 元数据使用同一个根 draft。
 
-提交顺序：克隆稳定依赖图 → 执行 root 操作 → 验证 Action frame → 生成事件派生写入 → 沿反向依赖边失效计算节点 → 重算 dirty Effect/Reaction observer → 调度 Reaction → 队列稳定 → 处理可选终局/检查点 → `finishDraft` → 验证并生成候选 RuntimeSnapshot → 必要时持久化候选 StoredProfile → 一次性替换 Runtime 状态、依赖图、baseline、revision 与 snapshot → 通知订阅者。
+提交顺序：克隆稳定依赖图 → 执行 root 操作 → 验证 Action frame → 生成事件派生写入 → 沿反向依赖边失效计算节点 → 重算 dirty Effect/Reaction observer → 调度 Reaction → 队列稳定 → 处理可选终局/检查点 → `finishDraft` → 验证并生成候选 GameSnapshot → 必要时持久化候选 StoredProfile → 一次性替换 Runtime 状态、依赖图、baseline、revision 与 snapshot → 通知订阅者。
 
 发布前任一步骤抛错时丢弃候选结果。持久化完成后的监控与订阅通知必须吞掉观察者自身异常，不能把已经提交的事务报告成回滚；不得尝试手工反向应用部分写入。
 
@@ -402,31 +351,25 @@ initializing
   -> 下一 turn_start
 ```
 
-任何阶段稳定前出现 pending endRun 都改为 terminal 提交并停止推进。UI 命令只在 `event_handle` 接受，除非其定义明确属于 Session 应用命令。
+任何阶段稳定前出现 pending endRun 都改为 terminal 提交并停止推进。事件与节点命令在 `event_handle` 接受；advanceTurn 也允许从已提交的 turn_end 重试，abandon 按 active Run 生命周期校验。
 
 `advance-turn` 是两个处理单元：先提交本回合，再从该检查点启动下一回合。第二个处理单元失败时，第一个检查点仍有效。
 
-### 9.9 Snapshot selectors
+### 9.9 只读快照与规则求值
 
-selector 从稳定运行时视图生成 `RuntimeSnapshot`：
+snapshot 从已解析 State 生成不可变 GameSnapshot。角色包含属性列表，数值保留 number、枚举保留作者标签；事件分为 events.available 与 events.active，节点包含内容、选项和命令。visible/unlocked/enabled、required、canActivate 和 canAdvanceTurn 由 Gameplay 求值。门禁只返回结构化 kind 与对象 id；UI 负责文案、pending、确认和展示格式。
 
-- Attribute：应用 Character/Attribute visible、unlocked，携带 Character 展示名；
-- Effect：应用 visible、unlocked、acquired；
-- EventCard：只包含当前可启动事件；
-- ActiveEvent：始终包含 active 实例及当前 TextNode read model；
-- Choice/Command：过滤 visible、unlocked，投影 enabled；
-- canAdvanceTurn：Runtime 只根据 run status、phase、执行队列和 required blocker 计算 gameplay 门禁；UI 再与 Session busy、确认框和持久化状态组合决定按钮是否可用；
-- ended：根据 terminal 的 `endingEventInstanceId` 可选重建 EndingEventView。
+快照包含 game/profile 身份、runId、稳定 checkpoint 引用、revision、turnNumber、phase 和 status，终态按判别联合返回 endedAt/endingEvent。稳定 checkpoint 引用与当前工作状态的回合数可能不同。未提交时 snapshot 引用不变，发布必须与候选状态和依赖图同时完成。
 
-数组在 selector 中按 order、id 排序。UI 不再执行过滤规则或访问 Config 补字段。
+rules.ts 共用只读 RuleContext、动态依赖图、嵌套调用、重算预算与监控统计。运行时使用候选图，历史投影使用独立图；历史不创建 Immer 写入事务或持续 observer。配置 order 与 id 排序、作者内容和规则可见性在投影中保持一致。
 
 ### 9.10 单局运行监控
 
-MVP 提供一个仅输出到浏览器开发者控制台的轻量 RuntimeMonitor。每个 GameplayRuntime 创建一份 monitor session，从 RunData 开始运行或恢复时启动，在退出、ended、abandoned 或 Session 销毁时结束。
+MVP 提供一个仅输出到浏览器开发者控制台的轻量 RuntimeMonitor。每个 Runtime 创建一份 monitor session，从 RunData 开始运行或恢复时启动，在退出、ended、abandoned 或 Game.close()时结束。
 
 监控范围：
 
-- UI 发出的每个 RuntimeCommand；
+- UI 发出的每个 Game 命令；
 - phase 变化和 CheckNode 自动处理等 internal transition；
 - root Action、嵌套 Action 和 Reaction Action；
 - 每个处理单元的总耗时和提交、回滚结果；
@@ -483,19 +426,19 @@ interface RuntimeTrace {
 - Reaction 日志使用 Reaction canonical key 作为 name，并在 detail 中记录 Action key；
 - error/rollback 日志记录错误 code；command 失败还记录 errorId、Reaction/Action/Rule 调用链和可用的 JSON Pointer，不打印完整 State、Config、存档或脚本堆栈；
 - 处理单元结束后打印 Rule 重算汇总，包含最慢 Rule、依赖数量与最大反向扇出；verbose 模式才能打印单次 Rule 重算；
-- Session 结束时打印本局汇总：运行时长、command 数、Action 数、Rule 重算数、处理单元累计墙钟耗时、累计持久化耗时和最慢的五项记录；统计在 trace 到达时在线累计，最慢项固定保留五条，verbose 明细使用最多 200 条的 ring buffer；嵌套 Action 的 inclusive duration 不重复累加到总耗时；
+- Game 关闭时打印本局汇总：运行时长、command 数、Action 数、Rule 重算数、处理单元累计墙钟耗时、累计持久化耗时和最慢的五项记录；统计在 trace 到达时在线累计，最慢项固定保留五条，verbose 明细使用最多 200 条的 ring buffer；嵌套 Action 的 inclusive duration 不重复累加到总耗时；
 - monitor 只观察执行，不参与 command 顺序、revision、事务、PRNG 或存档；console 调用异常必须被 monitor 自己吞掉；
 - `RuntimeMonitor` 位于 runtime 内部，游戏包脚本和 UI 组件不能直接调用。
 
-由 SessionFactory 注入 `ConsoleRuntimeMonitor` 或 `NoopRuntimeMonitor`，引擎核心不读取 Vite 环境变量。应用层开关规则：开发环境默认启用；生产环境默认关闭，URL 带 `?runtimeMonitor=1` 时为当前页面会话启用；`?runtimeMonitor=verbose` 同时启用逐 Rule 日志。监控记录不写入 IndexedDB，也不在页面上建立监控面板。
+由 Gameplay 根据 UI 传入的监控选项注入 `ConsoleRuntimeMonitor` 或 `NoopRuntimeMonitor`，引擎核心不读取 Vite 环境变量。应用层开关规则：开发环境默认启用；生产环境默认关闭，URL 带 `?runtimeMonitor=1` 时为当前页面会话启用；`?runtimeMonitor=verbose` 同时启用逐 Rule 日志。监控记录不写入 IndexedDB，也不在页面上建立监控面板。
 
-## 10. Session 与应用路由
+## 10. UI 与 Gameplay 调用
 
 ### 10.1 路由
 
 使用 `BrowserRouter` Declarative Mode，并设置 `basename={import.meta.env.BASE_URL}`。部署环境必须把非资源路径 fallback 到 `index.html`。
 
-页面通过 `React.lazy()` 直接导入各自模块，不从页面 barrel 同步导入。`/arts` 独立于游戏布局；游戏路由以 `GameLayout` 作为无路径父路由，通过 `Outlet` 共享同一个 `AppServicesProvider`。Arts、游戏服务和各页面的专属资源分别进入异步 chunk，入口只保留 React、Router 与公共样式。
+页面通过 `React.lazy()` 直接导入各自模块，不从页面 barrel 同步导入。`/arts` 独立于游戏布局；游戏路由以 `GameLayout` 作为无路径父路由，通过 `Outlet` 共享同一个 `GameplayProvider`。Arts、游戏服务和各页面的专属资源分别进入异步 chunk，入口只保留 React、Router 与公共样式。
 
 ```text
 /arts                               Arts Gallery
@@ -509,38 +452,25 @@ interface RuntimeTrace {
 
 URL 只保存可分享的页面定位，不保存事件 focus、弹窗或存档树展开状态。路由参数进入服务前必须校验并编码，不能直接拼接文件路径。
 
-### 10.2 AppServices
+### 10.2 Gameplay 用例
 
-`GameLayout` 在游戏路由首次匹配时创建并注入单例 AppServices；游戏子路由之间切换时复用该实例，离开游戏路由后随布局卸载。它私有持有：
+Gameplay 提供 `listGames()`、`getGameInfo(gameId)`、`createGame(gameId)`、`openGame(profileId, signal?)`、`listSaves(gameId)`、`getCheckpoint(source)`、`continueGame(source)`、`branchGame(source)`、`truncateGame(source)`、`restartGame(source)`、`setPinned(source, pinned)`、`deleteCheckpoint(source)`、`deleteRun(source)` 和 `deleteProfile(profileId)`。
 
-- FetchGamePackageSource；
-- GamePackageLoader 与包内存缓存；
-- SaveRepository；
-- AppMetadataRepository；
-- RuntimeMonitorFactory。
+检查点引用为 `{ profileId, runId, turnId }`，时间线引用为 `{ profileId, runId }`。写操作返回成功/失败结果，创建、继续、分支、截断和重启成功后携带检查点引用，UI 再导航；不返回 URL、按钮文案或页面模型。查询和打开失败抛出可诊断异常，取消打开使用 AbortError。最近访问记录是便利元数据，其失败不能推翻已经成功的领域提交。
 
-AppServices 对页面只暴露两类能力：
+存档操作读取一次 Profile，按需加载精确包并做 Config 感知校验，执行纯变换，再校验并等待一次 Repository 写入或删除。结构有效的存档在精确包不可用时仍可删除；继续、分支、截断、pin 与 restart 要求精确 Config。
 
-- `listGames`、`getGameMenu`、`getSaveBrowser`、`getResult` 返回页面专用不可变 read model；
-- `createNewGame`、`executeSaveCommand`、`restart` 和 `openSession` 执行应用命令，其中只有 `openSession` 返回 `GameSession` 接口。
+### 10.3 UI 交互与实例生命周期
 
-页面不得取得上述底层服务或具体 controller。结果查询使用指定 terminal/abandoned snapshot 构造只读投影，不启动状态机、不连接 SaveRepository。React Context 只做依赖注入，不把频繁变化的 runtime snapshot 放入 Context。
+`usePlay` 管理打开/取消、pending、确认、事件焦点和导航，直接订阅 GameSnapshot。执行帮助函数接收 `() => Promise<CommandResult>`，先设置 pending，再调用 Game 方法；失败时仍按已发布 snapshot 展示状态。
 
-### 10.3 GameSession
+退出和切换存档由 UI 确认后 close 并导航，丢弃未提交工作。放弃由 UI 确认后调用 abandon，成功才 close 并导航，失败保留页面。终局导航和放弃完成导航由 UI 明确区分，避免竞争。close 幂等，停止新命令并清理订阅；已有持久化处理单元可以完成原子边界，但关闭后不通知订阅者、不启动下一回合。
 
-GameSession 组合 GameplayRuntime 与应用瞬时状态：
+`openGame` 在异步边界检查 AbortSignal，构造后的取消会释放 Runtime。`useSaves` 管理选中项、确认、pending 与预览请求过期保护；页面不构造 controller。
 
-- command 开始前同步设置 busy 并通知；
-- Promise settle 后无条件从 Runtime 刷新 SessionView，再清 busy；即使 Runtime 没有发布通知，也不能保留旧视图；
-- camelCase 方法只转换 RuntimeCommand 或调用应用服务；
-- `focusEvent` 校验实例仍 active，只更新 focusedEventInstanceId；
-- 当前 focus 失效时自动选择第一个 active event 或清空；
-- exit/open saves 先确认并销毁 runtime 工作副本；
-- 只有持久化成功后才导航。
+### 10.4 历史与结果
 
-Runtime 命令失败结果包含 `committed`。当 `advance-turn` 已提交 `turn_end`、但下一回合启动失败时，Session 刷新并展示该检查点，允许再次执行同一命令；一般失败则继续显示命令前的 snapshot。最近存档元数据属于 best-effort 副作用，其失败不能把已经成功的领域命令改报为失败。
-
-React 页面通过 `useSyncExternalStore(session.subscribe, session.getView)` 订阅。
+预览与结果页共同调用 `getCheckpoint(source)`。投影使用共享 rules/state-view/snapshot，按指定检查点恢复生命周期，独立求值，不创建 Runtime、不注册 Reaction/Effect observer、不执行 Action、不写存档或最近游标。结果页验证 terminal/abandoned kind，通用标题、无叙事节点文案与重启导航由 UI 生成。
 
 ## 11. UI 技术规格
 
@@ -631,7 +561,7 @@ RuntimeMonitor 实时输出指令与耗时；错误诊断沿用相同的 runId�
 - 建立目录和模块入口；
 - 提取 DESIGN token、字体和基础 Button/Surface/Dialog；
 - 创建 `public/games/catalog.json` 与最小 example-game；
-- 完成 FetchGamePackageSource、Zod schema、loader、linker 和错误卡片。
+- 完成 HttpPackageSource、Zod schema、loader、linker 和错误卡片。
 
 完成标志：游戏列表能通过 fetch 显示有效包；破坏 config 后只让该包进入错误状态。
 
@@ -655,16 +585,16 @@ RuntimeMonitor 实时输出指令与耗时；错误诊断沿用相同的 runId�
 
 ### 阶段 4：事件与回合
 
-- 实现全部 RuntimeCommand；
+- 实现全部 Game 命令；
 - 实现 EventInstance、TextNode、CheckNode、多选临时状态；
 - 实现 phase 状态机、required blocker 和 turn_end 保存；
-- 实现 RuntimeSnapshot selectors。
+- 实现 GameSnapshot selectors。
 
 完成标志：可以连续游玩多个回合、处理多个 active Event，并在刷新后从最后 turn_end 重放当前回合。
 
-### 阶段 5：Session 与完整游戏 UI
+### 阶段 5：Game 接口与完整游戏 UI
 
-- 完成 GameSession external store、busy 和 focus；
+- 完成 GameSnapshot 订阅与 UI hook 的 pending、确认和 focus；
 - 完成属性、Effect、事件卡、节点和底部按钮；
 - 接入路由、确认 Dialog、错误/空/loading 状态；
 - 完成桌面和窄屏布局。
@@ -743,5 +673,5 @@ MVP 可进入下一轮设计或优化的条件：
 - 示例游戏包能够从新游戏完整游玩至终局并 restart；
 - 单局 RuntimeMonitor 能实时输出执行指令、耗时、回滚和结束汇总；
 - 所有持久化边界与最后稳定 snapshot 一致；
-- UI、Session、Runtime、package loader 和 persistence 之间没有越层访问；
+- UI 与 Gameplay 及其内部模块 之间没有越层访问；
 - 新增实现约束已同步回本文或对应 game-design 文档。

@@ -1,6 +1,6 @@
 # 游戏脚本编写指南
 
-本文面向游戏策划，说明如何使用 JSON 编写 Config，并使用 JavaScript 编写 Rule 与 Action。JSON 与 JavaScript 的外部包结构见[外部游戏包与加载](./game-package.md)，完整 TypeScript 声明见 [model.ts](../../src/types/model.ts)，存档、状态合并和响应式引擎实现见[运行时系统设计](./runtime-system.md)。
+本文面向游戏策划，说明如何使用 JSON 编写 Config，并使用 JavaScript 编写 Rule 与 Action。JSON 与 JavaScript 的外部包结构见[外部游戏包与加载](./game-package.md)，完整 TypeScript 声明见 [model.ts](../../src/gameplay/types/model.ts)，存档、状态合并和响应式引擎实现见[运行时系统设计](./runtime-system.md)。
 
 ## 脚本运行时参数
 
@@ -187,7 +187,7 @@ interface EffectConfig extends CommonConfig {
 
 `acquired` 表示效果是否已经获得，`actived` 表示效果是否已生效。`manuallyActivatable` 为 `true` 时，已获得且尚未激活的 Effect 会在事件处理阶段提供手动激活入口。`reactionList` 响应效果字段或其他派生值的变化，例如获得、激活、失效以及激活后的每回合开始。`bindCharacterId` 存在时必须指向 Config 中的 character。
 
-手动激活由宿主发送 `activate-effect` RuntimeCommand，Runtime 在事务中把 `activedValue` 写为 `true`，随后按正常流程稳定该 Effect 的 Reaction。Effect 的激活副作用、资源消耗和提示 Action 应声明在观察 `self.actived` 从 `false` 到 `true` 的 Reaction 中；Reaction Action 抛错时，基础值和同一处理单元中的其它写入一起回滚。
+手动激活由宿主发送 `activate-effect` Game 命令，Runtime 在事务中把 `activedValue` 写为 `true`，随后按正常流程稳定该 Effect 的 Reaction。Effect 的激活副作用、资源消耗和提示 Action 应声明在观察 `self.actived` 从 `false` 到 `true` 的 Reaction 中；Reaction Action 抛错时，基础值和同一处理单元中的其它写入一起回滚。
 
 策划默认约定：不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，优先声明在 Effect 上；Effect 的 `displayName` 与 `description` 应说明持续规则及其影响，让玩家能在效果面板看到这些规则。EventConfig Reaction 主要用于事件内容自身的持续响应。
 
@@ -206,11 +206,11 @@ interface EventConfig extends CommonConfig {
 
 `nodes` 使用 EventNode.id 作为 key，`entryNodeId` 必须指向其中一个节点。
 
-`enabled` 表示事件当前是否可由玩家启动。在 `event_handle` 阶段，宿主根据事件的有效 `visible`、`unlocked` 与 `enabled` 值生成事件卡片；玩家点击卡片会向引擎发送 `StartEvent` RuntimeCommand。该命令重新校验状态、确认同一 EventConfig 没有 active 实例，然后创建 EventInstance 并进入 `entryNodeId`。`StartEvent` 属于宿主命令，不在 ActionRegistry 中，也不能由 `context.action` 或 Reaction 调用。
+`enabled` 表示事件当前是否可由玩家启动。在 `event_handle` 阶段，宿主根据事件的有效 `visible`、`unlocked` 与 `enabled` 值生成事件卡片；玩家点击卡片会向引擎发送 `startEvent()` Game 命令。该命令重新校验状态、确认同一 EventConfig 没有 active 实例，然后创建 EventInstance 并进入 `entryNodeId`。`startEvent()` 属于宿主命令，不在 ActionRegistry 中，也不能由 `context.action` 或 Reaction 调用。
 
 `EventConfig.reactionList` 用于持续响应内容状态变化，例如改变属性、Effect、事件可用条件或请求终局。在创建、载入、分支或截断恢复 RunData 时，引擎为所有 EventConfig 注册配置级 Reaction，此时不需要 EventInstance。Reaction 初次注册只计算基准值。新游戏与 restart 创建的 RunData 在 phase 为 `initializing` 时完成注册，再由引擎进入 `turn_start`；载入、branch 与截断恢复直接以 snapshot 建立基准。`terminal` 或 `abandoned` 提交后统一注销这些 Reaction。
 
-一次性事件可以让 `enabled.rule` 判断完成次数是否为 `0`；常态性事件可以保持 `enabled` 为 `true`。每次成功的 `StartEvent` 命令都会创建独立 EventInstance。跨回合事件继续使用已有 active 实例；active 实例即使后来变为不可见或不可用，UI 仍提供“进行中”入口。MVP 的固定门禁是同一 EventConfig 每个逻辑回合最多创建一个实例，实例完成后要到下一回合且仍然 enabled 才能再次启动。
+一次性事件可以让 `enabled.rule` 判断完成次数是否为 `0`；常态性事件可以保持 `enabled` 为 `true`。每次成功的 `startEvent()` 命令都会创建独立 EventInstance。跨回合事件继续使用已有 active 实例；active 实例即使后来变为不可见或不可用，UI 仍提供“进行中”入口。MVP 的固定门禁是同一 EventConfig 每个逻辑回合最多创建一个实例，实例完成后要到下一回合且仍然 enabled 才能再次启动。
 
 #### 叙事节点 TextNode
 
@@ -258,7 +258,7 @@ type TextNode = SingleTextNode | MultipleTextNode;
 
 TextNode 可以配置 `reactionList`。节点成为当前节点后，引擎观察其中的 Reaction；例如观察“当前节点且 `context.turnState.phase` 为 `turn_start`”这一 Rule，在结果进入 `true` 时执行每回合 Action。
 
-单选节点中，玩家选择一个 `SingleChoice` 后，宿主发送 `ChooseSingle` 命令，引擎再通过统一执行器执行其 `action`。多选节点中，增减 `MultipleChoice` 数量由 `SetMultipleChoice` 命令更新 TurnData 中的临时选择，不执行 Action；选择结果以 Choice id 为 key，并包含 `value` 与 `count`。
+单选节点中，玩家选择一个 `SingleChoice` 后，宿主发送 `ChooseSingle` 命令，引擎再通过统一执行器执行其 `action`。多选节点中，增减 `MultipleChoice` 数量由 `setChoiceCount()` 命令更新 TurnData 中的临时选择，不执行 Action；选择结果以 Choice id 为 key，并包含 `value` 与 `count`。
 
 多选节点通过 `commands` 提供购买、确认、取消或退出等操作。玩家点击后发送 `ExecuteNodeCommand`，Command Action 一次性读取完整选择结果；处理单元失败时不提交任何选择效果。`maxCount` 存在时限制对应 choice 的最大选择数量，省略时不设置引擎级单项上限。`required` 为 `true` 时，节点尚未处理完成则不能执行 `AdvanceTurn`。
 
