@@ -262,6 +262,8 @@ TextNode 可以配置 `reactionList`。节点成为当前节点后，引擎观�
 
 多选节点通过 `commands` 提供购买、确认、取消或退出等操作。玩家点击后发送 `ExecuteNodeCommand`，Command Action 一次性读取完整选择结果；处理单元失败时不提交任何选择效果。`maxCount` 存在时限制对应 choice 的最大选择数量，省略时不设置引擎级单项上限。`required` 为 `true` 时，节点尚未处理完成则不能执行 `AdvanceTurn`。
 
+编写受资源条件限制的 required 节点时，应保留资源不足时仍能完成事件的合理选择，例如无消耗撤离，并明确它放弃的收益。资源条件、实际消耗和选择后果由作者写入选项的 `description` 或节点 `content`；Gameplay 返回已有说明与求值后的 `enabled`，UI 直接展示，不从 Action 参数推断资源规则。
+
 Choice、Command、Check 与节点 Reaction Action 通过 `context.runState` 直接修改当前 EventInstance。每个 EventState 的 `activeInstanceId` 指向该 EventConfig 唯一的 active 实例，因此脚本不需要遍历历史实例：
 
 ```js

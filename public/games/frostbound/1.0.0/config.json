@@ -6652,7 +6652,7 @@
             ]
           },
           "type": "single",
-          "content": "入口暂时无法通过，但你确认了另一条绕行管线。",
+          "content": "入口被碎石堵住，绕行管线的支架也已断裂。你可以修复支架勘察地下通路，或标记险情后返回地面。",
           "required": {
             "key": "state.value",
             "args": [
@@ -6682,6 +6682,7 @@
               "id": "record-route",
               "displayName": "记录绕行路线",
               "tags": [],
+              "description": "需要并消耗 1 个零件加固支架，确认地下热源路线，极寒知识 +1；零件不足时不可选。",
               "order": 1,
               "weight": {
                 "key": "state.value",
@@ -6731,6 +6732,70 @@
                   0,
                   0,
                   1,
+                  0
+                ]
+              },
+              "weightValue": 5,
+              "unlockedValue": true,
+              "enabledValue": true
+            },
+            "withdraw": {
+              "id": "withdraw",
+              "displayName": "标记险情后撤离",
+              "tags": [],
+              "description": "不消耗资源；本次不确认地下路线，也不增加极寒知识。",
+              "order": 2,
+              "weight": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "tunnel-entrance",
+                  "nodes",
+                  "cave-in",
+                  "choicesValue",
+                  "withdraw",
+                  "weightValue"
+                ]
+              },
+              "visible": true,
+              "unlocked": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "tunnel-entrance",
+                  "nodes",
+                  "cave-in",
+                  "choicesValue",
+                  "withdraw",
+                  "unlockedValue"
+                ]
+              },
+              "enabled": {
+                "key": "state.value",
+                "args": [
+                  "events",
+                  "tunnel-entrance",
+                  "nodes",
+                  "cave-in",
+                  "choicesValue",
+                  "withdraw",
+                  "enabledValue"
+                ]
+              },
+              "action": {
+                "key": "event.resolve",
+                "args": [
+                  "tunnel-entrance",
+                  null,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
                   0
                 ]
               },
