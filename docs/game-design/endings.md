@@ -52,7 +52,7 @@ Rule 不能直接调用 `endRun()`。Reaction、玩家选择、节点检查或�
 
 `endRun()` 只在当前运行时处理单元中记录一个待处理的终局请求，不会在调用位置立即中断 JavaScript：
 
-1. RuntimeCommand/internal transition 的引擎写入、root/嵌套/Reaction Action、PRNG 推进和终局请求使用同一 draft；终局标记仍只能由其中的 Action 发出。
+1. Game 命令/internal transition 的引擎写入、root/嵌套/Reaction Action、PRNG 推进和终局请求使用同一 draft；终局标记仍只能由其中的 Action 发出。
 2. 任一 Action 抛出异常、校验失败或超过执行上限时，引擎丢弃整个处理单元。
 3. 每批引擎或 Action 写入后，引擎在 draft 上重算受影响的 Rule，并按正常顺序执行匹配的 Reaction Action。
 4. Reaction 队列稳定前，终局请求保持待处理状态；同一处理单元中的重复请求是幂等的，关联事件来源以首次调用为准。
@@ -66,7 +66,7 @@ Action 在请求终局的同时还可以直接改写 `context.runState.events[ev
    首次终局请求有关联 EventInstance 时，同时记录 `endingEventInstanceId`；
 2. 将 `RunData.status` 从 `active` 改为 `ended`，并写入 `endedAt`；
 3. 更新 `RunData.currentTurnId`、`StoredProfile.current` 和时间戳，形成候选稳定存档；
-4. Repository 成功写入候选存档后，Runtime 一次性替换稳定存档、工作状态、revision 与 RuntimeSnapshot，并注销当前 RunData 的可重建运行时资源。
+4. Repository 成功写入候选存档后，Runtime 一次性替换稳定存档、工作状态、revision 与 GameSnapshot，并注销当前 RunData 的可重建运行时资源。
 
 `terminal` snapshot 保留请求终局时的 `turnNumber` 与 `phase`。引擎不会为了结束 RunData 而强制进入 `turn_end`。终局 snapshot、RunData 元数据与恢复游标必须原子提交；写入失败时保留原存档和原 Runtime 状态。
 

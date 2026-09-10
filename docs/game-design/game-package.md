@@ -1,6 +1,6 @@
 # 外部游戏包与加载
 
-本文定义游戏包如何被发现、加载、校验并与存档 State 组成可执行的游戏运行时。对应公共类型见 [package.ts](../../src/types/package.ts)。游戏脚本的 Config 结构见[游戏脚本编写指南](./script-authoring.md)，State、事务与恢复语义见[运行时系统设计](./runtime-system.md)，Action 请求终局的协议见[终局与结局](./endings.md)，回合和事件处理见[游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)。
+本文定义游戏包如何被发现、加载、校验并与存档 State 组成可执行的游戏运行时。对应公共类型见 [package.ts](../../src/gameplay/types/package.ts)。游戏脚本的 Config 结构见[游戏脚本编写指南](./script-authoring.md)，State、事务与恢复语义见[运行时系统设计](./runtime-system.md)，Action 请求终局的协议见[终局与结局](./endings.md)，回合和事件处理见[游戏运行时流程与 UI 绑定](./gameplay-runtime-flow.md)。
 
 一个游戏包就是游戏列表中的一个游戏。Config、Rule 与 Action 都从包的外部资源加载，不写死在引擎代码中。
 
@@ -63,7 +63,7 @@ Catalog 只包含绘制游戏列表所需的轻量信息，读取 catalog 不得
 
 用户选择新游戏时，加载选中 descriptor 的版本。恢复存档时，包解析器必须根据 `Profile.configId` 与 `Profile.configVersion` 定位精确版本，不得默认用 catalog 中的更新版本打开旧存档。
 
-普通继续游戏要求存档版本与已加载包版本完全一致。当前开发阶段不提供内容升级或迁移路径；精确版本不在 catalog 中时，该存档保持不可游玩状态，不得交给 GameplayRuntime。内容或存档结构发生不兼容变化时，可以直接舍弃对应旧包和旧存档。
+普通继续游戏要求存档版本与已加载包版本完全一致。当前开发阶段不提供内容升级或迁移路径；精确版本不在 catalog 中时，该存档保持不可游玩状态，不得交给 Runtime。内容或存档结构发生不兼容变化时，可以直接舍弃对应旧包和旧存档。
 
 ## 游戏包布局与 Manifest
 
@@ -181,7 +181,7 @@ export const actions = {
 };
 ```
 
-`context.endRun()` 不接收结局参数；Action 先将游戏包自己的结局内容写入普通 RunState，再在同一处理单元中请求终局。Manifest 和 registry 不定义事件启动或 phase 转换指令；这些属于 GameplayRuntime 的流程协议，不通过特殊 Action key 与包加载器耦合。
+`context.endRun()` 不接收结局参数；Action 先将游戏包自己的结局内容写入普通 RunState，再在同一处理单元中请求终局。Manifest 和 registry 不定义事件启动或 phase 转换指令；这些属于 Runtime 的流程协议，不通过特殊 Action key 与包加载器耦合。
 
 ### Rule 是纯计算
 
@@ -259,7 +259,7 @@ interface GamePackageSource {
     /** 返回游戏列表中的可用包版本及已解析位置。 */
     list(): Promise<LocatedGameCatalog>;
     /** 读取并解析指定位置的 JSON。 */
-    readJson<T>(location: string): Promise<T>;
+    readJson(location: string): Promise<unknown>;
     /** 以完全可信模式导入 JavaScript ES module。 */
     importTrustedModule(location: string): Promise<unknown>;
     /** 以 base 为基准解析包内相对位置。 */
@@ -289,7 +289,7 @@ interface LoadedGamePackage {
 }
 ```
 
-`GamePackageSource` 可由 HTTP catalog、本地目录、桌面容器或测试内存对象实现。加载器依赖 source，GameplayRuntime 只依赖 `LoadedGamePackage`；因此切换包来源不会改变 Rule、Action、State 或存档语义。
+`GamePackageSource` 可由 HTTP catalog、本地目录、桌面容器或测试内存对象实现。加载器依赖 source，Runtime 只依赖 `LoadedGamePackage`；因此切换包来源不会改变 Rule、Action、State 或存档语义。
 
 ## 包级加载与链接顺序
 
@@ -301,7 +301,7 @@ interface LoadedGamePackage {
 4. 并行读取 Config JSON，并 import Rule 与 Action module。模块的顶层代码在这一步执行，但加载器尚未创建任何 Profile 或 RunData。
 5. 校验 GameConfig schema、所有 object key/id、枚举、数值范围、唯一性与 Config 内部引用，并确认 `config.meta` 与 manifest 身份一致。
 6. 校验模块的 `rules` / `actions` 导出、registry key、implementation.key 与 `calc` / `exec` 函数形状。
-7. 链接全部 Config 调用描述：递归遍历 `xxxValue`/Rule 字段、Choice、Command、CheckNode 和 Reaction，确认每个 Rule key 存在于 RuleRegistry、每个 Action key 存在于 ActionRegistry，并校验 event/node/choice/character/effect 等稳定 id 引用；ValueRef 的非空路径必须从声明位置或指定 State 根定位到静态 Primitive 或派生字段，派生字段的返回值在运行时继续校验为 Primitive。`manuallyActivatable` 的 Effect 可以使用任意 `actived` Rule，RuntimeCommand 修改对应的 `activedValue`。
+7. 链接全部 Config 调用描述：递归遍历 `xxxValue`/Rule 字段、Choice、Command、CheckNode 和 Reaction，确认每个 Rule key 存在于 RuleRegistry、每个 Action key 存在于 ActionRegistry，并校验 event/node/choice/character/effect 等稳定 id 引用；ValueRef 的非空路径必须从声明位置或指定 State 根定位到静态 Primitive 或派生字段，派生字段的返回值在运行时继续校验为 Primitive。`manuallyActivatable` 的 Effect 可以使用任意 `actived` Rule，Game 命令 修改对应的 `activedValue`。
 8. 为 Reaction 声明生成稳定注册顺序，冻结 manifest、Config 与 registry 外壳，产出 `LoadedGamePackage`。
 
 链接阶段不执行任何 Rule 或 Action。JavaScript 函数的任意参数含义和 Rule 的业务返回类型无法只根据 JavaScript 函数形状完全证明；加载器校验 Config `args` 只包含 Primitive，具体返回值和 State 写入在 Rule 计算或 Action 事务执行时继续校验。
@@ -346,7 +346,7 @@ interface PackageLoadError {
 
 `resourceLocation` 定位 manifest、Config 或脚本资源；`jsonPointer` 定位该资源内部的 schema、registry 或 linking 字段，两者不复用。加载边界会补齐缺失的包 id/version，并保留原错误为 cause。对外消息附带 `errorId`；完整 cause 只进入开发诊断。
 
-Manifest 读取、module import、校验或链接任一失败时，该包不得进入可游玩列表的 ready 状态，也不得创建或改写 Profile。游戏列表可以保留 descriptor 并展示包加载失败，但不能向 GameplayRuntime 传递部分加载的 Config 或 registry。
+Manifest 读取、module import、校验或链接任一失败时，该包不得进入可游玩列表的 ready 状态，也不得创建或改写 Profile。游戏列表可以保留 descriptor 并展示包加载失败，但不能向 Runtime 传递部分加载的 Config 或 registry。
 
 `LoadedGamePackage` 是包加载的原子成功边界。对相同 `(id, version)` 的成功结果可以缓存；已发布版本的内容应保持不变，任何内容修改都应使用新的 `version`，以避免同一存档身份对应不同脚本。
 
@@ -359,7 +359,7 @@ ActionRegistry 和 RuleRegistry 在包加载时建立一次，不为每个 Profi
 1. 接收已成功链接的 `LoadedGamePackage`。
 2. 创建稀疏 ProfileState/RunState/TurnState 与 RandomState，把 Config 的 `xxxValue` 基础值和初始生命周期事实物化到 RunState。
 3. 校验初始 State，构造包含 `initial` TurnData 的 RunData 与 StoredProfile，并持久化。
-4. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态，创建处理单元管理器、Config/State 合并 Proxy 和依赖图，再绑定 RuleRegistry 与 ActionRegistry。
+4. 打开 Runtime，从 `initial` snapshot 克隆唯一工作状态，创建处理单元管理器、Config/State 合并 Proxy 和依赖图，再绑定 RuleRegistry 与 ActionRegistry。
 5. 按 canonical key 注册 Effect 生命周期与配置级 Reaction observer 并建立基准；失败时关闭 Runtime，已持久化的 `initial` 保持不变。
 6. 将已就绪的运行时交给回合状态机，由它以 initial 为回滚边界开始首回合；首回合脚本失败时同样保留完整 initial 并报告错误。
 

@@ -1,282 +1,39 @@
+import { projectCheckpoint } from '../src/gameplay/runtime/snapshot'
 import 'fake-indexeddb/auto'
 import { assert, expect, test } from 'vitest'
 import type {
 	ActionContext,
-	ActionRegistry,
-	CommonConfig,
-	GameConfig,
-	GameState,
-	LoadedGamePackage,
 	Primitive,
-	Rule,
 	RuleContext,
-	RuleRegistry,
 	StoredProfile,
-} from '../src/types'
+} from '../src/gameplay/types/model'
 import {
 	createBranch,
 	deleteCheckpoint,
 	deleteRun,
-	IndexedDbSaveRepository,
 	truncateAndContinue,
-	validateProfileAgainstConfig,
-	type SaveListResult,
-	type SaveRepository,
-} from '../src/persistence'
-import { getDatabase } from '../src/persistence/database'
-import { GameplayRuntimeImpl, addRestartRun, createProfile } from '../src/runtime'
-import type { RuntimeMonitor, RuntimeTrace } from '../src/runtime/monitor'
-import { nextRandom } from '../src/runtime/random'
-import { collectReactionDefinitions } from '../src/runtime/reactions'
-import { createRuntimeView } from '../src/runtime/state-view'
+} from '../src/gameplay/persistence/profile-operations'
+import { IndexedDbSaveRepository } from '../src/gameplay/persistence/SaveRepository'
+import { validateProfileAgainstConfig } from '../src/gameplay/persistence/validation'
+import { getDatabase } from '../src/gameplay/persistence/database'
+import { Runtime } from '../src/gameplay/runtime/Runtime'
+import { addRestartRun, createProfile } from '../src/gameplay/runtime/profile-factory'
+import { nextRandom } from '../src/gameplay/runtime/random'
+import { collectReactionDefinitions } from '../src/gameplay/runtime/reactions'
+import { createRuntimeView } from '../src/gameplay/runtime/state-view'
 
-/** 构造不带参数的 Rule 调用，减少测试夹具中的重复字段。 */
-const rule = (key: string): Rule => ({ key, args: [] })
-
-/** 构造所有 Config 实体共用的可见性、解锁和排序字段。 */
-function common(id: string, order: number): CommonConfig {
-	return {
-		id,
-		displayName: id,
-		tags: [],
-		order,
-		weightValue: 1,
-		weight: rule('constant.weight'),
-		visible: true,
-		unlockedValue: true,
-		unlocked: rule('constant.true'),
-		enabledValue: true,
-		enabled: rule('constant.true'),
-	}
-}
-
-/**
- * 构造覆盖 Runtime 核心路径的最小游戏配置。
- *
- * 配置包含一个数值属性、一个回合开始 Reaction，以及一条
- * `CheckNode -> required SingleTextNode` 事件链，供不同用例按需扩展。
- */
-function makeConfig(): GameConfig {
-	return {
-		meta: {
-			id: 'test-game',
-			name: 'Test Game',
-			version: 'test',
-			background: '',
-			maxTurnCountPerRun: 8,
-		},
-		characters: {
-			hero: {
-				...common('hero', 0),
-				attributes: {
-					score: {
-						...common('score', 0),
-						type: 'number',
-						value: 0,
-						min: 0,
-						max: 10,
-					},
-				},
-			},
-		},
-		effects: {
-			turnEffect: {
-				...common('turnEffect', 0),
-				acquiredValue: false,
-				acquired: rule('constant.false'),
-				activedValue: false,
-				actived: rule('constant.false'),
-				manuallyActivatable: false,
-				reactionList: [
-					{
-						watch: rule('watch.turn-start'),
-						from: false,
-						to: true,
-						action: { key: 'score.increment', args: [] },
-					},
-				],
-			},
-		},
-		events: {
-			requiredEvent: {
-				...common('requiredEvent', 0),
-				entryNodeId: 'gate',
-				nodes: {
-					gate: {
-						...common('gate', 0),
-						type: 'check',
-						candidateNodes: { requiredNode: true },
-						check: { key: 'check.noop', args: [] },
-					},
-					// 该节点固定为单选，仅是本测试夹具的约定，并非通用游戏包约束。
-					requiredNode: {
-						...common('requiredNode', 1),
-						type: 'single',
-						content: 'required',
-						requiredValue: true,
-						required: rule('constant.true'),
-						choicesValue: {},
-						choices: rule('choices.required'),
-					},
-				},
-			},
-		},
-	}
-}
-
-/** 构造与最小游戏配置配套的 Rule 注册表。 */
-function makeRules(): RuleRegistry {
-	return {
-		'constant.weight': {
-			key: 'constant.weight',
-			calc: () => 1,
-		},
-		'constant.true': {
-			key: 'constant.true',
-			calc: () => true,
-		},
-		'constant.false': {
-			key: 'constant.false',
-			calc: () => false,
-		},
-		'watch.turn-start': {
-			key: 'watch.turn-start',
-			calc: (context: RuleContext) => context.turnState.phase === 'turn_start',
-		},
-		'choices.required': {
-			key: 'choices.required',
-			calc: (context: RuleContext) => {
-				const node = context.turnState.events.requiredEvent.nodes.requiredNode
-				// RuleContext 只暴露 EventNode 联合类型，需要重申测试夹具的节点类型才能安全读取选项。
-				if (node.type !== 'single') {
-					throw new Error('requiredNode must be a single-choice node')
-				}
-				return node.choicesValue
-			},
-		},
-	}
-}
-
-/** 构造与最小游戏配置配套的 Action 注册表。 */
-function makeActions(): ActionRegistry {
-	return {
-		'score.increment': {
-			key: 'score.increment',
-			exec: (context: ActionContext) => {
-				context.runState.characters.hero.attributes.score.value += 1
-			},
-		},
-		'check.noop': {
-			key: 'check.noop',
-			exec: () => undefined,
-		},
-	}
-}
-
-/** 将内存 Config、Rule 和 Action 组装为已经完成 linking 的测试游戏包。 */
-function makeGame(config = makeConfig()): LoadedGamePackage {
-	return {
-		location: {
-			descriptor: {
-				id: config.meta.id,
-				version: config.meta.version,
-				name: config.meta.name,
-				manifest: 'memory:manifest',
-			},
-			manifestLocation: 'memory:manifest',
-		},
-		manifest: {
-			schemaVersion: 1,
-			id: config.meta.id,
-			version: config.meta.version,
-			name: config.meta.name,
-			entries: { config: 'config', rules: 'rules', actions: 'actions' },
-		},
-		config,
-		rules: makeRules(),
-		actions: makeActions(),
-		assetsBaseLocation: 'memory:',
-	}
-}
-
-/**
- * 通过复制注册表为单个用例覆盖实现，保留 LoadedGamePackage 的只读边界。
- */
-function withImplementations(
-	game: LoadedGamePackage,
-	overrides: { rules?: RuleRegistry; actions?: ActionRegistry },
-): LoadedGamePackage {
-	return {
-		...game,
-		rules: { ...game.rules, ...overrides.rules },
-		actions: { ...game.actions, ...overrides.actions },
-	}
-}
-
-/** 构造不含 required 事件阻塞、可直接推进回合的游戏包。 */
-function makePlayableGame(): LoadedGamePackage {
-	const config = makeConfig()
-	config.events.requiredEvent.enabled = rule('constant.false')
-	return makeGame(config)
-}
-
-/**
- * 仅用于 Runtime 单元测试的内存 Repository。
- *
- * 写入和读取都复制数据，模拟真实持久化边界，避免引用共享掩盖回滚问题。
- */
-class MemorySaveRepository implements SaveRepository {
-	readonly profiles = new Map<string, StoredProfile>()
-
-	async listByConfigId(configId: string): Promise<SaveListResult> {
-		return {
-			profiles: [...this.profiles.values()].filter((profile) => profile.configId === configId),
-			invalid: [],
-		}
-	}
-
-	async get(profileId: string): Promise<StoredProfile | undefined> {
-		const profile = this.profiles.get(profileId)
-		return profile ? structuredClone(profile) : undefined
-	}
-
-	async put(profile: StoredProfile): Promise<StoredProfile> {
-		const stored = structuredClone(profile)
-		this.profiles.set(stored.profileId, stored)
-		return structuredClone(stored)
-	}
-
-	async delete(profileId: string): Promise<void> {
-		this.profiles.delete(profileId)
-	}
-}
-
-/** 固定让写入失败，用于验证持久化异常下的事务回滚。 */
-class FailingSaveRepository extends MemorySaveRepository {
-	override async put(): Promise<StoredProfile> {
-		throw new Error('synthetic persistence failure')
-	}
-}
-
-/** 收集 Runtime trace，并记录监控会话是否正确结束。 */
-class RecordingRuntimeMonitor implements RuntimeMonitor {
-	readonly verbose = false
-	readonly traces: RuntimeTrace[] = []
-	finished = false
-
-	trace(value: RuntimeTrace): void {
-		this.traces.push(value)
-	}
-
-	finish(): void {
-		this.finished = true
-	}
-}
-
-/** 构造不含任何实体覆盖的空 State 层。 */
-function emptyState(): GameState {
-	return { characters: {}, effects: {}, events: {} }
-}
+import {
+	rule,
+	common,
+	makeConfig,
+	makeGame,
+	makePlayableGame,
+	withImplementations,
+	MemorySaveRepository,
+	FailingSaveRepository,
+	RecordingRuntimeMonitor,
+	emptyState,
+} from './fixtures'
 
 /** restart 应将来源检查点的 Profile 基础值带入新 Run 的所有 Config 路径。 */
 test('restart materializes Profile base overrides across every Config path', () => {
@@ -510,24 +267,26 @@ test('Runtime dependency propagation executes turn-start Reaction and exposes st
 	const game = makeGame()
 	const profile = createProfile(game)
 	const saves = new MemorySaveRepository()
-	const runtime = await GameplayRuntimeImpl.open(game, profile, saves)
+	const runtime = await Runtime.open(game, profile, saves)
 	try {
 		const snapshot = runtime.getSnapshot()
-		const score = snapshot.attributes.find((attribute) => attribute.attributeId === 'score')
+		const score = snapshot.characters
+			.flatMap((character) => character.attributes)
+			.find((attribute) => attribute.attributeId === 'score')
 		assert.equal(score?.value, 1)
-		assert.equal(snapshot.eventCards[0]?.required, true)
+		assert.equal(snapshot.events.available[0]?.required, true)
 		assert.deepEqual(
 			snapshot.advanceTurnBlockers.map((blocker) => [blocker.kind, blocker.eventId]),
 			[['pending-required-event', 'requiredEvent']],
 		)
-		const result = await runtime.dispatch({ type: 'advance-turn' })
+		const result = await runtime.advanceTurn()
 		assert.equal(result.ok, false)
 		if (!result.ok) {
 			assert.equal(result.code, 'blocked')
 			assert.match(result.errorId, /^runtime-/)
 		}
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
@@ -581,45 +340,26 @@ test('Runtime dependency graph only recomputes affected Reaction observers', asy
 			},
 		},
 	})
-	const runtime = await GameplayRuntimeImpl.open(
-		game,
-		createProfile(game),
-		new MemorySaveRepository(),
-	)
+	const runtime = await Runtime.open(game, createProfile(game), new MemorySaveRepository())
 	try {
 		const beforeStart = { ...executions }
-		assert.equal(
-			(
-				await runtime.dispatch({
-					type: 'start-event',
-					eventId: 'requiredEvent',
-				})
-			).ok,
-			true,
-		)
+		assert.equal((await runtime.startEvent('requiredEvent')).ok, true)
 		assert.equal(executions.score, beforeStart.score)
 		assert.equal(executions.turnNumber, beforeStart.turnNumber)
 		assert.equal(executions.instanceCount, beforeStart.instanceCount + 1)
 
-		const active = runtime.getSnapshot().activeEvents[0]
+		const active = runtime.getSnapshot().events.active[0]
 		assert.ok(active)
 		const beforeChoice = { ...executions }
 		assert.equal(
-			(
-				await runtime.dispatch({
-					type: 'choose-single',
-					eventInstanceId: active.eventInstanceId,
-					nodeId: active.currentNodeId,
-					choiceId: 'increment',
-				})
-			).ok,
+			(await runtime.chooseSingle(active.eventInstanceId, active.currentNodeId, 'increment')).ok,
 			true,
 		)
 		assert.equal(executions.score, beforeChoice.score + 1)
 		assert.equal(executions.turnNumber, beforeChoice.turnNumber)
 		assert.equal(executions.instanceCount, beforeChoice.instanceCount)
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
@@ -663,23 +403,15 @@ test('Runtime registers and unregisters TextNode observers with event lifecycle'
 		},
 	})
 	const monitor = new RecordingRuntimeMonitor()
-	const runtime = await GameplayRuntimeImpl.open(
+	const runtime = await Runtime.open(
 		game,
 		createProfile(game),
 		new MemorySaveRepository(),
 		() => monitor,
 	)
 	try {
-		assert.equal(
-			(
-				await runtime.dispatch({
-					type: 'start-event',
-					eventId: 'requiredEvent',
-				})
-			).ok,
-			true,
-		)
-		const active = runtime.getSnapshot().activeEvents[0]
+		assert.equal((await runtime.startEvent('requiredEvent')).ok, true)
+		const active = runtime.getSnapshot().events.active[0]
 		assert.ok(active)
 		const nodeReactionCount = (): number =>
 			monitor.traces.filter(
@@ -688,33 +420,19 @@ test('Runtime registers and unregisters TextNode observers with event lifecycle'
 			).length
 
 		assert.equal(
-			(
-				await runtime.dispatch({
-					type: 'choose-single',
-					eventInstanceId: active.eventInstanceId,
-					nodeId: active.currentNodeId,
-					choiceId: 'increment',
-				})
-			).ok,
+			(await runtime.chooseSingle(active.eventInstanceId, active.currentNodeId, 'increment')).ok,
 			true,
 		)
 		assert.equal(nodeReactionCount(), 1)
 
 		assert.equal(
-			(
-				await runtime.dispatch({
-					type: 'choose-single',
-					eventInstanceId: active.eventInstanceId,
-					nodeId: active.currentNodeId,
-					choiceId: 'complete',
-				})
-			).ok,
+			(await runtime.chooseSingle(active.eventInstanceId, active.currentNodeId, 'complete')).ok,
 			true,
 		)
-		assert.equal((await runtime.dispatch({ type: 'advance-turn' })).ok, true)
+		assert.equal((await runtime.advanceTurn()).ok, true)
 		assert.equal(nodeReactionCount(), 1)
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
@@ -722,14 +440,14 @@ test('Runtime registers and unregisters TextNode observers with event lifecycle'
 test('Runtime monitor correlates command spans and records all turn transitions', async () => {
 	const game = makePlayableGame()
 	const monitor = new RecordingRuntimeMonitor()
-	const runtime = await GameplayRuntimeImpl.open(
+	const runtime = await Runtime.open(
 		game,
 		createProfile(game),
 		new MemorySaveRepository(),
 		() => monitor,
 	)
 	try {
-		const result = await runtime.dispatch({ type: 'advance-turn' })
+		const result = await runtime.advanceTurn()
 		assert.equal(result.ok, true)
 		const commandStartIndex = monitor.traces.findIndex(
 			(trace) => trace.kind === 'command-start' && trace.name === 'advance-turn',
@@ -751,21 +469,17 @@ test('Runtime monitor correlates command spans and records all turn transitions'
 			['turn_end', 'turn_start', 'event_handle'],
 		)
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
 /** turn_end 保存失败时，工作状态、revision 和阶段都必须回到命令执行前。 */
 test('persistence failure rolls back the whole turn-end unit', async () => {
 	const game = makePlayableGame()
-	const runtime = await GameplayRuntimeImpl.open(
-		game,
-		createProfile(game),
-		new FailingSaveRepository(),
-	)
+	const runtime = await Runtime.open(game, createProfile(game), new FailingSaveRepository())
 	try {
 		const before = runtime.getSnapshot()
-		const result = await runtime.dispatch({ type: 'advance-turn' })
+		const result = await runtime.advanceTurn()
 		assert.equal(result.ok, false)
 		if (!result.ok) {
 			assert.equal(result.code, 'persistence-error')
@@ -776,7 +490,7 @@ test('persistence failure rolls back the whole turn-end unit', async () => {
 		assert.equal(after.phase, 'event_handle')
 		assert.equal(after.turnNumber, 1)
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
@@ -819,26 +533,17 @@ test('selector failure discards a terminal candidate before persistence', async 
 		},
 	})
 	const saves = new MemorySaveRepository()
-	const runtime = await GameplayRuntimeImpl.open(game, createProfile(game), saves)
+	const runtime = await Runtime.open(game, createProfile(game), saves)
 	try {
-		assert.equal(
-			(
-				await runtime.dispatch({
-					type: 'start-event',
-					eventId: 'requiredEvent',
-				})
-			).ok,
-			true,
-		)
-		const active = runtime.getSnapshot().activeEvents[0]
+		assert.equal((await runtime.startEvent('requiredEvent')).ok, true)
+		const active = runtime.getSnapshot().events.active[0]
 		assert.ok(active)
 		const before = runtime.getSnapshot()
-		const result = await runtime.dispatch({
-			type: 'choose-single',
-			eventInstanceId: active.eventInstanceId,
-			nodeId: active.currentNodeId,
-			choiceId: 'finish',
-		})
+		const result = await runtime.chooseSingle(
+			active.eventInstanceId,
+			active.currentNodeId,
+			'finish',
+		)
 		assert.equal(result.ok, false)
 		if (!result.ok) assert.equal(result.code, 'script-error')
 		assert.equal(runtime.getSnapshot(), before)
@@ -848,7 +553,7 @@ test('selector failure discards a terminal candidate before persistence', async 
 		)
 		assert.equal(saves.profiles.size, 0)
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
@@ -868,7 +573,7 @@ test('Reaction self-triggering loops stop at a deterministic execution limit', a
 	})
 	const game = makeGame(config)
 	await expect(
-		GameplayRuntimeImpl.open(game, createProfile(game), new MemorySaveRepository()),
+		Runtime.open(game, createProfile(game), new MemorySaveRepository()),
 	).rejects.toThrowError(/(Action execution|Rule recomputation) limit/)
 })
 
@@ -877,21 +582,22 @@ test('Reaction self-triggering loops stop at a deterministic execution limit', a
  * Runtime 和 Repository 都停留在同一个可重试边界。
  */
 test('advance-turn reports a committed boundary when the next turn fails', async () => {
+	let failNextTurn = true
 	const game = withImplementations(makePlayableGame(), {
 		actions: {
 			'score.increment': {
 				key: 'score.increment',
 				exec: (context: ActionContext) => {
-					if (context.turnState.turnNumber >= 2) throw new Error('turn two failed')
+					if (failNextTurn && context.turnState.turnNumber >= 2) throw new Error('turn two failed')
 					context.runState.characters.hero.attributes.score.value += 1
 				},
 			},
 		},
 	})
 	const saves = new MemorySaveRepository()
-	const runtime = await GameplayRuntimeImpl.open(game, createProfile(game), saves)
+	const runtime = await Runtime.open(game, createProfile(game), saves)
 	try {
-		const result = await runtime.dispatch({ type: 'advance-turn' })
+		const result = await runtime.advanceTurn()
 		assert.equal(result.ok, false)
 		if (!result.ok) {
 			assert.equal(result.code, 'script-error')
@@ -905,8 +611,14 @@ test('advance-turn reports a committed boundary when the next turn fails', async
 			stored?.runDatas[stored.current.runId].turnDatas[stored.current.turnId].kind,
 			'turn_end',
 		)
+		failNextTurn = false
+		assert.equal((await runtime.advanceTurn()).ok, true)
+		assert.equal(runtime.getSnapshot().phase, 'event_handle')
+		assert.equal(runtime.getSnapshot().turnNumber, 2)
+		assert.deepEqual(runtime.getCurrentCheckpoint(), stored?.current)
+		assert.equal(runtime.getSnapshot().characters[0].attributes[0].value, 2)
 	} finally {
-		runtime.dispose()
+		runtime.close()
 	}
 })
 
@@ -1023,11 +735,11 @@ test('read-only projection derives lifecycle from the selected historical checkp
 	run.status = 'ended'
 	run.endedAt = endedAt
 	profile.current = { runId: run.runId, turnId: terminalId }
-	const historical = GameplayRuntimeImpl.projectCheckpoint(game, profile, {
+	const historical = projectCheckpoint(game, profile, {
 		runId: run.runId,
 		turnId: initialId,
 	})
-	assert.equal(historical.runStatus, 'active')
+	assert.equal(historical.status, 'active')
 	assert.equal('endedAt' in historical, false)
 })
 
@@ -1059,9 +771,7 @@ test('Rule failures return a copyable error id and complete nested call frames',
 		},
 	})
 	const profile = createProfile(game)
-	await expect(
-		GameplayRuntimeImpl.open(game, profile, new MemorySaveRepository()),
-	).rejects.toSatisfy(
+	await expect(Runtime.open(game, profile, new MemorySaveRepository())).rejects.toSatisfy(
 		(error: unknown) =>
 			error instanceof Error &&
 			/Reaction/.test(error.message) &&
@@ -1085,7 +795,7 @@ test('Runtime construction failures still finish the allocated monitor session',
 	})
 	const monitor = new RecordingRuntimeMonitor()
 	await expect(
-		GameplayRuntimeImpl.open(game, createProfile(game), new MemorySaveRepository(), () => monitor),
+		Runtime.open(game, createProfile(game), new MemorySaveRepository(), () => monitor),
 	).rejects.toThrowError(/synthetic baseline failure/)
 	assert.equal(monitor.finished, true)
 })

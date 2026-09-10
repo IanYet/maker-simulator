@@ -1,25 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
-import type { GameMenuView } from '../../app/services'
-import { useAppServices } from '../../app/useAppServices'
+import type { GameInfo } from '../../gameplay'
+import { resultLocation, playLocation } from '../app/routes'
+import { useGameplay } from '../app/useGameplay'
 import { ButtonLink, StatusBanner, Surface } from '../components'
 import { PageChrome } from './PageChrome'
 import styles from './pages.module.css'
 
 type MenuState =
-	| { status: 'loading' }
-	| { status: 'error'; message: string }
-	| { status: 'ready'; view: GameMenuView }
+	{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; view: GameInfo }
 
 /** 游戏菜单页：展示版本、最近存档和新建/继续/存档入口。 */
 export function GameMenuPage() {
 	const { gameId = '' } = useParams()
-	const services = useAppServices()
+	const services = useGameplay()
 	const [state, setState] = useState<MenuState>({ status: 'loading' })
 
 	useEffect(() => {
 		let active = true
-		services.getGameMenu(gameId).then(
+		services.getGameInfo(gameId).then(
 			(view) => {
 				if (active) setState({ status: 'ready', view })
 			},
@@ -57,9 +56,20 @@ export function GameMenuPage() {
 					</div>
 					<div className={styles.pageActions}>
 						<ButtonLink to={`/games/${encodeURIComponent(gameId)}/new`}>新游戏</ButtonLink>
-						{state.view.recentLocation && state.view.recentLabel && (
-							<ButtonLink variant="secondary" to={state.view.recentLocation}>
-								{state.view.recentLabel}
+						{state.view.recent && (
+							<ButtonLink
+								variant="secondary"
+								to={
+									state.view.recent.kind === 'terminal' || state.view.recent.kind === 'abandoned'
+										? resultLocation(state.view.recent.source)
+										: playLocation(state.view.recent.source.profileId)
+								}
+							>
+								{state.view.recent.kind === 'terminal'
+									? '查看上次结局'
+									: state.view.recent.kind === 'abandoned'
+										? '查看上次记录'
+										: '继续游戏'}
 							</ButtonLink>
 						)}
 						<ButtonLink variant="secondary" to={`/games/${encodeURIComponent(gameId)}/saves`}>

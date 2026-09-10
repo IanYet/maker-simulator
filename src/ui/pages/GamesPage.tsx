@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { GameListItem } from '../../app/services'
-import { useAppServices } from '../../app/useAppServices'
+import type { GameInfo } from '../../gameplay'
+import { useGameplay } from '../app/useGameplay'
 import { ButtonLink, StatusBanner, Surface, type SurfaceTone } from '../components'
 import { PageChrome } from './PageChrome'
 import styles from './pages.module.css'
@@ -10,11 +10,11 @@ const tones: SurfaceTone[] = ['lime', 'lilac', 'cream', 'mint', 'coral', 'pink']
 type LoadState =
 	| { status: 'loading' }
 	| { status: 'error'; message: string }
-	| { status: 'ready'; games: readonly GameListItem[] }
+	| { status: 'ready'; games: readonly GameInfo[] }
 
 /** 游戏包目录页：读取 catalog、加载默认版本并展示可用性。 */
 export function GamesPage() {
-	const services = useAppServices()
+	const services = useGameplay()
 	const [state, setState] = useState<LoadState>({ status: 'loading' })
 
 	useEffect(() => {

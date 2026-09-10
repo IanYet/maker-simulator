@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { useAppServices } from '../../app/useAppServices'
+import type { CheckpointRef, OperationResult } from '../../gameplay'
+import { useGameplay } from '../app/useGameplay'
 import { ButtonLink, StatusBanner } from '../components'
 import { PageChrome } from './PageChrome'
 import styles from './pages.module.css'
@@ -8,18 +9,31 @@ import styles from './pages.module.css'
 /** 新游戏页：只负责触发稳定存档创建，成功后跳转到游玩页。 */
 export function NewGamePage() {
 	const { gameId = '' } = useParams()
-	const services = useAppServices()
+	const services = useGameplay()
 	const navigate = useNavigate()
-	const started = useRef(false)
+	const creation = useRef<{ gameId: string; promise: Promise<OperationResult<CheckpointRef>> }>(
+		undefined,
+	)
 	const [error, setError] = useState<string>()
 
 	useEffect(() => {
-		if (started.current) return
-		started.current = true
-		services.createNewGame(gameId).then(
-			(profile) => navigate(`/play/${encodeURIComponent(profile.profileId)}`, { replace: true }),
-			(reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)),
+		let active = true
+		if (creation.current?.gameId !== gameId)
+			creation.current = { gameId, promise: services.createGame(gameId) }
+		creation.current.promise.then(
+			(result) => {
+				if (!active) return
+				if (result.ok)
+					navigate(`/play/${encodeURIComponent(result.value.profileId)}`, { replace: true })
+				else setError(result.message)
+			},
+			(reason: unknown) => {
+				if (active) setError(reason instanceof Error ? reason.message : String(reason))
+			},
 		)
+		return () => {
+			active = false
+		}
 	}, [gameId, navigate, services])
 
 	return (

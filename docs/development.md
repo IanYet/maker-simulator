@@ -4,7 +4,7 @@
 
 ## 1. 开发环境
 
-项目是 Vite + React + TypeScript 应用，使用 pnpm 管理依赖。当前 Vite 版本要求 Node.js `20.19+` 或 `22.12+`。
+项目在 WSL（Ubuntu-24.04）的 `/home/tong/projects/maker-simulator` 开发，全部 Git、Node.js、pnpm 命令使用 WSL 工具链。应用使用 Vite + React + TypeScript，依赖由 pnpm 管理。当前 Vite 版本要求 Node.js `20.19+` 或 `22.12+`。
 
 ```bash
 pnpm install
@@ -35,32 +35,44 @@ node scripts/build-frostbound-package.mjs
 
 ```text
 src/
-  types/          Config、State、RuntimeSnapshot、Action/Rule 上下文类型
-  package-loader/ catalog/manifest/config/脚本加载、schema 校验与静态 linking
-  runtime/        State 视图、事务、回合状态机、Action/Rule/Reaction、监控
-  persistence/    IndexedDB、稳定存档校验、并发控制、检查点/分支/截断操作
-  session/        面向 UI 的命令门面、busy 状态与存档控制器
-  app/            服务组合、路由和全局依赖注入
-  ui/             页面、可复用组件和 CSS Modules
-public/games/     外部游戏包；不把游戏内容硬编码进引擎
-scripts/          游戏包 authoring 生成与静态审计脚本
-docs/             技术规格、游戏设计和开发文档
+  main.tsx
+  ui/
+    app/              路由、Provider、启动与环境选项
+    pages/            页面与局部展示
+    components/       UI 组件
+    hooks/            usePlay、useSaves 用户交互与生命周期
+    presentation.ts   多处使用的展示转换
+    assets/
+    styles/
+  gameplay/
+    index.ts          显式公共入口
+    gameplay.ts       目录、打开、创建和存档用例
+    diagnostics.ts    诊断信息
+    types/            model、package、game、saves
+    runtime/          Runtime、rules、state-view、reactivity、reactions、snapshot
+    package-loader/   PackageLoader、HttpPackageSource、schemas、linker
+    persistence/      SaveRepository、database、validation、profile-operations
 ```
 
-核心依赖方向如下：
+类按实际职责命名，不使用 Impl 后缀。Game 由 Runtime 直接实现，不建立转发实例。内部使用直接导入；公共入口显式导出，领域存储对象和实现细节不导出给 UI。只保留有实际替代实现的 I/O 接口，不引入通用命令框架或依赖注入容器。
 
 ```text
-React UI → AppServices read models / GameSession
-AppServices → GamePackageLoader / SaveRepository / GameplayRuntimeImpl
-GameSessionImpl → GameplayRuntimeImpl → SaveRepository
-                                      ↓
-                            LoadedGamePackage
-GamePackageLoader → schema → linker → Rule/Action registry
+UI（页面、用户操作、展示）
+  → Gameplay 公共接口（Gameplay / Game / 只读数据）
+    → Runtime（规则、工作状态、事务、检查点）
+    → PackageLoader（加载、校验、linking、缓存）
+    → Persistence（稳定存档校验、纯变换、IndexedDB）
 ```
 
-UI 只读取页面专用 read model 或不可变 `SessionView`/`RuntimeSnapshot`，不取得 Profile、RunData、Repository、游戏包或具体 Runtime。游戏脚本通过 `ActionContext` 和 `RuleContext` 访问运行时视图；持久化边界由 Runtime 与 Persistence 共同维护。
+UI 负责确认、pending、焦点、导航、数字格式、动画和通用文案；Gameplay 返回已求值的角色、属性、Effect、事件、门禁与身份引用。UI 只从 `src/gameplay/index.ts` 导入，不取得 Profile、RunData、Repository、具体 Runtime 或脚本。
 
-游玩页打开 Session 时使用 `AbortController` 绑定页面生命周期；路由切换或组件卸载会取消尚未完成的 `openSession`，若 Runtime 已经构造则先释放，避免过期请求继续创建可观察的运行时。
+Gameplay 管理跨局查询与存档用例；Runtime 直接实现 Game 的具名方法和快照订阅。GameSnapshot 是唯一可订阅的游戏状态，UI 使用 `useSyncExternalStore`。Gameplay 内部不导入 UI、React、路由或 DOM；HTTP/IndexedDB 访问限制在各自 I/O 模块。
+
+Gameplay 提供 `listGames()`、`getGameInfo(gameId)`、`createGame(gameId)`、`openGame(profileId, signal?)`、`listSaves(gameId)`、`getCheckpoint(source)`、`continueGame(source)`、`branchGame(source)`、`truncateGame(source)`、`restartGame(source)`、`setPinned(source, pinned)`、`deleteCheckpoint(source)`、`deleteRun(source)` 和 `deleteProfile(profileId)`。
+
+检查点引用为 `{ profileId, runId, turnId }`，时间线引用为 `{ profileId, runId }`。写操作返回成功/失败结果，创建、继续、分支、截断和重启成功后携带检查点引用，UI 再导航；不返回 URL、按钮文案或页面模型。查询和打开失败抛出可诊断异常，取消打开使用 AbortError。最近访问记录是便利元数据，其失败不能推翻已经成功的领域提交。
+
+存档操作读取一次 Profile，按需加载精确包并做 Config 感知校验，执行纯变换，再校验并等待一次 Repository 写入或删除。结构有效的存档在精确包不可用时仍可删除；继续、分支、截断、pin 与 restart 要求精确 Config。
 
 ## 3. 本地启动与页面流程
 
@@ -76,7 +88,7 @@ UI 只读取页面专用 read model 或不可变 `SessionView`/`RuntimeSnapshot`
 | `/play/:profileId` | 从稳定检查点恢复并游玩 |
 | `/result/:profileId/:runId/:turnId` | 查看终局/放弃检查点并重新开始 |
 
-路由页面使用 `React.lazy()` 按页面拆分；`/arts` 位于游戏路由布局之外。`GameLayout` 只在游戏路由匹配时加载，通过 `AppServicesProvider` 创建应用层组合根并用 `Outlet` 承载当前游戏页面，因此 Arts 页面不会加载包加载器、IndexedDB Repository、Runtime 或 Session。列表、菜单、存档和结果页只调用查询方法取得各自的 read model；游玩页只持有 `GameSession` 接口。页面不自行创建数据库连接、加载游戏包或取得具体 Runtime。
+路由页面使用 React.lazy() 按页面拆分；Arts 位于游戏布局之外。GameLayout 使用 GameplayProvider 注入 Gameplay，游戏路由切换时复用该实例。页面从公共入口获取只读数据；usePlay 用 AbortController 取消过期打开，用 useSyncExternalStore 订阅 GameSnapshot，卸载时 close。useSaves 管理异步预览与存档交互。
 
 ## 4. 游戏包开发
 
@@ -129,7 +141,7 @@ export const actions = {
 ### 4.3 Effect、Event 与 Reaction 约定
 
 - Effect 表示持续物品、条件、增益、减益或世界状态；玩家能在效果面板看到已获得 Effect 的名称和说明。
-- `manuallyActivatable` 为 `true` 的已获得未激活 Effect 会在待激活区域提供按钮；点击后由 `GameSession` 发送 `activate-effect`，Runtime 写入 `activedValue` 并稳定 Effect Reaction。
+- `manuallyActivatable` 为 `true` 的已获得未激活 Effect 会在待激活区域提供按钮；点击后由 UI 调用 `Game.activateEffect()`，Runtime 写入 `activedValue` 并稳定 Effect Reaction。
 - 不需要玩家点击事件卡、会在回合或状态变化时自动执行的 Reaction，按策划默认约定放在 Effect 上，并在 `description` 解释影响。
 - Event 用于叙事内容和玩家分支；EventConfig Reaction 主要响应事件内容自身的持续状态，TextNode Reaction 只在节点处于 active 时注册。
 - `required` 是回合门禁：待处理事件入口或当前 active 节点链上存在 required 节点时，`advance-turn` 会被阻止；不能只依赖玩家先点击事件后再判断。
@@ -139,12 +151,12 @@ export const actions = {
 
 一次新游戏或恢复流程大致经过以下步骤：
 
-1. `GamePackageLoader` 读取 catalog/manifest/config 和可信脚本模块。
+1. `PackageLoader` 读取 catalog/manifest/config 和可信脚本模块。
 2. Zod schema 校验外部 JSON；linker 检查身份、对象 key/id、order、Rule/Action 引用、ValueRef、Reaction 和节点目标。
 3. `createProfile()` 创建稳定存档、首个 RunData 和 `initial` 检查点；配置中直接为 `true` 的 Effect 会进入初始 RunState。
-4. `GameplayRuntimeImpl` 建立 Rule 依赖图、Effect 生命周期 observer 和 Reaction baseline，从检查点自动进入 `turn_start`，稳定后进入 `event_handle`。
-5. 每条 RuntimeCommand 创建一个 Immer draft 和依赖图副本。Action、Rule、Reaction、CheckNode、随机游标和终局请求共享这个处理单元。
-6. 处理单元先完成脚本与状态稳定、生成候选存档和候选 RuntimeSnapshot；需要持久化时，必须等待 IndexedDB 事务完成，随后才一次性替换 Runtime 状态、依赖图、revision 与 snapshot 并通知 Session。任意前置步骤失败都保留旧状态。
+4. `Runtime` 建立 Rule 依赖图、Effect 生命周期 observer 和 Reaction baseline，从检查点自动进入 `turn_start`，稳定后进入 `event_handle`。
+5. 每条 Game 命令创建一个 Immer draft 和依赖图副本。Action、Rule、Reaction、CheckNode、随机游标和终局请求共享这个处理单元。
+6. 处理单元先完成脚本与状态稳定、生成候选存档和候选 GameSnapshot；需要持久化时，必须等待 IndexedDB 事务完成，随后才一次性替换 Runtime 状态、依赖图、revision 与 snapshot 并通知 Game 的订阅者。任意前置步骤失败都保留旧状态。
 7. `advance-turn` 先检查 required blocker，再持久化 `turn_end` 检查点，然后自动开始下一回合。下一回合启动失败时，已经提交的 `turn_end` 会成为当前可见状态，同一命令可以从该边界重试。
 
 EffectConfig 与 EventConfig Reaction 在 Runtime 构造时注册，TextNode Reaction 随 active 节点精确注册和注销；首次进入作用域只建立 baseline。State 写入通过依赖图只重算 dirty observer，同时匹配多个 Reaction 时仍按 EffectConfig、EventConfig、active TextNode 的 canonical ordinal 入队。新增自动规则时，先确认声明层级、实际 State 依赖和可能形成的循环。
@@ -166,7 +178,7 @@ IndexedDB 数据库名为 `maker-simulator`。`profiles` 保存 `StoredProfile`�
 
 Repository 写入前复制并校验完整 StoredProfile，在单个读写事务中完成一次 `put` 或 `delete` 并等待事务结束。运行时只在事务成功后发布候选状态；失败时保留提交前状态。
 
-项目仍处于开发阶段，不维护旧存档结构迁移。修改持久化结构时递增 `src/persistence/database.ts` 的 `DATABASE_VERSION`；upgrade 会保留对象仓库与索引定义，但清空旧结构的存档和应用元数据。需要保留的调试数据应在升级前自行导出。
+项目仍处于开发阶段，不维护旧存档结构迁移。修改持久化结构时递增 `src/gameplay/persistence/database.ts` 的 `DATABASE_VERSION`；upgrade 会保留对象仓库与索引定义，但清空旧结构的存档和应用元数据。需要保留的调试数据应在升级前自行导出。
 
 ## 7. 运行监控与问题排查
 
@@ -190,11 +202,11 @@ trace=trace-44 parent=command-7 command-end choose-single ... ok
 
 1. 先看 package loader 报错阶段：`catalog`、`manifest`、`config`、`module-import`、`schema-validation`、`registry-validation` 或 `linking`。
 2. 再按 command-start 的 `traceId` 筛选相同 `parentId`，查看 transition → action/reaction → transaction → command-end 链，确认具体 id、参数和回滚原因。
-3. 如果 UI 不更新，检查 Runtime 是否发布了新的 snapshot，以及 Session 是否仍处于 busy 状态。
+3. 如果 UI 不更新，检查 Runtime 是否发布了新的 snapshot，以及 UI hook 的 pending 状态。
 4. 如果 `advance-turn` 被拒绝，读取 `advanceTurnBlockers`，确认 required 事件卡、active 节点和终局请求。
 5. 如果出现 IndexedDB object store/index 错误，检查数据库升级版本和 `upgrade` 分支是否覆盖旧 schema。
 
-监控只写浏览器控制台，不写存档，也不会输出完整 State 或 Config。Action/Rule 脚本中的业务错误应抛出带有玩家可理解信息的 Error，Runtime 会回滚当前处理单元并把错误传给 Session/UI。
+监控只写浏览器控制台，不写存档，也不会输出完整 State 或 Config。Action/Rule 脚本中的业务错误应抛出带有玩家可理解信息的 Error，Runtime 会回滚当前处理单元并把错误交给 UI。
 
 ## 8. 注释与提交规范
 

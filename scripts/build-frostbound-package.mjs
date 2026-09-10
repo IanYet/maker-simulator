@@ -427,8 +427,14 @@ addEvent(gameEvent('tunnel-entrance', '地热维护隧道', 14, 5, '管线图指
   singleNode('warm-tunnel', '向下的暖风', 2, '隧道深处传来机器的低鸣。这里可能通往一座仍有热源的地下城。', [
     choice('mark-route', '确认地下路线', 1, routeResolve('tunnel-entrance', 1, null, { knowledge: 2, warmth: 2 })),
   ]),
-  singleNode('cave-in', '塌方后的回声', 3, '入口暂时无法通过，但你确认了另一条绕行管线。', [
-    choice('record-route', '记录绕行路线', 1, routeResolve('tunnel-entrance', 1, null, { parts: -1, knowledge: 1 }), { enabled: reactive(true, 'resource.at-least', 'survivor', 'parts', 1) }),
+  singleNode('cave-in', '塌方后的回声', 3, '入口被碎石堵住，绕行管线的支架也已断裂。你可以修复支架勘察地下通路，或标记险情后返回地面。', [
+    choice('record-route', '记录绕行路线', 1, routeResolve('tunnel-entrance', 1, null, { parts: -1, knowledge: 1 }), {
+      description: '需要并消耗 1 个零件加固支架，确认地下热源路线，极寒知识 +1；零件不足时不可选。',
+      enabled: reactive(true, 'resource.at-least', 'survivor', 'parts', 1),
+    }),
+    choice('withdraw', '标记险情后撤离', 2, resolve('tunnel-entrance', null), {
+      description: '不消耗资源；本次不确认地下路线，也不增加极寒知识。',
+    }),
   ]),
 ], { entryNodeId: 'open', requiredEffect: 'geothermal-map' }))
 

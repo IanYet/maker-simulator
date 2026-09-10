@@ -19,4 +19,45 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: ['src/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(?:^|/)gameplay/(?!index(?:\.ts)?$)',
+              message: 'UI 只能从 Gameplay 公共入口导入能力与只读类型。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/gameplay/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'react',
+                'react/*',
+                'react-dom',
+                'react-dom/*',
+                'react-router',
+                'react-router/*',
+                '**/ui/**',
+              ],
+              message: 'Gameplay 不依赖 UI、React 或路由。',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': ['error', 'window', 'document', 'location', 'navigator'],
+    },
+  },
 ])

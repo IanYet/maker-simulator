@@ -1,5 +1,5 @@
 import { assert, expect, test } from 'vitest'
-import { ReactiveDependencyGraph } from '../src/runtime/reactivity'
+import { ReactiveDependencyGraph } from '../src/gameplay/runtime/reactivity'
 
 /** 缓存只在依赖路径失效后重算，并把失效沿计算节点反向边传播给 observer。 */
 test('cached computation only reruns after one of its State dependencies changes', () => {

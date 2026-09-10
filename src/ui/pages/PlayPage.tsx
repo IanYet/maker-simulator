@@ -1,41 +1,24 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import type {
-	ActiveEventView,
-	AttributeView,
-	EffectView,
-	GameSession,
-	SessionCommandResult,
-} from '../../types'
-import { useAppServices } from '../../app/useAppServices'
+import { useEffect, useRef, type RefObject } from 'react'
+import { useParams } from 'react-router'
+import type { ActiveEventView, EffectView, Game, CommandResult } from '../../gameplay'
+import { useOpenGame, usePlay } from '../hooks/usePlay'
+import { formatAttribute, blockerMessage } from '../presentation'
 import { Button, ConfirmDialog, LiveRegion, StatusBanner, Surface } from '../components'
 import styles from './pages.module.css'
-
-type SessionState =
-	| { status: 'loading' }
-	| { status: 'error'; message: string }
-	| { status: 'ready'; session: GameSession }
-
-interface AttributeChange {
-	from: string
-	to: string
-	delta: number
-	token: string
-}
 
 const attributeKey = (characterId: string, attributeId: string): string =>
 	`${characterId}.${attributeId}`
 
 function EffectCard({
 	effect,
-	session,
+	game,
 	busy,
 	execute,
 }: {
 	effect: EffectView
-	session: GameSession
+	game: Game
 	busy: boolean
-	execute: (command: Promise<SessionCommandResult>) => Promise<void>
+	execute: (command: () => Promise<CommandResult>) => Promise<void>
 }) {
 	const pending = !effect.actived
 	return (
@@ -55,7 +38,7 @@ function EffectCard({
 					<Button
 						className={styles.effectAction}
 						disabled={busy || !effect.canActivate}
-						onClick={() => void execute(session.activateEffect(effect.effectId))}
+						onClick={() => void execute(() => game.activateEffect(effect.effectId))}
 						variant="secondary"
 					>
 						激活
@@ -67,37 +50,10 @@ function EffectCard({
 	)
 }
 
-/** 游戏主界面：连接 SessionView、事件操作、属性/Effect 面板和回合推进。 */
+/** 游玩页面只负责连接 Game 生命周期与界面。 */
 export function PlayPage() {
 	const { profileId = '' } = useParams()
-	const services = useAppServices()
-	const navigate = useNavigate()
-	const [state, setState] = useState<SessionState>({ status: 'loading' })
-
-	useEffect(() => {
-		let active = true
-		let opened: GameSession | undefined
-		const controller = new AbortController()
-		services.openSession(profileId, navigate, controller.signal).then(
-			(session) => {
-				opened = session
-				if (active) setState({ status: 'ready', session })
-				else session.dispose()
-			},
-			(error: unknown) => {
-				if (active)
-					setState({
-						status: 'error',
-						message: error instanceof Error ? error.message : String(error),
-					})
-			},
-		)
-		return () => {
-			active = false
-			controller.abort()
-			opened?.dispose()
-		}
-	}, [navigate, profileId, services])
+	const state = useOpenGame(profileId)
 
 	if (state.status === 'loading') {
 		return (
@@ -113,137 +69,55 @@ export function PlayPage() {
 			</main>
 		)
 	}
-	return <GameScreen session={state.session} />
+	return <GameScreen game={state.game} />
 }
 
-function GameScreen({ session }: { session: GameSession }) {
-	const navigate = useNavigate()
-	const subscribe = useMemo(() => (listener: () => void) => session.subscribe(listener), [session])
-	const getSnapshot = useMemo(() => () => session.getView(), [session])
-	const view = useSyncExternalStore(subscribe, getSnapshot)
-	const [message, setMessage] = useState<string>()
-	const [dialog, setDialog] = useState<'exit' | 'saves' | 'abandon'>()
-	const [attributeChanges, setAttributeChanges] = useState<Record<string, AttributeChange>>({})
+function GameScreen({ game }: { game: Game }) {
+	const {
+		snapshot,
+		busy,
+		message,
+		dialog,
+		setDialog,
+		focused,
+		focusEvent,
+		attributeChanges,
+		execute,
+		leave,
+		abandonAndExit,
+	} = usePlay(game)
 	const nodeHeading = useRef<HTMLHeadingElement>(null)
-	const focused = view.runtime.activeEvents.find(
-		(event) => event.eventInstanceId === view.focusedEventInstanceId,
-	)
 	const focusedEventInstanceId = focused?.eventInstanceId
 	const focusedNodeId = focused?.currentNodeId
-
 	useEffect(() => {
 		if (focusedEventInstanceId && focusedNodeId) nodeHeading.current?.focus()
 	}, [focusedEventInstanceId, focusedNodeId])
-
-	useEffect(() => {
-		const changes = Object.entries(attributeChanges)
-		if (changes.length === 0) return
-		const timer = setTimeout(() => {
-			setAttributeChanges((active) => {
-				const next = { ...active }
-				for (const [key, change] of changes) {
-					if (active[key]?.token === change.token) delete next[key]
-				}
-				return next
-			})
-		}, 2200)
-		return () => clearTimeout(timer)
-	}, [attributeChanges])
-
-	/** 记录一次命令造成的属性差异，并交给面板动画短暂展示。 */
-	function showAttributeChanges(
-		previous: readonly AttributeView[],
-		current: readonly AttributeView[],
-		revision: number,
-	): void {
-		const previousByKey = new Map(
-			previous.map((attribute) => [
-				attributeKey(attribute.characterId, attribute.attributeId),
-				attribute,
-			]),
-		)
-		const changes: Record<string, AttributeChange> = {}
-
-		for (const attribute of current) {
-			const key = attributeKey(attribute.characterId, attribute.attributeId)
-			const prior = previousByKey.get(key)
-			if (
-				!prior ||
-				(prior.value === attribute.value && prior.displayValue === attribute.displayValue)
-			)
-				continue
-			changes[key] = {
-				from: prior.displayValue,
-				to: attribute.displayValue,
-				delta: attribute.value - prior.value,
-				token: `${revision}:${key}`,
-			}
-		}
-
-		if (Object.keys(changes).length > 0)
-			setAttributeChanges((active) => ({ ...active, ...changes }))
-	}
-
-	const attributesByCharacter = useMemo(() => {
-		const groups = new Map<
-			string,
-			{
-				displayName: string
-				attributes: typeof view.runtime.attributes
-			}
-		>()
-		for (const attribute of view.runtime.attributes) {
-			const current = groups.get(attribute.characterId)
-			groups.set(attribute.characterId, {
-				displayName: attribute.characterDisplayName,
-				attributes: [...(current?.attributes ?? []), attribute],
-			})
-		}
-		return groups
-	}, [view])
-	const activeEffects = view.runtime.effects.filter((effect) => effect.actived)
-	const pendingEffects = view.runtime.effects.filter((effect) => !effect.actived)
-
-	/** 执行 Session 命令，统一处理错误提示、属性动画和终局导航。 */
-	async function execute(command: Promise<SessionCommandResult>): Promise<void> {
-		const previousAttributes = view.runtime.attributes
-		setMessage(undefined)
-		const result = await command
-		if (!result.ok) {
-			setMessage(result.message)
-			return
-		}
-		const nextView = session.getView()
-		showAttributeChanges(previousAttributes, nextView.runtime.attributes, nextView.runtime.revision)
-		if (nextView.resultLocation) navigate(nextView.resultLocation, { replace: true })
-	}
-
-	async function abandonAndExit(): Promise<void> {
-		setMessage(undefined)
-		const result = await session.abandonAndExit()
-		if (!result.ok) setMessage(result.message)
-	}
+	const activeEffects = snapshot.effects.filter((effect) => effect.actived)
+	const pendingEffects = snapshot.effects.filter((effect) => !effect.actived)
+	const blockers = snapshot.advanceTurnBlockers
+		.map((blocker) => blockerMessage(blocker, snapshot))
+		.join('；')
 
 	function eventButtons() {
 		return (
 			<>
-				{view.runtime.activeEvents.map((event) => (
+				{snapshot.events.active.map((event) => (
 					<button
-						aria-pressed={event.eventInstanceId === view.focusedEventInstanceId}
-						className={`${styles.eventButton} ${event.eventInstanceId === view.focusedEventInstanceId ? styles.eventButtonActive : ''}`}
+						aria-pressed={event.eventInstanceId === focusedEventInstanceId}
+						className={`${styles.eventButton} ${event.eventInstanceId === focusedEventInstanceId ? styles.eventButtonActive : ''}`}
 						key={event.eventInstanceId}
-						onClick={() => session.focusEvent(event.eventInstanceId)}
+						onClick={() => focusEvent(event.eventInstanceId)}
 						type="button"
 					>
 						{event.displayName} · 进行中{event.required ? ' · 必须处理' : ''}
 					</button>
 				))}
-				{view.runtime.eventCards.map((event) => (
+				{snapshot.events.available.map((event) => (
 					<button
 						className={styles.eventButton}
-						disabled={view.busy}
+						disabled={busy}
 						key={event.eventId}
-						onClick={() => void execute(session.startEvent(event.eventId))}
+						onClick={() => void execute(() => game.startEvent(event.eventId))}
 						type="button"
 					>
 						{event.displayName} · 开始{event.required ? ' · 必须处理' : ''}
@@ -259,13 +133,15 @@ function GameScreen({ session }: { session: GameSession }) {
 				<aside className={styles.sidebar} aria-label="游戏状态">
 					<section className={styles.sideSection}>
 						<h2 className={styles.sectionLabel}>Attributes / 属性</h2>
-						{attributesByCharacter.size === 0 && <p>暂无可见属性。</p>}
-						{[...attributesByCharacter.entries()].map(([characterId, group]) => (
-							<div className={styles.attributeGroup} key={characterId}>
+						{snapshot.characters.every((character) => character.attributes.length === 0) && (
+							<p>暂无可见属性。</p>
+						)}
+						{snapshot.characters.map((group) => (
+							<div className={styles.attributeGroup} key={group.characterId}>
 								<h3>{group.displayName}</h3>
 								{group.attributes.map((attribute) => {
 									const change =
-										attributeChanges[attributeKey(attribute.characterId, attribute.attributeId)]
+										attributeChanges[attributeKey(group.characterId, attribute.attributeId)]
 									const direction = change
 										? change.delta > 0
 											? styles.attributeChangePositive
@@ -276,12 +152,12 @@ function GameScreen({ session }: { session: GameSession }) {
 									return (
 										<div
 											className={`${styles.attributeRow} ${change ? styles.attributeRowChanged : ''}`}
-											key={attributeKey(attribute.characterId, attribute.attributeId)}
+											key={attributeKey(group.characterId, attribute.attributeId)}
 										>
 											<span>{attribute.displayName}</span>
 											<span className={styles.attributeValueWrap}>
 												<span className={styles.attributeValue}>
-													{attribute.displayValue}
+													{formatAttribute(attribute)}
 													{attribute.min !== undefined || attribute.max !== undefined
 														? ` / ${attribute.min ?? '−∞'}–${attribute.max ?? '∞'}`
 														: ''}
@@ -304,7 +180,7 @@ function GameScreen({ session }: { session: GameSession }) {
 					</section>
 					<section className={styles.sideSection}>
 						<h2 className={styles.sectionLabel}>Effects / 构建</h2>
-						{view.runtime.effects.length === 0 ? (
+						{snapshot.effects.length === 0 ? (
 							<p>尚未获得 Effect。</p>
 						) : (
 							<>
@@ -314,11 +190,11 @@ function GameScreen({ session }: { session: GameSession }) {
 										{activeEffects.length === 0 && <p>暂无已激活 Effect。</p>}
 										{activeEffects.map((effect) => (
 											<EffectCard
-												busy={view.busy}
+												busy={busy}
 												effect={effect}
 												execute={execute}
 												key={effect.effectId}
-												session={session}
+												game={game}
 											/>
 										))}
 									</div>
@@ -329,11 +205,11 @@ function GameScreen({ session }: { session: GameSession }) {
 										{pendingEffects.length === 0 && <p>暂无待激活 Effect。</p>}
 										{pendingEffects.map((effect) => (
 											<EffectCard
-												busy={view.busy}
+												busy={busy}
 												effect={effect}
 												execute={execute}
 												key={effect.effectId}
-												session={session}
+												game={game}
 											/>
 										))}
 									</div>
@@ -346,11 +222,11 @@ function GameScreen({ session }: { session: GameSession }) {
 					<header className={styles.playHeader}>
 						<div>
 							<p className={styles.sectionLabel}>Current run</p>
-							<h1 className={styles.playTitle}>{view.gameName}</h1>
+							<h1 className={styles.playTitle}>{snapshot.game.name}</h1>
 						</div>
 						<div className={styles.playMeta}>
-							回合 {view.runtime.turnNumber} · {view.runtime.phase}
-							{view.busy ? ' · 执行中' : ''}
+							回合 {snapshot.turnNumber} · {snapshot.phase}
+							{busy ? ' · 执行中' : ''}
 						</div>
 					</header>
 					{message && (
@@ -359,7 +235,7 @@ function GameScreen({ session }: { session: GameSession }) {
 						</div>
 					)}
 					<div className={styles.eventStrip} aria-label="事件入口">
-						{view.runtime.activeEvents.length === 0 && view.runtime.eventCards.length === 0 ? (
+						{snapshot.events.active.length === 0 && snapshot.events.available.length === 0 ? (
 							<span className={styles.playMeta}>本回合没有可启动事件</span>
 						) : (
 							eventButtons()
@@ -369,9 +245,9 @@ function GameScreen({ session }: { session: GameSession }) {
 						{focused ? (
 							<EventNode
 								key={`${focused.eventInstanceId}:${focused.currentNodeId}`}
-								session={session}
+								game={game}
 								event={focused}
-								busy={view.busy}
+								busy={busy}
 								execute={execute}
 								headingRef={nodeHeading}
 							/>
@@ -387,25 +263,22 @@ function GameScreen({ session }: { session: GameSession }) {
 					</div>
 					<footer className={styles.actionBar}>
 						<div className={styles.actionBarSecondary}>
-							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('exit')}>
+							<Button variant="tertiary" disabled={busy} onClick={() => setDialog('exit')}>
 								退出
 							</Button>
-							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('abandon')}>
+							<Button variant="tertiary" disabled={busy} onClick={() => setDialog('abandon')}>
 								放弃
 							</Button>
-							<Button variant="tertiary" disabled={view.busy} onClick={() => setDialog('saves')}>
+							<Button variant="tertiary" disabled={busy} onClick={() => setDialog('saves')}>
 								选择存档
 							</Button>
 						</div>
 						<div className={styles.actionBarPrimary}>
-							{view.busy && <span className={styles.busy}>处理中</span>}
+							{busy && <span className={styles.busy}>处理中</span>}
 							<Button
-								disabled={view.busy || !view.runtime.canAdvanceTurn}
-								title={
-									view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；') ||
-									undefined
-								}
-								onClick={() => void execute(session.advanceTurn())}
+								disabled={busy || !snapshot.canAdvanceTurn}
+								title={blockers || undefined}
+								onClick={() => void execute(() => game.advanceTurn())}
 							>
 								下一回合
 							</Button>
@@ -413,12 +286,7 @@ function GameScreen({ session }: { session: GameSession }) {
 					</footer>
 				</section>
 			</div>
-			<LiveRegion>
-				{message ||
-					(view.busy
-						? '正在执行命令'
-						: view.runtime.advanceTurnBlockers.map((blocker) => blocker.message).join('；'))}
-			</LiveRegion>
+			<LiveRegion>{message || (busy ? '正在执行命令' : blockers)}</LiveRegion>
 			<ConfirmDialog
 				open={dialog === 'exit'}
 				title="退出当前回合？"
@@ -426,7 +294,7 @@ function GameScreen({ session }: { session: GameSession }) {
 				confirmLabel="退出"
 				onClose={() => setDialog(undefined)}
 				onConfirm={async () => {
-					await session.exitAndSave()
+					leave('menu')
 					setDialog(undefined)
 				}}
 			/>
@@ -437,7 +305,7 @@ function GameScreen({ session }: { session: GameSession }) {
 				confirmLabel="打开存档"
 				onClose={() => setDialog(undefined)}
 				onConfirm={async () => {
-					await session.openSaveBrowser()
+					leave('saves')
 					setDialog(undefined)
 				}}
 			/>
@@ -458,16 +326,16 @@ function GameScreen({ session }: { session: GameSession }) {
 }
 
 function EventNode({
-	session,
+	game,
 	event,
 	busy,
 	execute,
 	headingRef,
 }: {
-	session: GameSession
+	game: Game
 	event: ActiveEventView
 	busy: boolean
-	execute: (command: Promise<SessionCommandResult>) => Promise<void>
+	execute: (command: () => Promise<CommandResult>) => Promise<void>
 	headingRef: RefObject<HTMLHeadingElement | null>
 }) {
 	const node = event.currentNode
@@ -489,8 +357,8 @@ function EventNode({
 							disabled={busy || !choice.enabled}
 							key={choice.choiceId}
 							onClick={() =>
-								void execute(
-									session.chooseSingle(event.eventInstanceId, node.nodeId, choice.choiceId),
+								void execute(() =>
+									game.chooseSingle(event.eventInstanceId, node.nodeId, choice.choiceId),
 								)
 							}
 							variant="secondary"
@@ -515,8 +383,8 @@ function EventNode({
 									aria-label={`减少 ${choice.displayName}`}
 									disabled={busy || !choice.enabled || choice.count === 0}
 									onClick={() =>
-										void execute(
-											session.updateSelection(
+										void execute(() =>
+											game.setChoiceCount(
 												event.eventInstanceId,
 												node.nodeId,
 												choice.choiceId,
@@ -541,8 +409,8 @@ function EventNode({
 										(choice.maxCount !== undefined && choice.count >= choice.maxCount)
 									}
 									onClick={() =>
-										void execute(
-											session.updateSelection(
+										void execute(() =>
+											game.setChoiceCount(
 												event.eventInstanceId,
 												node.nodeId,
 												choice.choiceId,
@@ -562,12 +430,8 @@ function EventNode({
 								disabled={busy || !command.enabled}
 								key={command.commandId}
 								onClick={() =>
-									void execute(
-										session.executeNodeCommand(
-											event.eventInstanceId,
-											node.nodeId,
-											command.commandId,
-										),
+									void execute(() =>
+										game.executeNodeCommand(event.eventInstanceId, node.nodeId, command.commandId),
 									)
 								}
 							>

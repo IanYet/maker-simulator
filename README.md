@@ -43,7 +43,7 @@ Maker Simulator 是一个面向*网状叙事的事件驱动的构建 roguelike �
 
 ## 本地运行
 
-需要 Node.js 和 pnpm。
+开发环境为 WSL（Ubuntu-24.04），在 `/home/tong/projects/maker-simulator` 使用 WSL 内的 Node.js 和 pnpm 执行以下命令。
 
 ```bash
 pnpm install
@@ -135,18 +135,16 @@ node scripts/build-frostbound-package.mjs
 ## 架构
 
 ```text
-React UI → AppServices read models / GameSession
-AppServices → GamePackageLoader / SaveRepository / GameplayRuntime
-GameSession → GameplayRuntime → SaveRepository → IndexedDB
-GamePackageLoader → schema/linker → LoadedGamePackage
+UI（页面、用户操作、展示）
+  → Gameplay 公共接口（Gameplay / Game / 只读数据）
+    → Runtime（规则、工作状态、事务、检查点）
+    → PackageLoader（加载、校验、linking、缓存）
+    → Persistence（稳定存档校验、纯变换、IndexedDB）
 ```
 
-- UI 只消费应用层 read model、GameSession 接口、SessionView 和 RuntimeSnapshot。
-- AppServices 隐藏游戏包、Repository 与具体 Runtime 实现，并组合页面查询和应用命令。
-- Session 管理 busy、事件焦点、导航与应用命令。
-- Runtime 分开持有稳定存档和未提交工作状态，管理事务、脚本执行、事件图和回合状态机。
-- Package loader 负责外部输入校验与静态链接。
-- Persistence 只接收可序列化、已校验的稳定存档，并在单个 IndexedDB 事务中完成写入或删除。
+UI 负责确认、pending、焦点、导航、数字格式、动画和通用文案；Gameplay 返回已求值的角色、属性、Effect、事件、门禁与身份引用。UI 只从 `src/gameplay/index.ts` 导入，不取得 Profile、RunData、Repository、具体 Runtime 或脚本。
+
+Gameplay 管理跨局查询与存档用例；Runtime 直接实现 Game 的具名方法和快照订阅。GameSnapshot 是唯一可订阅的游戏状态，UI 使用 `useSyncExternalStore`。Gameplay 内部不导入 UI、React、路由或 DOM；HTTP/IndexedDB 访问限制在各自 I/O 模块。
 
 ## 计划
 

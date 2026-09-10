@@ -7,7 +7,7 @@
 ## 设计原则
 
 - 一个外部游戏包对应游戏列表中的一个游戏。
-- UI 只读取 AppServices 提供的页面 read model，或通过 GameSession 读取不可变 SessionView 并调用宿主命令；UI 不取得游戏包、存档对象、Repository、具体 Runtime，也不直接查找或执行 JavaScript Action 函数。
+- UI 只通过 Gameplay 公共入口查询只读领域数据，或订阅 GameSnapshot 并调用 Game 方法；UI 不取得游戏包、存档对象、Repository、具体 Runtime，也不直接查找或执行 JavaScript Action 函数。
 - `startEvent`、`advanceTurn`、保存、放弃和重开是宿主命令，不依赖游戏脚本中约定的 Action 名。Choice 与 NodeCommand 引用的 Action 仍由统一 Action 执行器执行。
 - 游戏脚本在 Action 中先把结局字段写入普通 RunState，再调用 `context.endRun()` 请求终局。UI 只读取 RunData 生命周期是否为 `ended`，不解释结局字段，也不把结局限制为成功或失败。
 - UI 按钮对快速重复点击做防抖。命令执行期间禁用会引发重复处理单元的操作，命令和其引发的 Reaction 队列稳定后再统一刷新界面。
@@ -259,21 +259,22 @@ Effect 按 Config `order` 排序。绑定 Character 时可以显示所属 Charac
 
 ### UI 与宿主命令
 
-下表的 camelCase 名称是 `GameSession` 为组件提供的 facade。它们只负责维护应用级 busy/导航状态并转换为权威 RuntimeCommand，例如 `startEvent(id)` 调用 `runtime.dispatch({ type: 'start-event', eventId: id })`，`updateSelection(...)` 转换为 `set-multiple-choice`。游戏引擎只有[运行时流程文档](./gameplay-runtime-flow.md#gameplayruntime-接口)定义的 `dispatch` 协议，不存在第二套字符串命令。
+UI 将用户操作转成 Game 的具名方法调用；Runtime 直接实现这些方法并重新校验规则。UI 负责确认、pending、焦点与导航。
 
-| 玩家操作 | UI 调用 | 引擎职责 | 是否执行游戏 Action |
-| --- | --- | --- | --- |
-| 点击可启动事件卡片 | `startEvent(eventId)` | 校验 phase、unlocked、enabled 与启动记录，创建 EventInstance | 否；这是宿主生命周期命令 |
-| 点击进行中事件卡片 | `focusEvent(instanceId)` | 只改变 UI 聚焦状态 | 否 |
-| 点击单选 Choice | `chooseSingle(instanceId, nodeId, choiceId)` | 定位配置并通过 Action 执行器执行 Choice Action | 是 |
-| 增减多选数量 | `updateSelection(...)` | 校验并写入 TurnState 临时选择 | 否 |
-| 点击 NodeCommand | `executeNodeCommand(...)` | 读取完整选择并执行配置 Action | 是 |
-| 点击下一回合 | `advanceTurn()` | 校验门禁并驱动回合 phase | 否 |
-| 再来一局 | `restartRun()` | 仅在 Run ended 或 abandoned 后创建 restart RunData | 否 |
+| 玩家操作 | 调用 | Gameplay 职责 |
+| --- | --- | --- |
+| 启动事件 | game.startEvent(eventId) | 校验并创建实例 |
+| 激活 Effect | game.activateEffect(effectId) | 写入激活状态并稳定 Reaction |
+| 聚焦进行中事件 | UI 更新 focus | 无状态命令 |
+| 单选 | game.chooseSingle(instanceId, nodeId, choiceId) | 执行 Choice Action |
+| 多选数量 | game.setChoiceCount(...) | 校验并写入 TurnState |
+| NodeCommand | game.executeNodeCommand(...) | 执行 Command Action |
+| 下一回合 | game.advanceTurn() | 门禁、结束阶段、检查点与下一回合 |
+| 放弃 | game.abandon() | 持久化 abandoned，UI 成功后 close 并导航 |
+| 退出/选择存档 | game.close() 后 UI 导航 | 丢弃未提交工作 |
+| 再来一局 | gameplay.restartGame(source) | 从终态创建新 Run，返回身份引用 |
 
-`startEvent` 不从 Action 注册表中查找名为 `start_event` 的函数。游戏脚本可以自由命名 authored Action，宿主生命周期不会与脚本名称强耦合。
-
-`focusEvent` 是 `GameSession` 的同步 UI 操作，不进入引擎处理单元，也不写入 TurnState；省略实例 id 时清除聚焦。其他命令是否产生 State draft 由其宿主语义决定。
+focus 保存在 UI，改变 focus 不修改 TurnState 或 revision。UI 不查找 Action registry，脚本执行由 Runtime 根据 Config 决定。
 
 ### 节点展示
 
@@ -322,7 +323,7 @@ Effect 按 Config `order` 排序。绑定 Character 时可以显示所属 Charac
 7. 等待自动执行稳定；
 8. 若期间没有进入 `ended`，则进入 `event_handle` 并返回新的 UI 视图。
 
-UI 不直接写入 phase，也不通过某个脚本 Action 模拟阶段切换。若步骤 5 的检查点已成功保存、而步骤 6 或 7 失败，Session 刷新到已提交的 `turn_end`，错误结果标记 `committed: true`；玩家再次点击同一按钮即可重试下一回合。保存检查点本身失败时 `committed: false`，界面保留命令前状态。
+UI 不直接写入 phase，也不通过某个脚本 Action 模拟阶段切换。若步骤 5 的检查点已成功保存、而步骤 6 或 7 失败，UI 通过 GameSnapshot 刷新到已提交的 `turn_end`，错误结果标记 `committed: true`；玩家再次点击同一按钮即可重试下一回合。保存检查点本身失败时 `committed: false`，界面保留命令前状态。
 
 ## 底部按钮语义
 
@@ -371,32 +372,27 @@ UI 不得：
 
 ## UI 与数据边界
 
-UI 通过宿主应用服务获取数据：
+```text
+UI（页面、用户操作、展示）
+  → Gameplay 公共接口（Gameplay / Game / 只读数据）
+    → Runtime（规则、工作状态、事务、检查点）
+    → PackageLoader（加载、校验、linking、缓存）
+    → Persistence（稳定存档校验、纯变换、IndexedDB）
+```
 
-| 服务 | 职责 |
-| --- | --- |
-| AppServices 查询 | 组合游戏包与存档数据，返回 GameListItem、GameMenuView、SaveBrowserView、ResultView 等页面专用 read model |
-| AppServices 命令 | 创建新存档、执行 SaveCommand、restart 或打开 GameSession；隐藏 Repository 和具体实现 |
-| GameSession | 执行游玩与应用命令，维护 busy、focus、导航并暴露 SessionView |
-| SessionView | 向游玩 UI 提供不可变、已解析的属性、Effect、事件、节点、门禁、生命周期和可选结果路由 |
+UI 负责确认、pending、焦点、导航、数字格式、动画和通用文案；Gameplay 返回已求值的角色、属性、Effect、事件、门禁与身份引用。UI 只从 `src/gameplay/index.ts` 导入，不取得 Profile、RunData、Repository、具体 Runtime 或脚本。
 
-React 组件不得持有 StoredProfile、RunData、LoadedGamePackage、Repository、具体 GameplayRuntime 或运行时 Proxy，不得在 render 中执行 Rule，也不得直接调用 Action 的 `exec`。React StrictMode 下的重复 render 不得产生引擎写入、Action 调用或 PRNG 推进。
+Gameplay 管理跨局查询与存档用例；Runtime 直接实现 Game 的具名方法和快照订阅。GameSnapshot 是唯一可订阅的游戏状态，UI 使用 `useSyncExternalStore`。Gameplay 内部不导入 UI、React、路由或 DOM；HTTP/IndexedDB 访问限制在各自 I/O 模块。
 
-`GameSession`、`SessionView` 与 `SaveCommand` 公共类型定义在 [runtime.ts](../../src/types/runtime.ts)，页面 read model 定义在应用服务边界。分支、截断、pin 和分层手动删除通过 AppServices 的命令方法执行，组件不创建 controller，也不直接读取或改写 StoredProfile。
+Gameplay 提供 `listGames()`、`getGameInfo(gameId)`、`createGame(gameId)`、`openGame(profileId, signal?)`、`listSaves(gameId)`、`getCheckpoint(source)`、`continueGame(source)`、`branchGame(source)`、`truncateGame(source)`、`restartGame(source)`、`setPinned(source, pinned)`、`deleteCheckpoint(source)`、`deleteRun(source)` 和 `deleteProfile(profileId)`。
 
-SessionView 至少应提供：
+检查点引用为 `{ profileId, runId, turnId }`，时间线引用为 `{ profileId, runId }`。写操作返回成功/失败结果，创建、继续、分支、截断和重启成功后携带检查点引用，UI 再导航；不返回 URL、按钮文案或页面模型。查询和打开失败抛出可诊断异常，取消打开使用 AbortError。最近访问记录是便利元数据，其失败不能推翻已经成功的领域提交。
 
-- 当前游戏包和 Profile 标识；
-- Run 生命周期；
-- 当前回合与 phase；
-- 已过滤、排序的属性和 Effect；
-- 可启动事件卡片和 active EventInstance；
-- 当前聚焦节点；
-- `canAdvanceTurn` 及不可推进原因；
-- 命令 busy 状态；
-- ended 时保留的结局 EventNode 只读视图。
+存档操作读取一次 Profile，按需加载精确包并做 Config 感知校验，执行纯变换，再校验并等待一次 Repository 写入或删除。结构有效的存档在精确包不可用时仍可删除；继续、分支、截断、pin 与 restart 要求精确 Config。
 
-结果页不打开可写 GameplayRuntime。AppServices 从指定 terminal/abandoned snapshot 构造一次性只读投影，不启动回合状态机、不写存档，也不更新恢复游标。
+GameSnapshot 按角色包含属性，事件分为 available/active，包含有效节点、选项、Effect、推进门禁和生命周期。UI 负责渲染、通用文案、焦点与 pending，不维护第二份领域订阅状态。
+
+结果与预览都调用 getCheckpoint(source)，只读投影目标检查点，不创建 Runtime 或 observer，不运行 Action、写存档或改游标。结果页验证 terminal/abandoned，通用标题与按钮属于 UI。
 
 ## 加载、错误与空状态
 
@@ -455,9 +451,9 @@ SessionView 至少应提供：
 
 ## 建议的 MVP 实施顺序
 
-1. 确定游戏包 manifest、PackageCatalog、SaveRepository 和 GameSession 接口。
+1. 确定游戏包 manifest、PackageCatalog、SaveRepository 和 Game 接口。
 2. 实现仅在 `turn_end` 提交的存档边界及应用级最近 Profile 索引。
-3. 使用 mock SessionView 实现游戏列表、游戏菜单、存档空状态和桌面游戏布局。
+3. 使用 GameSnapshot 示例数据 实现游戏列表、游戏菜单、存档空状态和桌面游戏布局。
 4. 接入 `startEvent`、节点操作与 `advanceTurn`。
 5. 实现存档树、创建 branch、截断、pin 和来源缺失降级。
 6. 接入 `context.endRun()` 后的 ended 生命周期跳转和结局展示。

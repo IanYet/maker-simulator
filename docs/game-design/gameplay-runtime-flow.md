@@ -1,229 +1,65 @@
 # 游戏运行时流程与 UI 绑定
 
-本文是局级运行时编排的权威定义：说明已经完成 linking 的 `LoadedGamePackage` 如何与新建或恢复的 State 组成 GameplayRuntime，以及 UI 命令、引擎状态机、Action/Reaction 与单回合如何协作。对应公共类型见 [runtime.ts](../../src/types/runtime.ts)，包的发现与加载见[外部游戏包与加载](./game-package.md)，玩家页面与布局见[玩家流程与界面设计](./player-flow-and-ui.md)。
+本文定义 Game 接口、只读快照与运行时状态机。公共协议见 [game.ts](../../src/gameplay/types/game.ts)，存档查询见 [saves.ts](../../src/gameplay/types/saves.ts)。包加载见[外部游戏包与加载](./game-package.md)，玩家流程见[玩家流程与界面设计](./player-flow-and-ui.md)。
 
 ## 三类调用边界
 
-| 类型 | 发起方 | 用途 | 示例 |
-| --- | --- | --- | --- |
-| RuntimeCommand | UI | 表达玩家意图，由引擎重新校验 | `StartEvent`、`ChooseSingle`、`AdvanceTurn` |
-| internal transition | 引擎状态机 | 推进 phase、回合、EventInstance 与检查点 | 进入 `turn_start`、创建 `terminal` |
-| package Action | Config/Reaction | 执行游戏包 JavaScript，修改内容 State | Choice Action、Effect Reaction Action |
-
-三者不能通过字符串名称互相冒充。`StartEvent` 是 RuntimeCommand，不是名为 `start_event` 的 Action；自动 phase 转换不是伪造的 UI 命令；游戏包也不能通过特殊 Action key 调用 `AdvanceTurn` 或直接写阶段。Action 通过 `context.runState` 定位并修改 active EventInstance 的可写 State，通过 `context.endRun()` 请求结束本局。RuleContext 与 ActionContext 暴露的是解析后的 State 视图，不是 Profile、RunData 或 TurnData 容器。
-
-## GameplayRuntime 接口
-
-```ts
-type RuntimeCommand =
-    | { type: 'start-event'; eventId: string }
-    | { type: 'activate-effect'; effectId: string }
-    | {
-          type: 'choose-single';
-          eventInstanceId: string;
-          nodeId: string;
-          choiceId: string;
-      }
-    | {
-          type: 'set-multiple-choice';
-          eventInstanceId: string;
-          nodeId: string;
-          choiceId: string;
-          count: number;
-      }
-    | {
-          type: 'execute-node-command';
-          eventInstanceId: string;
-          nodeId: string;
-          commandId: string;
-      }
-    | { type: 'advance-turn' };
-
-type RuntimeCommandResult =
-    | { ok: true; revision: number }
-    | {
-          ok: false;
-          /** 单次失败的可复制诊断编号。 */
-          errorId: string;
-          code:
-              | 'busy'
-              | 'invalid-phase'
-              | 'not-found'
-              | 'not-enabled'
-              | 'stale-node'
-              | 'blocked'
-              | 'persistence-error'
-              | 'script-error';
-          message: string;
-          revision: number;
-          /** 本次失败前是否已经提交了新的稳定检查点。 */
-          committed: boolean;
-      };
-
-interface GameplayRuntime {
-    dispatch(command: RuntimeCommand): Promise<RuntimeCommandResult>;
-    subscribe(listener: () => void): () => void;
-    getSnapshot(): RuntimeSnapshot;
-}
-```
-
-RuntimeCommand 串行执行。引擎在执行时根据最新 State 重新校验 phase、对象 id、有效 `enabled`、当前节点与 required 门禁，不信任 UI 渲染时的旧值。busy 时拒绝并发命令。
-
-所有失败结果都带 `errorId`，面向玩家的安全摘要也附带该编号。脚本失败在内部保留 Reaction、Action 与 Rule frame 调用链；command monitor 记录 errorId、code、调用链和可用的 JSON Pointer，不把完整 State 或脚本堆栈返回 UI。
-
-一次命令或自动状态转换开启一个处理单元。命令/状态机写入、root/嵌套/Reaction Action、PRNG 推进、EventInstance 派生写入和终局请求共享同一个 draft 与依赖图副本；State 写入沿反向依赖边失效计算节点，只按 canonical 顺序重算 dirty Reaction observer。队列稳定后先完成 draft、验证并生成候选 snapshot；需要保存检查点时先等待 Repository 成功，再统一替换 Runtime 状态、依赖图、revision 与 snapshot 并通知。任一前置步骤失败都会丢弃候选结果，并保留命令前的状态与 UI snapshot。
-
-`AdvanceTurn` 是唯一跨越持久化边界的 gameplay command：它先用一个处理单元完成 `turn_end` 并原子提交检查点，再以该检查点为回滚边界开启下一回合处理单元。UI 不观察两者之间的正常中间态；若下一 `turn_start` 失败，已经完成的 `turn_end` 会被发布，结果返回 `committed: true`，再次执行 `advance-turn` 从该边界重试。持久化本身失败时返回 `committed: false`，内存和 UI 都保持命令前状态。新游戏也以持久化 `initial` 分隔构造与首回合处理。
-
-## UI snapshot 与事件绑定
-
-`getSnapshot()` 返回稳定且不可变的 read model。UI 不持有 Runtime Proxy，不直接执行 Rule/Action，也看不到事务 draft、失效中的计算值或瞬时 phase。相同 revision 应复用 snapshot identity，React 可通过 `useSyncExternalStore` 订阅。
-
-```ts
-interface AttributeView {
-    characterId: string;
-    characterDisplayName: string;
-    attributeId: string;
-    displayName: string;
-    type: 'number' | 'enum';
-    value: number;
-    displayValue: string;
-    min?: number;
-    max?: number;
-}
-
-interface EffectView {
-    effectId: string;
-    displayName: string;
-    description?: string;
-    actived: boolean;
-    manuallyActivatable: boolean;
-    canActivate: boolean;
-    bindCharacterId?: string;
-    bindCharacterDisplayName?: string;
-}
-
-interface EventCardView {
-    eventId: string;
-    displayName: string;
-    description?: string;
-    required: boolean;
-}
-
-type AdvanceTurnBlocker =
-    | { kind: 'pending-required-event'; eventId: string; message: string }
-    | {
-          kind: 'active-required-event';
-          eventId: string;
-          eventInstanceId: string;
-          message: string;
-      };
-
-interface SingleChoiceView {
-    choiceId: string;
-    displayName: string;
-    description?: string;
-    enabled: boolean;
-}
-
-interface MultipleChoiceView {
-    choiceId: string;
-    displayName: string;
-    description?: string;
-    enabled: boolean;
-    value: Primitive;
-    count: number;
-    maxCount?: number;
-}
-
-interface NodeCommandView {
-    commandId: string;
-    displayName: string;
-    description?: string;
-    enabled: boolean;
-}
-
-type EventNodeView =
-    | {
-          type: 'single';
-          nodeId: NodeId;
-          displayName: string;
-          description?: string;
-          content: string;
-          required: boolean;
-          choices: readonly SingleChoiceView[];
-      }
-    | {
-          type: 'multiple';
-          nodeId: NodeId;
-          displayName: string;
-          description?: string;
-          content: string;
-          required: boolean;
-          choices: readonly MultipleChoiceView[];
-          commands: readonly NodeCommandView[];
-      };
-
-interface ActiveEventView {
-    eventId: string;
-    eventInstanceId: string;
-    displayName: string;
-    status: 'active';
-    currentNodeId: NodeId;
-    required: boolean;
-    currentNode: EventNodeView;
-}
-
-interface EndingEventView {
-    eventId: string;
-    eventInstanceId: string;
-    displayName: string;
-    status: 'active' | 'completed' | 'abandoned';
-    currentNodeId: NodeId;
-    currentNode: EventNodeView;
-}
-
-interface RuntimeSnapshotBase {
-    revision: number;
-    runId: string;
-    turnNumber: number;
-    phase: TurnPhase;
-    attributes: readonly AttributeView[];
-    effects: readonly EffectView[];
-    eventCards: readonly EventCardView[];
-    activeEvents: readonly ActiveEventView[];
-    canAdvanceTurn: boolean;
-    advanceTurnBlockers: readonly AdvanceTurnBlocker[];
-}
-
-type RuntimeSnapshot = RuntimeSnapshotBase & (
-    | { runStatus: 'active'; endedAt?: never; endingEvent?: never }
-    | { runStatus: 'ended'; endedAt: Timestamp; endingEvent?: EndingEventView }
-    | { runStatus: 'abandoned'; endedAt: Timestamp; endingEvent?: never }
-);
-```
-
-GameplayRuntime 在放弃命令完成后通常会被 GameSession 销毁，但最后一个 snapshot 仍允许 `runStatus = 'abandoned'`，从而与领域 `RunStatus` 保持一致。`ended` snapshot 根据 terminal TurnData 的可选 `endingEventInstanceId` 重建 `endingEvent`；由配置级 Reaction 或阶段 Action 请求终局时可以省略，UI 显示通用终局信息。UI 不直接读取 Runtime Proxy 或猜测结局字段。
-
-可启动事件和当前节点中的 Choice、Command 在 selector 中应用 `visible && unlocked` 过滤，并将有效 `enabled` 投影给 UI。`EventCardView.required` 直接表达 pending 事件门禁，`AdvanceTurnBlocker` 使用稳定 event/instance id 建立关联；UI 只展示 message，不解析文案。CheckNode 会在 run-to-idle 过程中自动处理，不会出现在 `EventNodeView`。多选项的 `count` 来自当前 EventInstance 在 TurnState 中的选择结果。
-
-| UI 操作 | Runtime 调用 | 引擎行为 |
+| 类型 | 发起方 | 职责 |
 | --- | --- | --- |
-| 点击可启动事件卡 | `dispatch({ type: 'start-event', eventId })` | 校验 phase、unlocked/enabled、`activeInstanceId` 与本回合启动记录，原子创建实例并设置 active id |
-| 点击手动激活 Effect | `dispatch({ type: 'activate-effect', effectId })` | 校验 Effect 能力和当前状态，在 RunState 中写入 `activedValue = true`，再稳定 Effect Reaction |
-| 点击进行中事件 | 无 gameplay command | 只改变 UI 聚焦状态 |
-| 点击单选项 | `dispatch({ type: 'choose-single', ... })` | 定位当前 Choice，通过执行器运行其 Action |
-| 增减多选数量 | `dispatch({ type: 'set-multiple-choice', ... })` | 校验 count/maxCount，写 TurnState 临时选择 |
-| 点击 NodeCommand | `dispatch({ type: 'execute-node-command', ... })` | 读取当前选择，通过执行器运行 Command Action |
-| 点击下一回合 | `dispatch({ type: 'advance-turn' })` | 校验 required 门禁，驱动结束阶段并自动进入下一稳定输入点 |
-| 渲染属性、Effect、卡片 | 无 | 只读取 snapshot selector 结果 |
-| 进入 CheckNode | 无 UI 绑定 | 引擎自动运行 check Action，直到 TextNode、完成或错误 |
+| Game 方法 | UI | 表达玩家意图，Runtime 按当前 State 重新校验 |
+| internal transition | Runtime | 推进 phase、回合、事件与检查点 |
+| package Action | Config/Reaction | 通过 ActionContext 改写允许的 State，请求 endRun |
 
-可启动卡片 selector 使用有效 `visible && unlocked && enabled`，并排除 `activeInstanceId` 已存在或本回合已启动过实例的 EventConfig。Effect selector 只投影 `visible && unlocked && acquired` 的 Effect；`canActivate` 还要求 `manuallyActivatable`、`actived = false`、有效 `enabled` 和 `event_handle` phase。一个 EventConfig 每个逻辑回合最多成功执行一次 `StartEvent`；实例 active 期间不再应用事件级 `visible`、`unlocked` 与 `enabled`，其入口始终可见且可用。实例结束时引擎清除 `activeInstanceId`，历史实例继续保留在 `instances`。属性、Effect、事件与选项按 `order` 升序、id 升序作为稳定后备次序。每个处理单元稳定后 selector 实时重算。
+Game 方法不通过 Action registry 查找同名函数。Rule/Action 使用解析 State 视图，不取得 Profile、RunData 或 TurnData 容器。
 
-UI focus、弹窗、存档树选中项属于组件或应用状态，不写入 Gameplay State。引擎只在处理单元稳定后增加 revision 并通知一次，React render 和 StrictMode 重复渲染都不能推进 PRNG 或产生写入。
+## Game 接口
 
-GameplayRuntime 不发布 `busy=true` 的中间 snapshot。应用层 GameSession 在调用 `dispatch` 前同步设置自己的 busy 状态并通知 UI，Promise 完成后再清除；它还把 camelCase facade 映射到上表的 RuntimeCommand。SessionView 在 RuntimeSnapshot 外组合 game/profile id、busy 与当前 UI focus；这些应用状态的变化不增加 runtime revision，也不读取或写入 Gameplay State。
+```ts
+interface Game {
+  getSnapshot(): GameSnapshot
+  subscribe(listener: () => void): () => void
+  startEvent(eventId: string): Promise<CommandResult>
+  activateEffect(effectId: string): Promise<CommandResult>
+  chooseSingle(eventInstanceId: string, nodeId: string, choiceId: string): Promise<CommandResult>
+  setChoiceCount(eventInstanceId: string, nodeId: string, choiceId: string, count: number): Promise<CommandResult>
+  executeNodeCommand(eventInstanceId: string, nodeId: string, commandId: string): Promise<CommandResult>
+  advanceTurn(): Promise<CommandResult>
+  abandon(): Promise<CommandResult>
+  close(): void
+}
+```
+
+Runtime 直接实现 Game。全部状态命令共用互斥和失败协议，busy 时拒绝并发；内部命令标识服务执行与监控，不作为第二套公共 API。失败结果携带 errorId、code、message、revision 与 committed，脚本诊断在内部保留调用链。
+
+一次处理单元将 State、依赖图、observer baseline、PRNG 和终局请求共同稳定，完成校验与 candidate snapshot，再等待必要的持久化；成功后一次性替换状态、图、revision 和 snapshot。任一步骤失败保留提交前状态，观察者与监控异常不能推翻提交。
+
+advanceTurn 先独立提交 turn_end，再启动下一回合；下一回合失败发布已提交边界并返回 committed: true，同一方法可以重试。持久化失败返回 committed: false。其他命令也可能因 endRun 提交 terminal，abandon 提交 abandoned。
+
+## GameSnapshot 与 UI 绑定
+
+GameSnapshot 是已求值、深度只读的普通数据；相同 revision 复用对象引用。包含：
+
+- game/profile 身份、runId、稳定 checkpoint 引用与 kind；
+- revision、turnNumber、phase、status；
+- characters 及其 attributes，数值保留 number、枚举保留作者标签；
+- effects，包含激活状态、绑定角色与 canActivate；
+- events.available 与 events.active，active 包含 currentNode；
+- canAdvanceTurn 和结构化 advanceTurnBlockers；
+- ended/abandoned 的 endedAt；ended 可包含 endingEvent。
+
+status 使用判别联合，abandoned 不包含脚本结局。checkpoint 指向最后稳定记录，当前工作状态可能已进入下一回合。UI 不取得 Config、脚本、Proxy 或 draft。
+
+角色、属性、选项和命令使用有效 visible/unlocked 过滤，事件入口还要求 enabled、无 active 实例且本回合未启动过。active 入口始终可见，currentNode 包含已求值内容与 enabled。Effect 只包含 visible/unlocked/acquired 项，canActivate 结合手动能力、激活状态、enabled 和 event_handle。数组保留 order/id 顺序。
+
+CheckNode 自动运行到 TextNode、实例结束或终局，不进入节点数据。多选 count 来自 TurnState，required 入口/候选链和 active 节点均可阻塞推进。门禁只返回 kind 与 id，UI 生成提示，不重复计算规则。
+
+UI 负责焦点、确认、pending、日期数字格式、动画和导航。usePlay 先设置 pending 再调用具名方法，通过 useSyncExternalStore 直接订阅 GameSnapshot；即使返回 committed: true 的失败，也展示已发布数据。放弃和终局的导航由 UI 分别组织。
+
+close 幂等，禁止新命令、清理监听并丢弃未提交工作，不触发保存。已经发起的持久化单元允许完成原子边界，关闭后不通知 UI，也不再启动下一回合。openGame 的 AbortSignal 在异步边界检查，取消后回收已创建实例。
+
+## 历史检查点
+
+Gameplay.getCheckpoint(source) 共用于预览与结果。加载精确 Config 并校验 Profile 后，按目标 kind 恢复当时的生命周期，通过共享 rules/state-view/snapshot 独立求值；不创建 Runtime、持续 observer 或 Immer 写入事务，不执行 Action、不启动回合、不消耗随机数，也不更新最近访问或恢复游标。
 
 ## phase 所有权与状态机
 
@@ -237,7 +73,7 @@ type TurnPhase =
 
 `turnNumber` 与 `phase` 是引擎拥有、UI/Rule/Action 可读的版本化状态。ActionContext 通过只读的 `context.turnState.turnNumber` 与 `context.turnState.phase` 暴露它们，Proxy 会拒绝直接写入。UI 不发送 `SetPhase`；phase 的自动转换也不进入 ActionRegistry。
 
-| 当前 phase | 进入原因 | 允许的 RuntimeCommand | 离开方式 |
+| 当前 phase | 进入原因 | 允许的 Game 命令 | 离开方式 |
 | --- | --- | --- | --- |
 | `initializing` | 新游戏或 restart 的 `initial` 恢复边界 | 无 | Reaction baseline 建立后自动开始首回合；失败时关闭本次 Runtime，重新打开仍从 initial 开始 |
 | `turn_start` | 首回合或上一回合提交完成 | 无 | 开始阶段稳定后自动进入 `event_handle` |
@@ -255,7 +91,7 @@ type TurnPhase =
 3. 创建处理单元管理器、PRNG draft、Config/State 合并 Proxy、Rule 依赖图，以及绑定当前 Run 的纯 Rule executor 和事务 Action executor。
 4. 物化初始 Effect 等必须保存的回合 `0` 生命周期事实。
 5. 校验初始 State，构造包含 `initial` snapshot 的 StoredProfile 并持久化；这是新建存档的稳定成功边界。
-6. 打开 GameplayRuntime，从 `initial` snapshot 克隆唯一工作状态和依赖图，并按 canonical 顺序为 Effect 生命周期、EffectConfig 与 EventConfig Reaction observer 建立 baseline；新局通常没有 active TextNode。
+6. 打开 Runtime，从 `initial` snapshot 克隆唯一工作状态和依赖图，并按 canonical 顺序为 Effect 生命周期、EffectConfig 与 EventConfig Reaction observer 建立 baseline；新局通常没有 active TextNode。
 7. baseline 成功后，以 `initial` 为回滚边界增加 `turnNumber`，进入 `turn_start`，自动运行到 `event_handle`，发布首个可交互 snapshot。baseline 或首回合脚本失败时保留完整 initial 并报告错误。
 
 ### 继续、branch 或截断恢复
@@ -306,7 +142,7 @@ flowchart TD
     M -- 否 --> N[原子创建 turn_end 检查点<br/>更新 RunData.currentTurnId 与 Profile.current]
     N --> B
     Z --> O{调用链有关联的当前 EventNode?}
-    O -- 是 --> P[保留只读节点视图<br/>生成 RuntimeSnapshot.endingEvent]
+    O -- 是 --> P[保留只读节点视图<br/>生成 GameSnapshot.endingEvent]
     O -- 否 --> Q[生成通用 ended snapshot]
 ```
 
@@ -322,6 +158,6 @@ flowchart TD
 
 ## 暂停、放弃与重开
 
-“退出”和从游戏内“选择存档”属于应用命令，不放进 ActionRegistry。退出当前游戏界面时丢弃自回合初始化以来的全部未提交工作状态；再次继续时从进入该回合前的 `initial` 或上一 `turn_end` 检查点重新开始。游戏状态只在 `turn_end` 原子持久化。
+“退出”和从游戏内“选择存档”属于应用命令，不放进 ActionRegistry。退出当前游戏界面时丢弃自回合初始化以来的全部未提交工作状态；再次继续时从进入该回合前的 `initial` 或上一 `turn_end` 检查点重新开始。新建 Run 时保存 `initial`，回合完成、终局和放弃时分别原子保存 `turn_end`、`terminal` 与 `abandoned` 检查点。
 
 “放弃”确认后创建 `abandoned` 检查点并结束整条 active Run，不伪造游戏结局。“再来一局”在 ended 或 abandoned 的只读结果中显示，并创建 restart RunData。完整按钮、存档树与页面跳转见[玩家流程与界面设计](./player-flow-and-ui.md)。
