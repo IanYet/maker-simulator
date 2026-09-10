@@ -4,6 +4,8 @@
 
 ## 任务开始前
 
+- 项目开发运行环境是 WSL（Ubuntu-24.04）。所有项目命令（包括 Git、依赖安装、脚本、测试、构建和 lint）必须在 WSL 的 `/home/tong/projects/maker-simulator` 中执行，使用 WSL 内的 Node.js、pnpm 等工具链。
+- 从 Windows/PowerShell 调用时，统一使用 `wsl.exe -d Ubuntu-24.04 --cd /home/tong/projects/maker-simulator bash -ic '<命令>'`；不要直接使用 Windows 工具链在 UNC 仓库路径中运行项目命令。
 - 检查当前分支是否是main分支，如果是main分支，给出告警提示并询问当前在main分支，是否继续开发，得到肯定的提示后再继续
 - 先阅读与任务相关的 `docs/`、`docs/game-design/`、`README.md` 和现有实现，再修改代码。
 - 处理故事脚本或游戏包时，使用 `.codex/skills/write-story-script/SKILL.md`；按该 skill 指向的文档逐步校验。
